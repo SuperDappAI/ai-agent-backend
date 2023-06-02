@@ -1,0 +1,13 @@
+langchain
+openai
+pandas
+gitpython
+chromadb
+lark
+deeplake
+tiktoken
+fastapi
+python-multipart
+uvicorn
+pyowm
+duckduckgo-search
