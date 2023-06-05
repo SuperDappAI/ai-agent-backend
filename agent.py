@@ -37,6 +37,7 @@ def call_agent(query):
 
     with get_openai_callback() as cb:
         response = agent.run(query)
+        agent.run()
         print(cb)
 
     return response, cb

@@ -1,10 +1,15 @@
 from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
 
-from routerAgent import call_agent
+from agent import call_agent
+from curie_async import call_curie_async 
+from agent_async import call_async_agent 
+
 
 from langchain.chat_models import ChatOpenAI 
 from langchain import OpenAI
+
+import asyncio
 
 
 origins = [
@@ -32,5 +37,14 @@ async def callAgent(query: str = Form(...)):
     result = {'query': query, 'answer': gptAnswer, 'OpenAI_callback': cb}
     return result
 
-# @app.post('/chat/')
-# async def chatWithAgent(chat: str = Form(...)):
+@app.post('/query_async_agent/')
+async def callAsyncAgent(query: str = Form(...)):
+    gptAnswer,cb = await call_async_agent(query)
+    result = {'answer': gptAnswer, 'OpenAI_callback': cb}
+    return result
+
+@app.post('/query_curie/')
+async def call_async_curie(query: str = Form(...)):
+    result = await call_curie_async(query)
+    return result 
+
