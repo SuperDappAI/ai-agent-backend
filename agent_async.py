@@ -18,7 +18,7 @@ async def call_async_agent(query):
     davinci002 = OpenAI(model_name="text-davinci-002")
     davinci003 = OpenAI(model_name="text-davinci-003")
     # some other tools have no native support for async, so we'll test one that surely works out of the box.
-    tools = load_tools(["llm-math"], llm=gpt3)
+    tools = load_tools(["llm-math"], llm=gpt4)
 
     agent = initialize_agent(llm=gpt4, agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION, tools=tools,verbose=False)
 
