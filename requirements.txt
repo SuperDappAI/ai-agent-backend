@@ -10,11 +10,11 @@ fastapi
 python-multipart
 uvicorn
 pyowm
-duckduckgo-search
-google-search-results
+# duckduckgo-search
+# google-search-results
 python-dotenv
-transformers
-huggingface_hub
+# transformers
+# huggingface_hub
 # pinecone-client[grpc]
 pinecone-client
-torch
+# torch

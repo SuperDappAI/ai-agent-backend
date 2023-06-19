@@ -88,9 +88,9 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(query: str = Form(...),user_id: str = Form(...)):
     memory_manager = MemoryManager(user_id)
-    memories,elapsed_time = memory_manager.get_relevant_memories(query) 
-    result = {'chat_history': memories, 'elapsed_time': elapsed_time}
-    return result
+    memories, elapsed_time = memory_manager.get_relevant_memory_docs(query) 
+    # result = {'chat_history': memories, 'elapsed_time': elapsed_time}
+    return memories, elapsed_time
 
 @app.post('/clear_user_memory/')
 async def clearUserMemory(user_id: str = Form(...)):
