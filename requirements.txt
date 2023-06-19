@@ -15,5 +15,6 @@ google-search-results
 python-dotenv
 transformers
 huggingface_hub
-pinecone-client[grpc]
+# pinecone-client[grpc]
+pinecone-client
 torch
