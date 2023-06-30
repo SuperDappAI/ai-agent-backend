@@ -1,19 +1,25 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
+import openai
 from dotenv import load_dotenv
 import os
 import pinecone
 
 from langchain.chat_models import ChatOpenAI
 from langchain import OpenAI
-from memory import MemoryManager
+from memory_search import MemoryManager
 
+from aiohttp import ClientSession
 import asyncio
+from streamingFunctionsAgent import streamingFunctionsAgent
+# from sse_starlette import EventSourceResponse
+
 
 load_dotenv()
 os.getenv("OPENAI_API_KEY")
 os.getenv("SERPER_API_KEY")
+os.getenv("PINECONE_API_KEY")
 
 origins = [
     "http://localhost",
@@ -25,59 +31,8 @@ origins = [
 app = FastAPI()
 
 # run with uvicorn main:app --reload
-
-
-@app.post("/query/")
-async def callAgent(query: str = Form(...)):
-    gptAnswer, cb = instance_agent_with_memory(query)
-    result = {"query": query, "answer": gptAnswer, "OpenAI_callback": cb}
-    return result
-
-
-# @app.post('/query_async_agent/')
-# async def callAsyncAgent(query: str = Form(...)):
-#     gptAnswer,cb = await call_async_agent(query)
-#     result = {'answer': gptAnswer, 'OpenAI_callback': cb}
-#     return result
-
-from fastapi import FastAPI, Form
-from fastapi.middleware.cors import CORSMiddleware
-
-from dotenv import load_dotenv
-import os
-
-from langchain.chat_models import ChatOpenAI 
-from langchain import OpenAI
-
-import asyncio
-
-
-load_dotenv()
-os.getenv('OPENAI_API_KEY')
-# os.getenv('SERPER_API_KEY')
 
 pinecone.init()
-
-origins = [
-    "http://localhost",
-    "http://localhost:8080",
-    "http://localhost:5173",
-    "http://localhost:8000",
-]
-
-app = FastAPI()
-
-# figure out middleware later
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# run with uvicorn main:app --reload
-
 
 @app.post('/push_memory/')
 async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
@@ -86,10 +41,9 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
     return {'elapsed_time': elapsed_time} 
 
 @app.post('/pull_memory/')
-async def pullRelevantMemoriesForUser(query: str = Form(...),user_id: str = Form(...)):
-    memory_manager = MemoryManager(user_id)
-    memories, elapsed_time = memory_manager.get_relevant_memory_docs(query) 
-    # result = {'chat_history': memories, 'elapsed_time': elapsed_time}
+async def pullRelevantMemoriesForUser(query: str = Form(...),user_id: str = Form(...),context: str = Form(...),k_num: int = Form(...),deepSearch: bool = Form(...)):
+    memory_manager = MemoryManager(user_id,k_num)
+    memories, elapsed_time = memory_manager.get_relevant_memory_docs(query,deepSearch=deepSearch, context=context) 
     return memories, elapsed_time
 
 @app.post('/clear_user_memory/')
