@@ -17,4 +17,8 @@ python-dotenv
 #huggingface_hub
 # pinecone-client[grpc]
 pinecone-client
-#torch
+# torch
+#termcolor
+#tenacity
+#sse-starlette
+
