@@ -1,0 +1,132 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:eu-central-1:111115025444:task-definition/superdapp-python:3",
+    "containerDefinitions": [
+        {
+            "name": "superdapp-python",
+            "image": "111115025444.dkr.ecr.eu-central-1.amazonaws.com/superdapp-python:latest",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "name": "superdapp-python-80-tcp",
+                    "containerPort": 80,
+                    "hostPort": 80,
+                    "protocol": "tcp",
+                    "appProtocol": "http"
+                }
+            ],
+            "essential": true,
+            "environment": [],
+            "environmentFiles": [
+                {
+                    "value": "arn:aws:s3:::diefi-dev-config/superdapp-python/superdapp-python-dev.env",
+                    "type": "s3"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-create-group": "true",
+                    "awslogs-group": "/ecs/superdapp-python",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        },
+        {
+            "name": "aws-otel-collector",
+            "image": "111115025444.dkr.ecr.eu-central-1.amazonaws.com/ecr-public/aws-observability/aws-otel-collector:v0.30.0",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 2000,
+                    "hostPort": 2000,
+                    "protocol": "udp"
+                },
+                {
+                    "containerPort": 4317,
+                    "hostPort": 4317,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 8125,
+                    "hostPort": 8125,
+                    "protocol": "udp"
+                }
+            ],
+            "essential": true,
+            "command": [
+                "--config=/etc/ecs/ecs-cloudwatch-xray.yaml"
+            ],
+            "environment": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-create-group": "true",
+                    "awslogs-group": "/ecs/ecs-aws-otel-sidecar-collector",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ],
+    "family": "superdapp-python",
+    "taskRoleArn": "arn:aws:iam::111115025444:role/ecsTaskExecutionRole",
+    "executionRoleArn": "arn:aws:iam::111115025444:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "revision": 3,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "ecs.capability.env-files.s3"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.task-iam-role"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "FARGATE"
+    ],
+    "requiresCompatibilities": [
+        "EC2"
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "runtimePlatform": {
+        "cpuArchitecture": "X86_64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "registeredAt": "2023-07-04T17:30:22.859Z",
+    "registeredBy": "arn:aws:sts::111115025444:assumed-role/AWSReservedSSO_AWSAdministratorAccess_fa16686379309ca2/anvar@cybergamp.com",
+    "tags": []
+}
