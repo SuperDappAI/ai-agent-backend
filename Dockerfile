@@ -36,11 +36,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 #EXPOSE 80
 
 # Run app.py when the container launches
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "3"]
+#CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "3"]
 
 
 RUN chmod +x /var/www/docker/run.sh
 
-EXPOSE 8000
+EXPOSE 80
 
 ENTRYPOINT ["/var/www/docker/run.sh"]

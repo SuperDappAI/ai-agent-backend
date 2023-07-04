@@ -2,9 +2,9 @@ langchain
 openai
 pandas
 gitpython
-chromadb
+#chromadb
 lark
-deeplake
+#deeplake
 tiktoken
 fastapi
 python-multipart
@@ -21,4 +21,4 @@ pinecone-client
 #termcolor
 #tenacity
 #sse-starlette
-
+gunicorn
