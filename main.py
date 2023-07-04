@@ -26,6 +26,7 @@ origins = [
     "http://localhost:8080",
     "http://localhost:5173",
     "http://localhost:8000",
+    "https://python-api.chatdapp.dev",
 ]
 
 app = FastAPI()
@@ -34,17 +35,21 @@ app = FastAPI()
 
 pinecone.init()
 
+
 @app.post('/push_memory/')
 async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
     memory_manager = MemoryManager(user_id)
-    elapsed_time = memory_manager.push_memory(message,llm_response)
-    return {'elapsed_time': elapsed_time} 
+    elapsed_time = memory_manager.push_memory(message, llm_response)
+    return {'elapsed_time': elapsed_time}
+
 
 @app.post('/pull_memory/')
-async def pullRelevantMemoriesForUser(query: str = Form(...),user_id: str = Form(...),context: str = Form(...),k_num: int = Form(...),deepSearch: bool = Form(...)):
-    memory_manager = MemoryManager(user_id,k_num)
-    memories, elapsed_time = memory_manager.get_relevant_memory_docs(query,deepSearch=deepSearch, context=context) 
+async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), k_num: int = Form(...), deepSearch: bool = Form(...)):
+    memory_manager = MemoryManager(user_id, k_num)
+    memories, elapsed_time = memory_manager.get_relevant_memory_docs(
+        query, deepSearch=deepSearch, context=context)
     return memories, elapsed_time
+
 
 @app.post('/clear_user_memory/')
 async def clearUserMemory(user_id: str = Form(...)):
