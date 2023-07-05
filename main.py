@@ -37,7 +37,7 @@ app = FastAPI()
 pinecone.init()
 
 LOGFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.log') 
-logging.basicConfig(filename=LOGFILE_PATH, filemode='a',format='%(name)s - %(message)s',force=True)
+logging.basicConfig(filename=LOGFILE_PATH, filemode='w',format='%(name)s - %(message)s',force=True)
 
 @app.post('/push_memory/')
 async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
