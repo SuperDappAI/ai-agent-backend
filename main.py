@@ -9,6 +9,7 @@ import pinecone
 from langchain.chat_models import ChatOpenAI
 from langchain import OpenAI
 from memory_search import MemoryManager
+from bs_html_custom import BSHTMLLoaderCustom
 
 from aiohttp import ClientSession
 import logging
@@ -40,7 +41,7 @@ LOGFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.log
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',format='%(name)s - %(message)s',force=True)
 
 @app.post('/push_memory/')
-async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
+async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), ):
     logging.info(f'Writing memory for user {user_id}')
     memory_manager = MemoryManager(user_id)
     elapsed_time = memory_manager.push_memory(message, llm_response)
@@ -49,6 +50,18 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
 
     return {'elapsed_time': elapsed_time}
 
+@app.post('/push_html/')
+async def loadHTML(html_doc: str = Form(...),source_url: str = Form(...), user_id: str = Form(...)):
+    logging.info(f'Loading HTML')
+    docs = BSHTMLLoaderCustom(html_doc, source_url).load()
+    logging.info(f'Loaded HTML')
+    memory_manager = MemoryManager(user_id=user_id)
+    logging.info(f'Pushing HTML to Pinecone')
+    elapsed_time = memory_manager.split_and_push_webpage(docs)
+    logging.info(f'Pushed HTML to Pinecone')
+    logging.info('Elapsed time for operation: %s', elapsed_time)  # log the elapsed time
+
+    return {'success': 'success', 'elapsed_time': elapsed_time}
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), k_num: int = Form(...), deepSearch: bool = Form(...)):
     logging.info(f'Pulling relevant memories for user {user_id}')

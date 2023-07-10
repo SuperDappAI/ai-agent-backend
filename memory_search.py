@@ -6,6 +6,7 @@ from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import VectorStoreRetrieverMemory
 from langchain.text_splitter import CharacterTextSplitter  
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import EmbeddingsFilter, LLMChainExtractor, DocumentCompressorPipeline
@@ -35,6 +36,14 @@ class MemoryManager:
         
         self.memory.save_context({"user": message}, {"assistant": llm_response})
 
+        time_count = time.time() - start_time
+        return f"success, save_context call took {time_count:.4f} seconds"
+
+    def split_and_push_webpage(self, html_docs):
+        start_time = time.time()
+        splitter = RecursiveCharacterTextSplitter(chunk_size=512,chunk_overlap=64)
+        html_docs_split = splitter.split_documents(html_docs)
+        self.pinecone_db.as_retriever().add_documents(html_docs_split)
         time_count = time.time() - start_time
         return f"success, save_context call took {time_count:.4f} seconds"
 
