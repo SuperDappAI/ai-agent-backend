@@ -22,3 +22,4 @@ pinecone-client
 #tenacity
 #sse-starlette
 gunicorn
+beautifulsoup4
