@@ -83,6 +83,14 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
     logging.info('Elapsed time for operation: %s', elapsed_time)  # log the elapsed time
     return {'results': results, 'elapsed_time': elapsed_time}
 
+# @app.post('/get_functions/')
+# async def getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
+#     categories = categories.split(',')
+#     actions = actions.split(',')
+#     logging.info(f'Getting function')
+#     result = [{'function': func} for func in actions]
+#     return {'functions': result}
+
 @app.post('/clear_user_memory/')
 async def clearUserMemory(user_id: str = Form(...)):
     logging.info(f'Clearing user memory for user {user_id}')

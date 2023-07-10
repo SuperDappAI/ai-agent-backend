@@ -41,7 +41,7 @@ class MemoryManager:
 
     def split_and_push_webpage(self, html_docs):
         start_time = time.time()
-        splitter = RecursiveCharacterTextSplitter(chunk_size=512,chunk_overlap=64)
+        splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=4096,chunk_overlap=0,disallowed_special="all")
         html_docs_split = splitter.split_documents(html_docs)
         self.pinecone_db.as_retriever().add_documents(html_docs_split)
         time_count = time.time() - start_time
@@ -126,9 +126,9 @@ class MemoryManager:
 
     def semantic_search_html(self, query, context, similarity_threshold): 
         start_time = time.time()
-        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 20})
-        token_text_splitter= CharacterTextSplitter.from_tiktoken_encoder(
-        chunk_size=256, chunk_overlap=0
+        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 10})
+        token_text_splitter= CharacterTextSplitter(
+        chunk_size=512, chunk_overlap=0
         ) 
         embeddings_filter = EmbeddingsFilter(embeddings=OpenAIEmbeddings(), similarity_threshold=similarity_threshold,k=self.k_num) 
 
@@ -138,9 +138,12 @@ class MemoryManager:
 
         docs_split = token_text_splitter.split_documents(memory_docs)
         
-        docs_filtered = embeddings_filter.compress_documents(docs_split, context)
-        if docs_filtered[0].page_content == "":
-            docs_filtered = docs_split[0]
+        docs_filtered = embeddings_filter.compress_documents(docs_split, query=f'{query},{context}')
+        if len(docs_filtered) == 0:
+            try:
+                docs_filtered = docs_split[0:3]
+            except:
+                return [], "No results found"
         docs_formatted = []
         for doc in docs_filtered:
             docs_formatted.append({"content": doc.page_content, "metadata": doc.metadata})
