@@ -62,6 +62,7 @@ async def loadHTML(html_doc: str = Form(...),source_url: str = Form(...), user_i
     logging.info('Elapsed time for operation: %s', elapsed_time)  # log the elapsed time
 
     return {'success': 'success', 'elapsed_time': elapsed_time}
+
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), k_num: int = Form(...), deepSearch: bool = Form(...)):
     logging.info(f'Pulling relevant memories for user {user_id}')
@@ -72,6 +73,15 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
     logging.info('Elapsed time for operation: %s', elapsed_time)  # log the elapsed time
 
     return {'memories': memories, 'elapsed_time': elapsed_time}
+
+@app.post('/semantic_search_html/')
+async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
+    logging.info(f'Semantic search HTML')
+    memory_manager = MemoryManager(user_id,k_num=num_results)
+    results, elapsed_time = memory_manager.semantic_search_html(query,context,similarity_threshold)
+    logging.info('Pulled relevant results for query: %s, context: %s', query, context)  # log the data pull
+    logging.info('Elapsed time for operation: %s', elapsed_time)  # log the elapsed time
+    return {'results': results, 'elapsed_time': elapsed_time}
 
 @app.post('/clear_user_memory/')
 async def clearUserMemory(user_id: str = Form(...)):

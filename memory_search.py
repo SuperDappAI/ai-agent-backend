@@ -124,6 +124,32 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
+    def semantic_search_html(self, query, context, similarity_threshold): 
+        start_time = time.time()
+        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 20})
+        token_text_splitter= CharacterTextSplitter.from_tiktoken_encoder(
+        chunk_size=256, chunk_overlap=0
+        ) 
+        embeddings_filter = EmbeddingsFilter(embeddings=OpenAIEmbeddings(), similarity_threshold=similarity_threshold,k=self.k_num) 
+
+        memories = []
+
+        memory_docs = retriever.get_relevant_documents(query)
+
+        docs_split = token_text_splitter.split_documents(memory_docs)
+        
+        docs_filtered = embeddings_filter.compress_documents(docs_split, context)
+        if docs_filtered[0].page_content == "":
+            docs_filtered = docs_split[0]
+        docs_formatted = []
+        for doc in docs_filtered:
+            docs_formatted.append({"content": doc.page_content, "metadata": doc.metadata})
+        memories.append({"context": docs_formatted})
+
+        time_count = time.time() - start_time
+        return memories, f"success, retrieve call took {time_count:.4f} seconds"
+
+
     def get_user_id(self):
         return self.user_id
 
