@@ -152,6 +152,16 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
+    def get_functions(self, action, num_results):
+        start_time = time.time()
+        # retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results, "metadata": {"category": category}})
+        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results})
+        func_docs = retriever.get_relevant_documents(action)
+        result = []
+        for doc in func_docs:
+            result.append({"name": doc.metadata["name"], "category": doc.metadata["category"]})
+        time_count = time.time() - start_time
+        return result, f"success, retrieve call took {time_count:.4f} seconds"
 
     def get_user_id(self):
         return self.user_id
