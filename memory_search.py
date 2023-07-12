@@ -157,12 +157,18 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
-    def get_functions(self, action, num_results):
+    async def get_functions(self, action, categories, num_results, similarity_threshold):
         start_time = time.time()
         # retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results, "metadata": {"category": category}})
-        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results})
-        func_docs = retriever.get_relevant_documents(action)
+        retriever = self.pinecone_db.as_retriever(search_type="similarity_score_threshold",search_kwargs={"k": num_results,"score_threshold": similarity_threshold})
+        func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
         result = []
+        if func_docs == []:
+            fallback = [{
+            "name": "searchWebGeneral",
+            "category": "informationretrieval_functions"
+            }]
+            return fallback, f"Fallback function used at threshold {similarity_threshold}"
         for doc in func_docs:
             result.append({"name": doc.metadata["name"], "category": doc.metadata["category"]})
         time_count = time.time() - start_time

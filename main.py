@@ -93,15 +93,15 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
     return {'results': results, 'elapsed_time': elapsed_time}
 
 @app.post('/get_functions/')
-async def getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...)):
-    categories = categories.split(',')
+async def getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
+    # categories = categories.split(',')
     actions = actions.split(',')
     logging.info(f'Getting function')
     memory_manager = MemoryManager("functions_test",k_num=num_results)
     results = []
     callbacks = []
     for action in actions:
-        result,cb = memory_manager.get_functions(action,num_results=num_results)
+        result,cb = await memory_manager.get_functions(action,categories,num_results=num_results, similarity_threshold=similarity_threshold)
         results.extend(result)
         callbacks.append(cb)
     logging.info('Pulled %i relevant results for query',num_results)  # log the data pull
