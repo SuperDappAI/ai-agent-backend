@@ -6,6 +6,7 @@ from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.memory import VectorStoreRetrieverMemory
 from langchain.text_splitter import CharacterTextSplitter  
+from langchain.text_splitter import TokenTextSplitter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.retrievers import ContextualCompressionRetriever
@@ -39,11 +40,15 @@ class MemoryManager:
         time_count = time.time() - start_time
         return f"success, save_context call took {time_count:.4f} seconds"
 
-    def split_and_push_webpage(self, html_docs):
+    def split_and_push_webpage(self, docs):
         start_time = time.time()
-        splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=4096,chunk_overlap=0,disallowed_special="all")
-        html_docs_split = splitter.split_documents(html_docs)
-        self.pinecone_db.as_retriever().add_documents(html_docs_split)
+        # splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=4096,chunk_overlap=0,disallowed_special="all")
+        splitter = TokenTextSplitter(chunk_size=4096,chunk_overlap=0)
+        print(f'time for split {time.time() - start_time}')
+        docs_split = splitter.split_documents(docs)
+        # self.pinecone_db.as_retriever().add_documents(docs_split)
+        self.pinecone_db.add_documents(docs_split)
+        print(f'time for push {time.time() - start_time}')
         time_count = time.time() - start_time
         return f"success, save_context call took {time_count:.4f} seconds"
 
@@ -59,7 +64,7 @@ class MemoryManager:
     def get_relevant_memory_docs(self, query, context, deepSearch=False):
         start_time = time.time()
         retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 10})
-        token_text_splitter= CharacterTextSplitter.from_tiktoken_encoder(
+        token_text_splitter= TokenTextSplitter(
         chunk_size=256, chunk_overlap=0
         ) 
         embeddings_filter = EmbeddingsFilter(embeddings=OpenAIEmbeddings(), similarity_threshold=0.72,k=self.k_num) 
@@ -127,8 +132,8 @@ class MemoryManager:
     def semantic_search_html(self, query, context, similarity_threshold): 
         start_time = time.time()
         retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 10})
-        token_text_splitter= CharacterTextSplitter(
-        chunk_size=512, chunk_overlap=0
+        token_text_splitter= TokenTextSplitter(
+        chunk_size=256, chunk_overlap=0
         ) 
         embeddings_filter = EmbeddingsFilter(embeddings=OpenAIEmbeddings(), similarity_threshold=similarity_threshold,k=self.k_num) 
 

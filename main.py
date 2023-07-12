@@ -9,7 +9,8 @@ import pinecone
 from langchain.chat_models import ChatOpenAI
 from langchain import OpenAI
 from memory_search import MemoryManager
-from bs_html_custom import BSHTMLLoaderCustom
+# from bs_html_custom import BSHTMLLoaderCustom
+from langchain.document_loaders import TextLoader 
 
 from aiohttp import ClientSession
 import logging
@@ -53,11 +54,19 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
 @app.post('/push_html/')
 async def loadHTML(html_doc: str = Form(...),source_url: str = Form(...), user_id: str = Form(...)):
     logging.info(f'Loading HTML')
-    docs = BSHTMLLoaderCustom(html_doc, source_url).load()
+    #save file to temporary folder
+    with open(f'{user_id}.txt', 'w') as f:
+        f.write(html_doc)
+        f.close()
+    #load file from temporary folder
+    loader = TextLoader(f'{user_id}.txt')
+    docs = loader.load()
+    # return docs
     logging.info(f'Loaded HTML')
     memory_manager = MemoryManager(user_id=user_id)
     logging.info(f'Pushing HTML to Pinecone')
     elapsed_time = memory_manager.split_and_push_webpage(docs)
+    os.remove(f'{user_id}.txt')
     logging.info(f'Pushed HTML to Pinecone')
     logging.info('Elapsed time for operation: %s', elapsed_time)  # log the elapsed time
 
