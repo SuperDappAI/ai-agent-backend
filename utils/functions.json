@@ -2,7 +2,7 @@
   "functions": [
     {
       "name": "getInformationFromMemory",
-      "description": "Retrieve historical conversational context through a semantic search. Number of tokens formula: num_chunks x (num_neighbour_chunks+1) x 256 (chunk size). Example: {\"name\": \"getInformationFromMemory\", \"parameters\": {\"conversationID\": \"123456\", \"query\": \"What was discussed earlier?\", \"num_chunks\": 5, \"num_neighbour_chunks\": 2, \"similarity_threshold\": 0.67}}",
+      "description": "Retrieve historical conversational context through a semantic search. Number of tokens formula: num_chunks x (num_neighbour_chunks+1) x 256 (chunk size). Example: {\"name\": \"getInformationFromMemory\", \"parameters\": {\"conversationID\": \"123456\", \"query\": \"What was discussed earlier?\", \"num_chunks\": 5, \"num_neighbour_chunks\": 2, \"similarity_threshold\": 0.8}}",
       "parameters": {
         "type": "object",
         "properties": {
@@ -17,7 +17,7 @@
             "type": "integer"
           },
           "similarity_threshold": {
-            "description": "Threshold for resulting chunks. Higher threshold for fewer but more precise answers.",
+            "description": "Threshold for resulting chunks. Higher threshold for fewer but more precise answers. Usually there is no need to go higher than 0.9.",
             "type": "number"
           }
         },
@@ -64,24 +64,12 @@
     },
     {
       "name": "getExternalFunctions",
-      "description": "Obtains the external functions AiDA can execute using a semantic lookup from a list of action descriptions. If no function is returned, there's no available action for the described tasks.",
+      "description": "Retrieve up to 3 available external functions AiDA can perform using a comma seperated list of action descriptions. An action description should denote a generalized action AiDA might perform, not the user's specific request. Actions and the categories should be ordered in sync with the actions in the comma-separated list. If no function is returned, it implies there's no available external function for the described actions. Example actions description: 'web search', 'semantic analysis', 'web search,semantic analysis', 'retrieve financial data'.",
       "parameters": {
         "type": "object",
         "properties": {
-          "actions": {
-            "type": "string",
-            "description": "Comma-separated list of generalized actions AiDA might perform. The order of actions should match the order of categories. Example: 'web search,semantic analysis, retrieve financial data'."
-          },
-          "num_results_per_action": {
-            "type": "integer",
-            "default": 1,
-            "description": "Number of desired results per action. Defaults to 1, indicating a precise match."
-          },
-          "similarity_threshold": {
-            "type": "number",
-            "description": "Threshold for functions. Higher value implies more precise results."
-          },
-          "categories": {
+          "actions": { "type": "string" },
+          "category": {
             "type": "string",
             "enum": [
               "Information Retrieval",
@@ -92,34 +80,10 @@
               "Decision Making",
               "Learning"
             ],
-            "description": "Comma-separated list of function categories in sync with the actions order. E.g., 'Information Retrieval,Data Processing'."
+            "description": "The category of function to be performed. You can provide multiple categories, separated by commas, in sync with the order of the actions. E.g., 'Information Retrieval,Data Processing'."
           }
         },
-        "required": ["actions", "similarity_threshold", "categories"]
-      }
-    },
-    {
-      "name": "getUserIDs",
-      "description": "Get user IDs based on criteria of given information such as usernames, first names, last names, chat ids, or emails. Each entry in the array can have its own 'global', 'similarity_threshold', and 'num_results' parameters. A specific 'chat_id' can also be provided to filter users from a specific group chat. Example: {'name': 'getUserIDs', 'parameters': {'userquery': [{'userQuery': 'john_doe', 'global': true, 'similarity_threshold': 0.71, 'num_results': 3, 'chat_id': '12345'}, {'userquery': 'jane_doe', 'global': false, 'similarity_threshold': 0.73, 'num_results': 2}]}}",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "userQueries": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "userquery": { "type": "string" },
-                "global": { "type": "boolean" },
-                "similarity_threshold": { "type": "number" },
-                "num_results": { "type": "integer" },
-                "chat_id": { "type": "string" }
-              },
-              "required": ["userquery"]
-            }
-          }
-        },
-        "required": ["userQueries"]
+        "required": ["actions", "category"]
       }
     }
   ],
@@ -618,20 +582,40 @@
   ],
   "communication_functions": [
     {
-      "name": "makeAudioOrVideoCallToUser",
-      "description": "Initiates a call (audio or video) to another user by their UserID, which can be found using 'getUserIDs'. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeCallToUser', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
+      "name": "findUserID",
+      "description": "Finds a user's ID based on given information, such as username, first name, last name, or email. Performs a semantic lookup controlled by similarity_threshold. If 'num_results' is specified, it will return that number of results; otherwise, it will return all results that satisfy the similarity_threshold. By default, it looks in your local contacts list. Use the 'global' parameter to look for users not in your contact list. Example: {'name': 'findUserID', 'parameters': {'username': 'john_doe', 'global': true, 'similarity_threshold': 0.8, 'num_results': 3}}",
       "parameters": {
         "type": "object",
         "properties": {
-          "toUserID": { "type": "string" },
-          "isVideo": { "type": "boolean" }
+          "username": { "type": "string" },
+          "global": { "type": "boolean" },
+          "similarity_threshold": { "type": "number" },
+          "num_results": { "type": "integer" }
         },
-        "required": ["toUserID", "isVideo"]
+        "required": ["username"]
       }
     },
     {
-      "name": "sendCryptoToUser",
-      "description": "Sends a specified amount of cryptocurrency to another user by their UserID or address, which can be found using 'getUserIDs'. Example: {'name': 'sendCrypto', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'symbol': 'ETH'}}",
+      "name": "makeAudioCall",
+      "description": "Initiates an audio call to another user by their UserID, which can be found using 'findUserID'. Example: {'name': 'makeAudioCall', 'parameters': {'toUserID': '1234'}}",
+      "parameters": {
+        "type": "object",
+        "properties": { "toUserID": { "type": "string" } },
+        "required": ["toUserID"]
+      }
+    },
+    {
+      "name": "makeVideoCall",
+      "description": "Initiates a video call to another user by their UserID, which can be found using 'findUserID'. Example: {'name': 'makeVideoCall', 'parameters': {'toUserID': '1234'}}",
+      "parameters": {
+        "type": "object",
+        "properties": { "toUserID": { "type": "string" } },
+        "required": ["toUserID"]
+      }
+    },
+    {
+      "name": "sendCrypto",
+      "description": "Sends a specified amount of cryptocurrency to another user by their UserID, which can be found using 'findUserID'. Example: {'name': 'sendCrypto', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'symbol': 'ETH'}}",
       "parameters": {
         "type": "object",
         "properties": {
@@ -643,8 +627,8 @@
       }
     },
     {
-      "name": "requestCryptoToUser",
-      "description": "Requests a specified amount of cryptocurrency from another user by their UserID, which can be found using 'getUserIDs'. Example: {'name': 'requestCrypto', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
+      "name": "requestCrypto",
+      "description": "Requests a specified amount of cryptocurrency from another user by their UserID, which can be found using 'findUserID'. Example: {'name': 'requestCrypto', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
       "parameters": {
         "type": "object",
         "properties": {
@@ -682,8 +666,21 @@
       }
     },
     {
+      "name": "transferCrypto",
+      "description": "Transfers a specified amount of cryptocurrency to a specified wallet address. Example: {'name': 'transferCrypto', 'parameters': {'toWallet': '0x123456789', 'amount': 2.5, 'symbol': 'ETH'}}",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "toWallet": { "type": "string" },
+          "amount": { "type": "number" },
+          "symbol": { "type": "string" }
+        },
+        "required": ["toWallet", "amount", "symbol"]
+      }
+    },
+    {
       "name": "sendMessageBetweenUsers",
-      "description": "Sends a message between users by their UserID, which can be found using 'getUserIDs'. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenUsers', 'parameters': {'users': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
+      "description": "Sends a message between users by their UserID, which can be found using 'findUserID'. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenUsers', 'parameters': {'users': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
       "parameters": {
         "type": "object",
         "properties": {
@@ -698,7 +695,7 @@
   "dataprocessing_functions": [
     {
       "name": "doSemanticSearch",
-      "description": "Performs a semantic search over provided data. The results are indexed into a vector database for semantic lookup controlled by num_chunks, num_neighbour_chunks, and similarity_threshold. The `num_chunks`, `num_neighbour_chunks`, and `similarity_threshold` fields are described in `getInformationFromMemory`. Number of tokens formula: num_chunks x (num_neighbour_chunks+1) x 256 (chunk size). Example: {\"name\": \"semantic_search\", \"parameters\": {\"data\": \"Text to analyze\", \"num_chunks\": 5, \"num_neighbour_chunks\": 2, \"similarity_threshold\": 0.73}",
+      "description": "Performs a semantic search over provided data. The results are indexed into a vector database for semantic lookup controlled by num_chunks, num_neighbour_chunks, and similarity_threshold. The `num_chunks`, `num_neighbour_chunks`, and `similarity_threshold` fields are described in `getInformationFromMemory`. Number of tokens formula: num_chunks x (num_neighbour_chunks+1) x 256 (chunk size). Example: {\"name\": \"semantic_search\", \"parameters\": {\"data\": \"Text to analyze\", \"num_chunks\": 5, \"num_neighbour_chunks\": 2, \"similarity_threshold\": 0.8}",
       "parameters": {
         "type": "object",
         "properties": {
