@@ -13,6 +13,7 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import EmbeddingsFilter, LLMChainExtractor, DocumentCompressorPipeline
 from langchain.chains import LLMChain
 from langchain.schema import Document
+import asyncio
 import time
 import re
 from langchain.prompts import PromptTemplate
@@ -176,25 +177,67 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
-    async def get_functions(self, action, categories, num_results, similarity_threshold):
+    async def get_functions(self, actions, categories, num_results, similarity_threshold):
         start_time = time.time()
-        # retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results, "metadata": {"category": category}})
+
+
         retriever = self.pinecone_db.as_retriever(search_type="similarity_score_threshold", search_kwargs={
-                                                  "k": num_results, "score_threshold": similarity_threshold})
-        func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
-        result = []
-        if func_docs == []:
-            fallback = [{
-                "name": "searchWebGeneral",
-                "category": "informationretrieval_functions"
-            }]
-            return fallback, f"Fallback function used at threshold {similarity_threshold}"
-        for doc in func_docs:
-            result.append(
-                {"name": doc.metadata["name"], "category": doc.metadata["category"]})
+                                                "k": num_results, "score_threshold": similarity_threshold})
+
+        async def get_docs(action):
+            func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
+            if not func_docs:
+                return [
+                    {
+                        "name": "searchWebGeneral",
+                        "category": "informationretrieval_functions"
+                    }
+                ]
+            else:
+                return [
+                    {"name": doc.metadata["name"], "category": doc.metadata["category"]}
+                    for doc in func_docs
+                ]
+
+        tasks = [get_docs(action) for action in actions]
+        results = await asyncio.gather(*tasks)
+        result = [item for sublist in results for item in sublist]
+
         time_count = time.time() - start_time
-        # , f"success, retrieve call took {time_count:.4f} seconds"
-        return result
+        print(time_count)
+
+        return result, f"success, retrieve call took {time_count:.4f} seconds"
+
+    # async def get_functions(self, actions, categories, num_results, similarity_threshold):
+    #     start_time = time.time()
+    #     # retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results, "metadata": {"category": category}})
+    #     # callbacks.append(cb)
+
+    #     retriever = self.pinecone_db.as_retriever(search_type="similarity_score_threshold", search_kwargs={
+    #                                               "k": num_results, "score_threshold": similarity_threshold})
+
+    #     result = []
+    #     for action in actions:
+
+    #         results = []
+    #         func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
+    #         if func_docs == []:
+    #             fallback = {
+    #                 "name": "searchWebGeneral",
+    #                 "category": "informationretrieval_functions"
+    #             }
+    #             results.append(fallback)
+    #         else:
+    #             for doc in func_docs:
+    #                 results.append(
+    #                     {"name": doc.metadata["name"], "category": doc.metadata["category"]})
+    
+    #         result.extend(results)
+
+    #     time_count = time.time() - start_time
+    #     # , f"success, retrieve call took {time_count:.4f} seconds"
+    #     print(time_count)
+    #     return result, f"success, retrieve call took {time_count:.4f} seconds"
 
     def get_user_id(self):
         return self.user_id
