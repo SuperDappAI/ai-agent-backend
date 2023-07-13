@@ -88,11 +88,11 @@ class FunctionsManager:
             print("Not implemented yet")
 
         pinecone_db = Pinecone.from_existing_index(
-                    "chat-message-history", embedding=OpenAIEmbeddings(), namespace="functions_test"
+                    "aida", embedding=OpenAIEmbeddings(), namespace="functions_test"
                 )
         #count operation time
 
-        native_index_object = pinecone.Index("chat-message-history")
+        native_index_object = pinecone.Index("aida")
         native_index_object.delete(namespace="functions_test", delete_all=True)
 
         print("Deleted all functions from index")

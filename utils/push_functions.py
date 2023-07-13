@@ -53,7 +53,7 @@ for doc in dataprocessing_functions:
 
 
 pinecone_db = Pinecone.from_existing_index(
-            "chat-message-history", embedding=OpenAIEmbeddings(), namespace="functions_test"
+            "aida", embedding=OpenAIEmbeddings(), namespace="functions_test"
         )
 
 #count operation time

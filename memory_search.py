@@ -26,7 +26,7 @@ class MemoryManager:
         self.k_num = k_num
         self.embeddings = OpenAIEmbeddings()
         self.pinecone_db = Pinecone.from_existing_index(
-            "chat-message-history", embedding=self.embeddings, namespace=self.user_id
+            "aida", embedding=self.embeddings, namespace=self.user_id
         )
         self.memory = VectorStoreRetrieverMemory(
             retriever=self.pinecone_db.as_retriever(), memory_key="chat_history"
@@ -203,6 +203,6 @@ class MemoryManager:
         self.user_id = user_id
 
     def clear_user_memory(self):
-        native_index_object = pinecone.Index("chat-message-history")
+        native_index_object = pinecone.Index("aida")
         native_index_object.delete(namespace=self.user_id, delete_all=True)
         return f"Memories cleared for user: {self.user_id}"
