@@ -176,25 +176,36 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
-    async def get_functions(self, action, categories, num_results, similarity_threshold):
+    async def get_functions(self, actions, categories, num_results, similarity_threshold):
         start_time = time.time()
         # retriever = self.pinecone_db.as_retriever(search_kwargs={"k": num_results, "metadata": {"category": category}})
+        # callbacks.append(cb)
+
         retriever = self.pinecone_db.as_retriever(search_type="similarity_score_threshold", search_kwargs={
                                                   "k": num_results, "score_threshold": similarity_threshold})
-        func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
+
         result = []
-        if func_docs == []:
-            fallback = [{
-                "name": "searchWebGeneral",
-                "category": "informationretrieval_functions"
-            }]
-            return fallback, f"Fallback function used at threshold {similarity_threshold}"
-        for doc in func_docs:
-            result.append(
-                {"name": doc.metadata["name"], "category": doc.metadata["category"]})
+        for action in actions:
+
+            results = []
+            func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
+            if func_docs == []:
+                fallback = {
+                    "name": "searchWebGeneral",
+                    "category": "informationretrieval_functions"
+                }
+                results.append(fallback)
+            else:
+                for doc in func_docs:
+                    results.append(
+                        {"name": doc.metadata["name"], "category": doc.metadata["category"]})
+    
+            result.extend(results)
+
         time_count = time.time() - start_time
         # , f"success, retrieve call took {time_count:.4f} seconds"
-        return result
+        print(time_count)
+        return result, f"success, retrieve call took {time_count:.4f} seconds"
 
     def get_user_id(self):
         return self.user_id
