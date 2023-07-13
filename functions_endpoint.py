@@ -43,7 +43,19 @@ class FunctionsManager:
         informationretrieval_functons = self.transform(data, 'informationretrieval_functions')
         communication_functions = self.transform(data, 'communication_functions')
         dataprocessing_functions = self.transform(data, 'dataprocessing_functions')
+        # sensory perception
+        sensory_perception = self.transform(data, 'sensoryperception_functions')
+        try:
+            # memory
+            memory_functions = self.transform(data, 'memory_functions')
+            # decision making
+            decision_making = self.transform(data, 'decisionmaking_functions')
+            # learning
+            learning_functions = self.transform(data, 'learning_functions')
+        except:
+            print("Not implemented yet")
 
+        #push to pinecone
         info_docs = []
         for doc in informationretrieval_functons:
             info_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
@@ -56,6 +68,24 @@ class FunctionsManager:
         for doc in dataprocessing_functions:
             dataprocessing_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
+        sensory_perception_docs = []
+        for doc in sensory_perception:
+            sensory_perception_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        try:
+            memory_docs = []
+            for doc in memory_functions:
+                memory_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+            
+            decision_making_docs = []
+            for doc in decision_making:
+                decision_making_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+            learning_docs = []
+            for doc in learning_functions:
+                learning_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+        except:
+            print("Not implemented yet")
 
         pinecone_db = Pinecone.from_existing_index(
                     "chat-message-history", embedding=OpenAIEmbeddings(), namespace="functions_test"
@@ -71,6 +101,16 @@ class FunctionsManager:
         pinecone_db.as_retriever().add_documents(info_docs)
         pinecone_db.as_retriever().add_documents(comm_docs)
         pinecone_db.as_retriever().add_documents(dataprocessing_docs)
+        pinecone_db.as_retriever().add_documents(sensory_perception_docs)
+        try:
+            pinecone_db.as_retriever().add_documents(memory_docs)
+            pinecone_db.as_retriever().add_documents(decision_making_docs)
+            pinecone_db.as_retriever().add_documents(learning_docs)
+        except:
+            print("Error adding memory, decision making or learning functions")
+
+        print("Added all functions to index")
+
         end = time.time()
 
         print(f"Operation took {end - start} seconds")
