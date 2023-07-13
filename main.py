@@ -11,6 +11,8 @@ from langchain import OpenAI
 from memory_search import MemoryManager
 # from bs_html_custom import BSHTMLLoaderCustom
 from langchain.document_loaders import TextLoader
+from functions_endpoint import FunctionsManager
+import json
 
 from aiohttp import ClientSession
 import logging
@@ -123,6 +125,28 @@ async def getFunctions(categories: str = Form(...), actions: str = Form(...), nu
                  num_results)  # log the data pull
     return results  # , callbacks
 
+@app.post('/overwrite_functions/')
+async def overwriteFunctions(functionsJson: str = Form(...)):
+
+    logging.info(f'Overwriting functions')
+
+    with open('utils/functions.json', 'w') as f:
+        f.write(functionsJson)
+        f.close() 
+
+    with open('utils/functions.json', 'r') as f:
+        functionsJson = json.load(f)
+        f.close()
+    if functionsJson is None:
+        return {'Reverted': True} 
+    if functionsJson['informationretrieval_functions'] is None:
+        return {'Reverted': True}
+
+    functions_manager = FunctionsManager() 
+    result = functions_manager.transform_and_push(functionsJson)
+    logging.info('Overwrote functions')
+
+    return result
 
 @app.post('/clear_user_memory/')
 async def clearUserMemory(user_id: str = Form(...)):

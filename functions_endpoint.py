@@ -1,0 +1,78 @@
+import pinecone
+import time
+from langchain.schema import Document
+from langchain.vectorstores import Pinecone
+from langchain.embeddings import OpenAIEmbeddings
+from dotenv import load_dotenv
+import os
+import json
+import hashlib
+import json
+
+load_dotenv()
+os.getenv("OPENAI_API_KEY")
+os.getenv("PINECONE_API_KEY")
+
+pinecone.init()
+
+#load json from file
+
+class FunctionsManager:
+
+    def __init__(self):
+        user_id = "functions_test"
+        self.user_id = user_id
+
+    def transform(self,data,category):
+        result = []
+        for item in data[category]:
+            entry = str(item)
+            hash = hashlib.sha256(entry.encode())
+            page_content = f"{item['name']}. {item['description']}. {category}"
+            metadata = {'name': item['name'], 'category': category, 'hash': hash.hexdigest()}
+            result.append({'page-content': page_content, 'metadata': metadata})
+        return result
+
+    def transform_and_push(self,data):
+
+        formatted = []
+        category = 'informationretrieval_functions'
+
+        #manually loading just info and comm functions
+
+        informationretrieval_functons = self.transform(data, 'informationretrieval_functions')
+        communication_functions = self.transform(data, 'communication_functions')
+        dataprocessing_functions = self.transform(data, 'dataprocessing_functions')
+
+        info_docs = []
+        for doc in informationretrieval_functons:
+            info_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        comm_docs = []
+        for doc in communication_functions:
+            comm_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        dataprocessing_docs = []
+        for doc in dataprocessing_functions:
+            dataprocessing_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+
+        pinecone_db = Pinecone.from_existing_index(
+                    "chat-message-history", embedding=OpenAIEmbeddings(), namespace="functions_test"
+                )
+        #count operation time
+
+        native_index_object = pinecone.Index("chat-message-history")
+        native_index_object.delete(namespace="functions_test", delete_all=True)
+
+        print("Deleted all functions from index")
+
+        start = time.time()
+        pinecone_db.as_retriever().add_documents(info_docs)
+        pinecone_db.as_retriever().add_documents(comm_docs)
+        pinecone_db.as_retriever().add_documents(dataprocessing_docs)
+        end = time.time()
+
+        print(f"Operation took {end - start} seconds")
+        return info_docs,comm_docs,dataprocessing_docs
+
