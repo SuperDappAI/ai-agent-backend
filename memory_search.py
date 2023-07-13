@@ -203,8 +203,12 @@ class MemoryManager:
         results = await asyncio.gather(*tasks)
         result = [item for sublist in results for item in sublist]
 
+        # Removing duplicates by converting list of dictionaries to dictionary and back to list
+        result = [dict(t) for t in set(tuple(i.items()) for i in [item for sublist in results for item in sublist])]
+
         time_count = time.time() - start_time
         print(time_count)
+
 
         return result, f"success, retrieve call took {time_count:.4f} seconds"
 
