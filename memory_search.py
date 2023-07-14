@@ -188,10 +188,11 @@ class MemoryManager:
             func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
             if not func_docs:
                 return [
-                    {
-                        "name": "searchWebGeneral",
-                        "category": "informationretrieval_functions"
-                    }
+                    # leave this commented out for now, might add another fallback later
+                    # {
+                    #     "name": "searchWebGeneral",
+                    #     "category": "informationretrieval_functions"
+                    # }
                 ]
             else:
                 return [
