@@ -10,7 +10,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain import OpenAI
 from memory_search import MemoryManager
 # from bs_html_custom import BSHTMLLoaderCustom
-from langchain.document_loaders import TextLoader
+from custom_text_loader import TextLoader
 from functions_endpoint import FunctionsManager
 import json
 
@@ -67,7 +67,7 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
         f.write(html_doc)
         f.close()
     # load file from temporary folder
-    loader = TextLoader(f'{user_id}.txt')
+    loader = TextLoader(f'{user_id}.txt',metadata={'source_url': source_url})
     docs = loader.load()
     # return docs
     logging.info(f'Loaded HTML')
