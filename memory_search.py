@@ -64,14 +64,14 @@ class MemoryManager:
                 [Document(page_content=texts[1], metadata={'role': 'assistant'})])
         return [split_docs]
 
-    def get_relevant_memory_docs(self, query, context, num_chunks, num_neighbors):
+    def get_relevant_memory_docs(self, query, context, num_chunks, num_neighbors, similarity_threshold):
         start_time = time.time()
         retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 15})
         token_text_splitter = TokenTextSplitter(
             chunk_size=256, chunk_overlap=0
         )
         embeddings_filter = EmbeddingsFilter(
-            embeddings=OpenAIEmbeddings(), similarity_threshold=0.72, k=num_chunks)
+            embeddings=OpenAIEmbeddings(), similarity_threshold=similarity_threshold, k=num_chunks)
         memories = []
 
         memory_docs = retriever.get_relevant_documents(query)
