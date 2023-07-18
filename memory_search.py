@@ -64,84 +64,56 @@ class MemoryManager:
                 [Document(page_content=texts[1], metadata={'role': 'assistant'})])
         return [split_docs]
 
-    def get_relevant_memory_docs(self, query, context, deepSearch=False):
+    def get_relevant_memory_docs(self, query, context, num_chunks, num_neighbors):
         start_time = time.time()
-        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 10})
+        retriever = self.pinecone_db.as_retriever(search_kwargs={"k": 15})
         token_text_splitter = TokenTextSplitter(
             chunk_size=256, chunk_overlap=0
         )
         embeddings_filter = EmbeddingsFilter(
-            embeddings=OpenAIEmbeddings(), similarity_threshold=0.72, k=self.k_num)
-        llm = ChatOpenAI(temperature=0, verbose=True)
-
-        CONTEXT_PROMPT = PromptTemplate(
-            input_variables=["question", "context"],
-
-            template="""You are an AI language model assistant.
-        Your task is to generate a question to ask back to the user for clarification of a missing piece of context. The question should be concise but clear.
-        Missing context: {context}
-        Original question: {question}""",
-        )
-
+            embeddings=OpenAIEmbeddings(), similarity_threshold=0.72, k=num_chunks)
         memories = []
 
-        if not deepSearch:
+        memory_docs = retriever.get_relevant_documents(query)
+        docs_with_metadata = []
+        index = 0
+        for doc in memory_docs:
+            texts = re.split("user: |\nassistant: ", doc.page_content)[1:]
+            docs_with_metadata.append(Document.construct(
+                page_content=texts[0], metadata={'role': 'user', 'index': index}))
+            docs_with_metadata.append(Document.construct(
+                page_content=texts[1], metadata={'role': 'assistant','index': index}))
+            index += 1
 
-            memory_docs = retriever.get_relevant_documents(query)
-            docs_with_metadata = []
-            for doc in memory_docs:
-                texts = re.split("user: |\nassistant: ", doc.page_content)[1:]
-                docs_with_metadata.append(Document.construct(
-                    page_content=texts[0], metadata={'role': 'user'}))
-                docs_with_metadata.append(Document.construct(
-                    page_content=texts[1], metadata={'role': 'assistant'}))
+        docs_split = token_text_splitter.split_documents(
+            docs_with_metadata)
 
-            docs_split = token_text_splitter.split_documents(
-                docs_with_metadata)
+        inner_index = 0
+        for doc in docs_split:
+            doc.metadata['inner_index'] = inner_index 
+            inner_index += 1
 
-            docs_filtered = embeddings_filter.compress_documents(
-                docs_split, context)
-            if docs_filtered[0].page_content == "":
-                docs_filtered = docs_split
+        docs_filtered = embeddings_filter.compress_documents(
+            docs_split, context)
+        
+        if docs_filtered[0].page_content == "":
+            docs_filtered = docs_split[0:num_chunks]
             docs_formatted = []
-            for doc in docs_filtered:
-                docs_formatted.append(
-                    {"content": doc.page_content, "metadata": doc.metadata})
-            memories.append({"context": docs_formatted})
-
         else:
-            memory_docs = retriever.get_relevant_documents(query)
-            docs_with_metadata = []
-            for doc in memory_docs:
-                texts = re.split("user: |\nassistant: ", doc.page_content)[1:]
-                docs_with_metadata.append(Document.construct(
-                    page_content=texts[0], metadata={'role': 'user'}))
-                docs_with_metadata.append(Document.construct(
-                    page_content=texts[1], metadata={'role': 'assistant'}))
-
-            docs_split = token_text_splitter.split_documents(
-                docs_with_metadata)
-
-            docs_filtered = embeddings_filter.compress_documents(
-                docs_split, context)
-            if docs_filtered[0].page_content == "":
-                docs_filtered = docs_split
-
-            llm = ChatOpenAI(temperature=0)
-            extractor = LLMChainExtractor.from_llm(llm)
-            context_chain = LLMChain(llm=OpenAI(
-                temperature=0, verbose=True), prompt=CONTEXT_PROMPT)
-            context_query = context_chain(
-                {"question": query, "context": context})
-            print(context_query)
-            docs_extracted = extractor.compress_documents(
-                docs_filtered, context_query['text'])
-
             docs_formatted = []
-            for doc in docs_extracted:
+            for i, doc in enumerate(docs_filtered):
+                matching_docs = [d for d in docs_split if (d.metadata['index'] == doc.metadata['index'])]
+                if i - num_neighbors < 0:
+                    previous_docs = matching_docs[0:i-1]
+                elif i - num_neighbors >= 0:
+                    previous_docs = matching_docs[i - num_neighbors:i-1]
+                if i + num_neighbors >= len(matching_docs): 
+                    subsequent_docs = matching_docs[i+1:]
+                elif i + num_neighbors < len(matching_docs):
+                    subsequent_docs = matching_docs[i+1:i+num_neighbors+1]
                 docs_formatted.append(
-                    {"content": doc.page_content, "metadata": doc.metadata})
-            memories.append({"context": docs_formatted})
+                    {"Matched Content": doc.page_content, "Matched Role": doc.metadata['role'], "Previous Neighbors": previous_docs, "Subsequent Neighbors": subsequent_docs})
+                memories.append({"context": docs_formatted})
 
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"

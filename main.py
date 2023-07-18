@@ -83,11 +83,11 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
 
 
 @app.post('/pull_memory/')
-async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), k_num: int = Form(...), deepSearch: bool = Form(...)):
+async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...)):
     logging.info(f'Pulling relevant memories for user {user_id}')
-    memory_manager = MemoryManager(user_id, k_num)
+    memory_manager = MemoryManager(user_id, num_chunks)
     memories, elapsed_time = memory_manager.get_relevant_memory_docs(
-        query, deepSearch=deepSearch, context=context)
+        query, context=context, num_chunks=num_chunks, num_neighbors=num_neighbors)
     logging.info('Pulled relevant memories for user %s, query: %s, context: %s',
                  user_id, query, context)  # log the data pull
     logging.info('Elapsed time for operation: %s',
