@@ -124,11 +124,11 @@ async def getFunctions(categories: str = Form(...), actions: str = Form(...), nu
     return result  # , callbacks
 
 @app.post('/test_get_functions/')
-async def test_getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
+async def test_getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...), mode: int = Form(...)):
     # categories = categories.split(',')
     actions = actions.split(',')
     logging.info(f'Getting function')
-    memory_manager = MemoryManager("functions_test2", k_num=num_results)
+    memory_manager = MemoryManager(f"functions_test{mode}", k_num=num_results)
     # callbacks = []
     result = []
     result, cb = await memory_manager.get_functions(actions, categories, num_results=num_results, similarity_threshold=similarity_threshold)
@@ -138,7 +138,7 @@ async def test_getFunctions(categories: str = Form(...), actions: str = Form(...
     return result  # , callbacks
 
 @app.post('/test_overwrite_functions/')
-async def test_overwriteFunctions(functionsJson: str = Form(...)):
+async def test_overwriteFunctions(functionsJson: str = Form(...), mode: int = Form(...)):
 
     logging.info(f'Overwriting functions')
 
@@ -155,7 +155,7 @@ async def test_overwriteFunctions(functionsJson: str = Form(...)):
         return {'Reverted': True}
 
     functions_manager = FunctionsManager() 
-    result = functions_manager.transform_and_push(functionsJson,"functions_test2")
+    result = functions_manager.transform_and_push(functionsJson,f"functions_test{mode}",mode)
     logging.info('Overwrote functions')
 
     return result
@@ -178,7 +178,7 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
         return {'Reverted': True}
 
     functions_manager = FunctionsManager() 
-    result = functions_manager.transform_and_push(functionsJson,"functions_test")
+    result = functions_manager.transform_and_push(functionsJson,"functions_test",mode=1)
     logging.info('Overwrote functions')
 
     return result

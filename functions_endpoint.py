@@ -23,35 +23,40 @@ class FunctionsManager:
         user_id = "functions_test"
         self.user_id = user_id
 
-    def transform(self,data,category):
+    def transform(self,data,category,mode):
         result = []
         for item in data[category]:
             entry = str(item)
             hash = hashlib.sha256(entry.encode())
-            page_content = f"{str(item)}"
+            if mode == 0:
+                page_content = f"{str(item['name'])}: {str(item['description'])}"
+            if mode == 1:
+                page_content = f"{str(item)}"
+            if mode == 2:
+                page_content = f"{str(item['name'])}: {str(item['examples'])}"
             metadata = {'name': item['name'], 'category': category, 'hash': hash.hexdigest()}
             result.append({'page-content': page_content, 'metadata': metadata})
         return result
 
-    def transform_and_push(self,data,namespace):
+    def transform_and_push(self,data,namespace,mode):
 
         formatted = []
         category = 'informationretrieval_functions'
 
         #manually loading just info and comm functions
 
-        informationretrieval_functons = self.transform(data, 'informationretrieval_functions')
-        communication_functions = self.transform(data, 'communication_functions')
-        dataprocessing_functions = self.transform(data, 'dataprocessing_functions')
+        informationretrieval_functons = self.transform(data, 'informationretrieval_functions',mode)
+        communication_functions = self.transform(data, 'communication_functions',mode)
+        dataprocessing_functions = self.transform(data, 'dataprocessing_functions',mode)
         # sensory perception
-        sensory_perception = self.transform(data, 'sensoryperception_functions')
+        sensory_perception = self.transform(data, 'sensoryperception_functions',mode)
         try:
             # memory
-            memory_functions = self.transform(data, 'memory_functions')
+            memory_functions = self.transform(data, 'memory_functions',mode)
             # decision making
-            decision_making = self.transform(data, 'decisionmaking_functions')
+            decision_making = self.transform(data, 'decisionmaking_functions',mode)
             # learning
-            learning_functions = self.transform(data, 'learning_functions')
+            learning_functions = self.transform(data, 'learning_functions',mode)
         except:
             print("Not implemented yet")
 
