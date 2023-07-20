@@ -114,7 +114,7 @@ async def getFunctions(categories: str = Form(...), actions: str = Form(...), nu
     # categories = categories.split(',')
     actions = actions.split(',')
     logging.info(f'Getting function')
-    memory_manager = MemoryManager("functions_test2", k_num=num_results)
+    memory_manager = MemoryManager("functions_test", k_num=num_results)
     # callbacks = []
     result = []
     result, cb = await memory_manager.get_functions(actions, categories, num_results=num_results, similarity_threshold=similarity_threshold)
