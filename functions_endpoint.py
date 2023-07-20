@@ -8,6 +8,8 @@ import os
 import json
 import hashlib
 import json
+import tiktoken
+
 
 load_dotenv()
 os.getenv("OPENAI_API_KEY")
@@ -119,5 +121,11 @@ class FunctionsManager:
         end = time.time()
 
         print(f"Operation took {end - start} seconds")
-        return info_docs,comm_docs,dataprocessing_docs
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        all_docs = info_docs + comm_docs + dataprocessing_docs + sensory_perception_docs
+        tokens = [] 
+        for doc in all_docs:
+            tokens.append({doc.metadata['name']: len(encoding.encode(doc.page_content))})
+
+        return tokens 
 
