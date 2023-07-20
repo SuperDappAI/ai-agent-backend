@@ -28,12 +28,12 @@ class FunctionsManager:
         for item in data[category]:
             entry = str(item)
             hash = hashlib.sha256(entry.encode())
-            page_content = f"{item['name']}. {item['description']}. {category}"
+            page_content = f"{str(item)}"
             metadata = {'name': item['name'], 'category': category, 'hash': hash.hexdigest()}
             result.append({'page-content': page_content, 'metadata': metadata})
         return result
 
-    def transform_and_push(self,data):
+    def transform_and_push(self,data,namespace):
 
         formatted = []
         category = 'informationretrieval_functions'
@@ -88,12 +88,12 @@ class FunctionsManager:
             print("Not implemented yet")
 
         pinecone_db = Pinecone.from_existing_index(
-                    "aida", embedding=OpenAIEmbeddings(), namespace="functions_test"
+                    "aida", embedding=OpenAIEmbeddings(), namespace=namespace
                 )
         #count operation time
 
         native_index_object = pinecone.Index("aida")
-        native_index_object.delete(namespace="functions_test", delete_all=True)
+        native_index_object.delete(namespace=namespace, delete_all=True)
 
         print("Deleted all functions from index")
 

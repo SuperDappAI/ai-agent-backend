@@ -114,7 +114,7 @@ async def getFunctions(categories: str = Form(...), actions: str = Form(...), nu
     # categories = categories.split(',')
     actions = actions.split(',')
     logging.info(f'Getting function')
-    memory_manager = MemoryManager("functions_test", k_num=num_results)
+    memory_manager = MemoryManager("functions_test2", k_num=num_results)
     # callbacks = []
     result = []
     result, cb = await memory_manager.get_functions(actions, categories, num_results=num_results, similarity_threshold=similarity_threshold)
@@ -122,6 +122,43 @@ async def getFunctions(categories: str = Form(...), actions: str = Form(...), nu
                  num_results)  # log the data pull
     logging.info('Elapsed time for operation: %s', cb)
     return result  # , callbacks
+
+@app.post('/test_get_functions/')
+async def test_getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
+    # categories = categories.split(',')
+    actions = actions.split(',')
+    logging.info(f'Getting function')
+    memory_manager = MemoryManager("functions_test2", k_num=num_results)
+    # callbacks = []
+    result = []
+    result, cb = await memory_manager.get_functions(actions, categories, num_results=num_results, similarity_threshold=similarity_threshold)
+    logging.info('Pulled %i relevant results for query',
+                 num_results)  # log the data pull
+    logging.info('Elapsed time for operation: %s', cb)
+    return result  # , callbacks
+
+@app.post('/test_overwrite_functions/')
+async def test_overwriteFunctions(functionsJson: str = Form(...)):
+
+    logging.info(f'Overwriting functions')
+
+    with open('utils/functions2.json', 'w') as f:
+        f.write(functionsJson)
+        f.close() 
+
+    with open('utils/functions2.json', 'r') as f:
+        functionsJson = json.load(f)
+        f.close()
+    if functionsJson is None:
+        return {'Reverted': True} 
+    if functionsJson['informationretrieval_functions'] is None:
+        return {'Reverted': True}
+
+    functions_manager = FunctionsManager() 
+    result = functions_manager.transform_and_push(functionsJson,"functions_test2")
+    logging.info('Overwrote functions')
+
+    return result
 
 @app.post('/overwrite_functions/')
 async def overwriteFunctions(functionsJson: str = Form(...)):
@@ -141,7 +178,7 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
         return {'Reverted': True}
 
     functions_manager = FunctionsManager() 
-    result = functions_manager.transform_and_push(functionsJson)
+    result = functions_manager.transform_and_push(functionsJson,"functions_test")
     logging.info('Overwrote functions')
 
     return result
