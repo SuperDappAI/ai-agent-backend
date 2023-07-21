@@ -149,7 +149,7 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
-    async def get_functions(self, actions, categories, num_results, similarity_threshold):
+    async def get_functions(self, actions, intent, categories, num_results, similarity_threshold):
         start_time = time.time()
 
 
@@ -157,7 +157,7 @@ class MemoryManager:
                                                 "k": num_results, "score_threshold": similarity_threshold})
 
         async def get_docs(action):
-            func_docs = await retriever.aget_relevant_documents(f'{action}. {categories}')
+            func_docs = await retriever.aget_relevant_documents(f'{action}.{intent}.{categories}')
             if not func_docs:
                 return [
                     # leave this commented out for now, might add another fallback later

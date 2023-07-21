@@ -3,6 +3,8 @@ import openai
 import requests
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from termcolor import colored
+import asyncio
+import httpx
 # from memory import MemoryManager
 
 GPT_MODEL = "gpt-3.5-turbo-0613"
@@ -58,6 +60,29 @@ def pretty_print_conversation(messages):
             )
         )
 
+# #leaving the async function here to make it easier for building large tests
+# async def test_getFunctions(agent_response):
+#     if agent_response is None:
+#         return
+#     if agent_response.json()["choices"][0]["message"]["function_call"] is None:
+#         return
+#     function_call = agent_response.json()["choices"][0]["message"]["function_call"]
+#     print(function_call['arguments'])
+#     data = {
+#         'categories': ".",
+#         'actions': q,
+#         'num_results': 2,
+#         'similarity_threshold': 0.7 
+#     }
+#     async with httpx.AsyncClient() as client:  # using httpx AsyncClient
+#         response = await client.post("http://127.0.0.1:8000/get_functions/", data=data)  # async post request
+#     print(response.status_code)
+
+#     with open('tests/response_agent.json', 'a') as f:
+#         f.write('\n')
+#         json.dump(response.json(), f)
+
+#     asyncio.run(test_getFunctions())
 
 functions = [
     {
@@ -278,6 +303,10 @@ chat_response = chat_completion_request(
 assistant_message = chat_response.json()["choices"][0]["message"]
 messages.append(assistant_message)
 
+
+print('------------INITIAL RESPONSE------------')
 print(assistant_message)
-print('------------RAW RESPONSE------------')
 print(chat_response)
+if 'function_call' in assistant_message:
+    function_call = chat_response.json()["choices"][0]["message"]["function_call"]
+    print(function_call['arguments'])
