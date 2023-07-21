@@ -17,7 +17,7 @@ pinecone.init()
 #load json from file
 
 import json
-with open('utils/functions3.json') as f:
+with open('utils/functions_one_by_one.json') as f:
     data = json.load(f)
 
 def transform(data, category):
@@ -25,20 +25,20 @@ def transform(data, category):
     for item in data[category]:
         entry = str(item)
         hash = hashlib.sha256(entry.encode())
-        page_content = f"{str(item)}"
-        metadata = {'name': item['name'], 'category': category, 'hash': hash.hexdigest()}
+        page_content = f"{str(item)}.Category: {category}."
+        metadata = {'name': item['Function'], 'category': category, 'hash': hash.hexdigest()}
         result.append({'page-content': page_content, 'metadata': metadata})
     return result
 
 formatted = []
-category = 'informationretrieval_functions'
+category = 'Information Retrieval'
 
 #manually loading just info and comm functions
 
-informationretrieval_functons = transform(data, 'informationretrieval_functions')
-communication_functions = transform(data, 'communication_functions')
-dataprocessing_functions = transform (data, 'dataprocessing_functions')
-sensoryperception_functions = transform(data, 'sensoryperception_functions')
+informationretrieval_functons = transform(data, 'Information Retrieval')
+communication_functions = transform(data, 'Communication')
+dataprocessing_functions = transform (data, 'Data Processing')
+sensoryperception_functions = transform(data, 'Sensory Perception')
 
 info_docs = []
 for doc in informationretrieval_functons:
@@ -57,7 +57,7 @@ for doc in sensoryperception_functions:
     sensoryperception_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
 pinecone_db = Pinecone.from_existing_index(
-            "aida", embedding=OpenAIEmbeddings(), namespace="functions_test2"
+            "aida", embedding=OpenAIEmbeddings(), namespace="functions_test"
         )
 
 #count operation time

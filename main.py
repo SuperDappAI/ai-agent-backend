@@ -124,14 +124,14 @@ async def getFunctions(categories: str = Form(...), actions: str = Form(...), in
     return result  # , callbacks
 
 @app.post('/test_get_functions/')
-async def test_getFunctions(categories: str = Form(...), actions: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...), mode: int = Form(...)):
+async def test_getFunctions(categories: str = Form(...), actions: str = Form(...), intent: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...), mode: int = Form(...)):
     # categories = categories.split(',')
     actions = actions.split(',')
     logging.info(f'Getting function')
     memory_manager = MemoryManager(f"functions_test{mode}", k_num=num_results)
     # callbacks = []
     result = []
-    result, cb = await memory_manager.get_functions(actions, categories, num_results=num_results, similarity_threshold=similarity_threshold)
+    result, cb = await memory_manager.get_functions(actions,intent, categories, num_results=num_results, similarity_threshold=similarity_threshold)
     logging.info('Pulled %i relevant results for query',
                  num_results)  # log the data pull
     logging.info('Elapsed time for operation: %s', cb)
