@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Form, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 
 import openai
 from dotenv import load_dotenv
@@ -110,14 +111,15 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
 
 
 @app.post('/get_functions/')
-async def getFunctions(categories: str = Form(...), actions: str = Form(...), intent: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
+async def getFunctions(query: List[List[str]] = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
     # categories = categories.split(',')
-    actions = actions.split(',')
+    
+    # actions = actions.split(',')
     logging.info(f'Getting function')
     memory_manager = MemoryManager("functions_test", k_num=num_results)
     # callbacks = []
     result = []
-    result, cb = await memory_manager.get_functions(actions, intent, categories, num_results=num_results, similarity_threshold=similarity_threshold)
+    result, cb = await memory_manager.get_functions(query, num_results=num_results, similarity_threshold=similarity_threshold)
     logging.info('Pulled %i relevant results for query',
                  num_results)  # log the data pull
     logging.info('Elapsed time for operation: %s', cb)

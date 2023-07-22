@@ -149,15 +149,19 @@ class MemoryManager:
         time_count = time.time() - start_time
         return memories, f"success, retrieve call took {time_count:.4f} seconds"
 
-    async def get_functions(self, actions, intent, categories, num_results, similarity_threshold):
+    async def get_functions(self, query, num_results, similarity_threshold):
         start_time = time.time()
-
 
         retriever = self.pinecone_db.as_retriever(search_type="similarity_score_threshold", search_kwargs={
                                                 "k": num_results, "score_threshold": similarity_threshold})
 
-        async def get_docs(action):
-            func_docs = await retriever.aget_relevant_documents(f'{action}.{intent}.{categories}')
+        async def get_docs(q):
+            action = q[0]
+            intent = q[1]
+            category = q[2]
+        
+            print(action, intent, category)
+            func_docs = await retriever.aget_relevant_documents(f'Action: {action}. Intent: {intent}. Category: {category}')
             if not func_docs:
                 return [
                     # leave this commented out for now, might add another fallback later
@@ -172,7 +176,7 @@ class MemoryManager:
                     for doc in func_docs
                 ]
 
-        tasks = [get_docs(action) for action in actions]
+        tasks = [get_docs(q) for q in query]
         results = await asyncio.gather(*tasks)
         result = [item for sublist in results for item in sublist]
 
