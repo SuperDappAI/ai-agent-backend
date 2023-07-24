@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Form, Request, WebSocket
+from fastapi import FastAPI, Form, HTTPException 
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
+from pydantic import BaseModel, Field
 
 import openai
 from dotenv import load_dotenv
@@ -109,35 +110,34 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
                  elapsed_time)  # log the elapsed time
     return {'results': results, 'elapsed_time': elapsed_time}
 
+class ActionItem(BaseModel):
+    action: str
+    intent: str
+    category: str
+
+class FunctionInput(BaseModel):
+    action_items: List[ActionItem] = Field(..., example=[{"action": "action_example", "intent": "intent_example", "category": "category_example"}])
+    num_results: int = Field(..., example=5)
+    similarity_threshold: float = Field(..., example=0.8)
 
 @app.post('/get_functions/')
-async def getFunctions(query: List[List[str]] = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...)):
-    # categories = categories.split(',')
-    
-    # actions = actions.split(',')
-    logging.info(f'Getting function')
+async def getFunctions(function_input: FunctionInput):
+    action_items = function_input.action_items
+    num_results = function_input.num_results
+    similarity_threshold = function_input.similarity_threshold
+    # try:
     memory_manager = MemoryManager("functions_test", k_num=num_results)
-    # callbacks = []
-    result = []
-    result, cb = await memory_manager.get_functions(query, num_results=num_results, similarity_threshold=similarity_threshold)
-    logging.info('Pulled %i relevant results for query',
-                 num_results)  # log the data pull
+    
+    logging.info(f'Processing Action Item: {action_items}')
+    result, cb = await memory_manager.get_functions(action_items, num_results=num_results, similarity_threshold=similarity_threshold)
+    
+    logging.info('Pulled %i relevant results for query: %s', num_results, action_items)
     logging.info('Elapsed time for operation: %s', cb)
-    return result  # , callbacks
-
-@app.post('/test_get_functions/')
-async def test_getFunctions(categories: str = Form(...), actions: str = Form(...), intent: str = Form(...), num_results: int = Form(...), similarity_threshold: float = Form(...), mode: int = Form(...)):
-    # categories = categories.split(',')
-    actions = actions.split(',')
-    logging.info(f'Getting function')
-    memory_manager = MemoryManager(f"functions_test{mode}", k_num=num_results)
-    # callbacks = []
-    result = []
-    result, cb = await memory_manager.get_functions(actions,intent, categories, num_results=num_results, similarity_threshold=similarity_threshold)
-    logging.info('Pulled %i relevant results for query',
-                 num_results)  # log the data pull
-    logging.info('Elapsed time for operation: %s', cb)
-    return result  # , callbacks
+        
+    return result
+    # except Exception as e:
+    #     logging.error(str(e))
+    #     raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
 
 @app.post('/test_overwrite_functions/')
 async def test_overwriteFunctions(functionsJson: str = Form(...), mode: int = Form(...)):

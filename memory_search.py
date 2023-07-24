@@ -156,9 +156,9 @@ class MemoryManager:
                                                 "k": num_results, "score_threshold": similarity_threshold})
 
         async def get_docs(q):
-            action = q[0]
-            intent = q[1]
-            category = q[2]
+            action = q.action
+            intent = q.intent
+            category = q.category
         
             print(action, intent, category)
             func_docs = await retriever.aget_relevant_documents(f'Action: {action}. Intent: {intent}. Category: {category}')
