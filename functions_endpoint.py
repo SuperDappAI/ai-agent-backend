@@ -25,6 +25,8 @@ class FunctionsManager:
         user_id = "functions_test"
         self.user_id = user_id
 
+
+
     def transform(self,data,category,mode):
         result = []
         for item in data[category]:
@@ -36,29 +38,63 @@ class FunctionsManager:
                 page_content = f"{str(item)}"
             if mode == 2:
                 page_content = f"{str(item['name'])}: {str(item['examples'])}"
-            metadata = {'name': item['name'], 'category': category, 'hash': hash.hexdigest()}
+            try:
+                metadata = {'name': item['name'], 'category': category, 'hash': hash.hexdigest()}
+            except:
+                metadata = {'name': item['Function'], 'category': category, 'hash': hash.hexdigest()}
             result.append({'page-content': page_content, 'metadata': metadata})
         return result
 
-    def transform_and_push(self,data,namespace,mode):
+    def count_tokens(self,functions):
+        mode = 1
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        informationretrieval_functons = self.transform(functions, 'informationretrieval_functions',mode)
+        communication_functions = self.transform(functions, 'communication_functions',mode)
+        dataprocessing_functions = self.transform(functions, 'dataprocessing_functions',mode)
+        # sensory perception
+        sensory_perception = self.transform(functions, 'sensoryperception_functions',mode)
+
+        info_functions = []
+        for doc in informationretrieval_functons:
+            info_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        comm_functions = []
+        for doc in communication_functions:
+            comm_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        dataprocessing_functions = []
+        for doc in dataprocessing_functions:
+            dataprocessing_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        sensory_perception_functions= []
+        for doc in sensory_perception:
+            sensory_perception_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+
+        all_docs = info_functions + comm_functions + dataprocessing_functions + sensory_perception_functions 
+        tokens = [] 
+        for doc in all_docs:
+            tokens.append({doc.metadata['name']: len(encoding.encode(doc.page_content))})
+        return tokens
+
+    def transform_and_push(self,functions,examples,namespace,mode):
 
         formatted = []
         category = 'informationretrieval_functions'
 
         #manually loading just info and comm functions
 
-        informationretrieval_functons = self.transform(data, 'informationretrieval_functions',mode)
-        communication_functions = self.transform(data, 'communication_functions',mode)
-        dataprocessing_functions = self.transform(data, 'dataprocessing_functions',mode)
+        informationretrieval_functons = self.transform(examples, 'Information Retrieval',mode)
+        communication_functions = self.transform(examples, 'Communication',mode)
+        dataprocessing_functions = self.transform(examples, 'Data Processing',mode)
         # sensory perception
-        sensory_perception = self.transform(data, 'sensoryperception_functions',mode)
+        sensory_perception = self.transform(examples, 'Sensory Perception',mode)
         try:
             # memory
-            memory_functions = self.transform(data, 'memory_functions',mode)
+            memory_functions = self.transform(examples, 'Memory',mode)
             # decision making
-            decision_making = self.transform(data, 'decisionmaking_functions',mode)
+            decision_making = self.transform(examples, 'Decision',mode)
             # learning
-            learning_functions = self.transform(data, 'learning_functions',mode)
+            learning_functions = self.transform(examples, 'Learning',mode)
         except:
             print("Not implemented yet")
 
@@ -121,11 +157,9 @@ class FunctionsManager:
         end = time.time()
 
         print(f"Operation took {end - start} seconds")
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-        all_docs = info_docs + comm_docs + dataprocessing_docs + sensory_perception_docs
-        tokens = [] 
-        for doc in all_docs:
-            tokens.append({doc.metadata['name']: len(encoding.encode(doc.page_content))})
+
+        tokens = self.count_tokens(functions)
 
         return tokens 
+
 

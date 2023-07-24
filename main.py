@@ -163,7 +163,7 @@ async def test_overwriteFunctions(functionsJson: str = Form(...), mode: int = Fo
     return result
 
 @app.post('/overwrite_functions/')
-async def overwriteFunctions(functionsJson: str = Form(...)):
+async def overwriteFunctions(functionsJson: str = Form(...), examplesJson: str = Form(...)):
 
     logging.info(f'Overwriting functions')
 
@@ -174,13 +174,22 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
     with open('utils/functions.json', 'r') as f:
         functionsJson = json.load(f)
         f.close()
+    
+    with open('utils/examples.json', 'w') as e:
+        e.write(examplesJson)
+        e.close()
+
+    with open('utils/examples.json', 'r') as e:
+        examplesJson = json.load(e)
+        e.close()
+
     if functionsJson is None:
         return {'Reverted': True} 
     if functionsJson['informationretrieval_functions'] is None:
         return {'Reverted': True}
 
     functions_manager = FunctionsManager() 
-    result = functions_manager.transform_and_push(functionsJson,"functions_test",mode=1)
+    result = functions_manager.transform_and_push(functionsJson,examplesJson,"functions_test",mode=1)
     logging.info('Overwrote functions')
 
     return result
