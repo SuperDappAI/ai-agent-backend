@@ -11,17 +11,12 @@ import pinecone
 from langchain.chat_models import ChatOpenAI
 from langchain import OpenAI
 from memory_search import MemoryManager
-# from bs_html_custom import BSHTMLLoaderCustom
 from custom_text_loader import TextLoader
 from functions_endpoint import FunctionsManager
 import json
 
 from aiohttp import ClientSession
 import logging
-# import asyncio
-# from streamingFunctionsAgent import streamingFunctionsAgent
-# from sse_starlette import EventSourceResponse
-
 
 load_dotenv()
 os.getenv("OPENAI_API_KEY")
@@ -138,29 +133,6 @@ async def getFunctions(function_input: FunctionInput):
     # except Exception as e:
     #     logging.error(str(e))
     #     raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
-
-@app.post('/test_overwrite_functions/')
-async def test_overwriteFunctions(functionsJson: str = Form(...), mode: int = Form(...)):
-
-    logging.info(f'Overwriting functions')
-
-    with open('utils/functions2.json', 'w') as f:
-        f.write(functionsJson)
-        f.close() 
-
-    with open('utils/functions2.json', 'r') as f:
-        functionsJson = json.load(f)
-        f.close()
-    if functionsJson is None:
-        return {'Reverted': True} 
-    if functionsJson['informationretrieval_functions'] is None:
-        return {'Reverted': True}
-
-    functions_manager = FunctionsManager() 
-    result = functions_manager.transform_and_push(functionsJson,f"functions_test{mode}",mode)
-    logging.info('Overwrote functions')
-
-    return result
 
 @app.post('/overwrite_functions/')
 async def overwriteFunctions(functionsJson: str = Form(...), examplesJson: str = Form(...)):

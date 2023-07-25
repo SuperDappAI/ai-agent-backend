@@ -44,11 +44,9 @@ class MemoryManager:
 
     def split_and_push_webpage(self, docs):
         start_time = time.time()
-        # splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=4096,chunk_overlap=0,disallowed_special="all")
         splitter = TokenTextSplitter(chunk_size=4096, chunk_overlap=0)
         print(f'time for split {time.time() - start_time}')
         docs_split = splitter.split_documents(docs)
-        # self.pinecone_db.as_retriever().add_documents(docs_split)
         self.pinecone_db.add_documents(docs_split)
         print(f'time for push {time.time() - start_time}')
         time_count = time.time() - start_time
