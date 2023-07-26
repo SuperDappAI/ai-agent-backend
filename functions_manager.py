@@ -6,6 +6,7 @@ import tiktoken
 import schedule
 import threading
 from pathlib import Path
+import json
 
 class FunctionsManager1:
     def __init__(self):
@@ -19,7 +20,12 @@ class FunctionsManager1:
             service_context=ServiceContext.from_defaults(
                 llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
             ))
-        self.load()
+        # Try to load index data from the filesystem
+        if not self.load():
+            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+            with open('./utils/functions.json', 'r') as f:
+                functions_json = json.load(f)
+            self.push_functions(functions_json)
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
@@ -90,8 +96,11 @@ class FunctionsManager1:
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker]
             )
-        end = time.time()
-        print(f"FunctionsManager: Load took {end - start} seconds")
+            end = time.time()
+            print(f"FunctionsManager: Load took {end - start} seconds")
+            return True  # Return True when loading is successful
+        else:
+            return False  # Return False when there's no data to load
 
     def push_functions(self, functions):
         """Update the current index with new functions."""
