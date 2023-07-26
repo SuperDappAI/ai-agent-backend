@@ -13,6 +13,9 @@ from pathlib import Path
 import json
 from typing import List
 from pydantic import BaseModel, Field
+from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain.vectorstores import FAISS
+from langchain.embeddings.openai import OpenAIEmbeddings
 
 class ActionItem(BaseModel):
     action: str
@@ -32,28 +35,26 @@ class FunctionsManager1:
 
         self.dirpath = Path("./storage_functions")
         self.index = None
+        self.ensemble_retriever = None
         self.dirty = False
         self.query_engine = None
         self.lock = ReaderWriterLock()
-        self.reranker = LLMRerank(choice_batch_size=5, top_n=3, 
-            service_context=ServiceContext.from_defaults(
-                llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
-            ))
+        
         # Try to load index data from the filesystem only if not running tests
-        if 'unittest' not in sys.modules.keys() and not self.load():
-            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-            with open('./utils/functions.json', 'r') as f:
-                functions_json = json.load(f)
-                self.push_functions(functions_json)
-                self.save()
+        #if 'unittest' not in sys.modules.keys() and not self.load():
+        # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+        with open('./utils/functions.json', 'r') as f:
+            functions_json = json.load(f)
+            self.push_functions(functions_json)
+            #self.save()
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
         
         # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
+        #self.stop_event = threading.Event()
+        #self.scheduler_thread = threading.Thread(target=self.run_continuously)
+        #self.scheduler_thread.start()
 
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
@@ -110,11 +111,10 @@ class FunctionsManager1:
         self.lock.reader_acquire()
         response = []
         try:
-            if self.query_engine is not None:
-                for action_item in function_input.action_items:
-                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                    print(query)
-                    response.append(self.query_engine.query(query))
+            for action_item in function_input.action_items:
+                query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+                print(query)
+                response.append(self.ensemble_retriever.get_relevant_documents(query))
         finally:
             self.lock.reader_release()
             end = time.time()
@@ -166,13 +166,17 @@ class FunctionsManager1:
                     transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
 
-            
-            documents = [Document(text=json.dumps(t)) for t in all_docs]
-            self.index = VectorStoreIndex.from_documents(documents)
-            self.query_engine = self.index.as_query_engine(
-                similarity_top_k=10,
-                node_postprocessors=[self.reranker]
-            )
+            # initialize the bm25 retriever and faiss retriever
+            bm25_retriever = BM25Retriever.from_texts(all_docs)
+            bm25_retriever.k = 2
+
+            embedding = OpenAIEmbeddings()
+            faiss_vectorstore = FAISS.from_texts(all_docs, embedding)
+            faiss_retriever = faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
+
+            # initialize the ensemble retriever
+            self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever], weights=[0.5, 0.5])
+
             self.dirty = True
             tokens = self.count_tokens(functions)
         finally:
