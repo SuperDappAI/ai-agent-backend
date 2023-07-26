@@ -16,7 +16,7 @@ class MemoryManager1:
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
-        self.dirpath = "./memory"
+        self.dirpath = "./storage_memory"
         self.index = {}
         self.query_engine = {}
         self.locks = {} 

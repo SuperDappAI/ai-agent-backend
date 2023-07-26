@@ -15,7 +15,7 @@ class WebManager:
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
-        self.dirpath = "./web"
+        self.dirpath = "./storage_web"
         self.index = {}
         self.query_engine = {}
         self.locks = {}  # Dictionary to store locks for each hash
