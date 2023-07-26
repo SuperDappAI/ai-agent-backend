@@ -2,7 +2,8 @@ import time
 import shutil
 from dotenv import load_dotenv
 from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
-from llama_index.llms import OpenAI
+# from llama_index.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
@@ -30,7 +31,7 @@ class WebManager:
         self.query_engine = {}
         self.locks = {}  # Dictionary to store locks for each hash
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
-            llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
+            llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
         ))
         schedule.every(300).to(600).seconds.do(self.save)
 
