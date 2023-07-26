@@ -15,15 +15,16 @@ class MemoryManager1:
         self.dirpath = "./memory"
         self.index = {}
         self.query_engine = {}
-        self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
-            llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
-        ))
+        self.reranker = LLMRerank(choice_batch_size=5, top_n=3, 
+            service_context=ServiceContext.from_defaults(
+                llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
+            ))
+
         # Save function scheduled to run every 30 to 60 seconds
         schedule.every(30).to(60).seconds.do(self.save)
         
         # Create new thread for schedule
-        with threading.Thread(target=self.run_continuously) as thread:
-            thread.start()
+        threading.Thread(target=self.run_continuously).start()
 
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
@@ -53,13 +54,11 @@ class MemoryManager1:
     def save(self):
         """Persist current index data to the filesystem."""
         start = time.time()
-        self.saving = True
-        for idx in self.index:
-            if self.index[idx].dirty is True:
-                filepath = f"{self.dirpath}_{idx}"
-                self.index[idx].storage_context.persist(persist_dir=filepath)
-                self.index[idx].dirty = False
-        self.saving = False
+        for user_id, idx in self.index.items():
+            if idx.dirty:
+                filepath = f"{self.dirpath}_{user_id}"
+                idx.storage_context.persist(persist_dir=filepath)
+                idx.dirty = False
         end = time.time()
         print(f"MemoryManager: Save operation took {end - start} seconds")
 
@@ -86,7 +85,7 @@ class MemoryManager1:
     def pull_memory(self, user_id, query):
         """Fetch memory based on a query for a specific user."""
         if user_id not in self.query_engine:
-            print("MemoryManager: Error pull_memory, hash doesn't exists")
+            print("MemoryManager: Error pull_memory, hash doesn't exist")
             return None
         start = time.time()
         response = self.query_engine[user_id].query(
