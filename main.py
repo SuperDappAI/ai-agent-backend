@@ -210,7 +210,7 @@ async def getFunctions(function_input: FunctionInput):
     action_items = function_input.action_items
 
     logging.info(f'Processing Action Item: {action_items}')
-    result, cb = await memory_manager1.get_functions(action_items)
+    result, cb = await functions_manager1.pull_functions(action_items)
     logging.info(f'Pulled relevant results for query: {action_items}')
     logging.info(f'Elapsed time for operation: {cb}')
 
