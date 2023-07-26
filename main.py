@@ -13,8 +13,8 @@ from memory_manager import MemoryManager1
 from web_manager import WebManager
 from custom_text_loader import TextLoader
 from functions_endpoint import FunctionsManager
-from functions_endpoint import FunctionsManager1
-
+from functions_manager import FunctionsManager1
+from queryplan_manager import QueryPlanManager
 # Load environment variables
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -43,7 +43,7 @@ pinecone.init(api_key=PINECONE_API_KEY)
 functions_manager1 = FunctionsManager1()
 memory_manager1 = MemoryManager1()
 web_manager = WebManager()
-
+queryplan_manager = QueryPlanManager()
 # register the stop method to be called on exit
 atexit.register(functions_manager1.stop)
 atexit.register(memory_manager1.stop)
@@ -55,7 +55,6 @@ def signal_handler(signum, frame):
     functions_manager1.stop()
     memory_manager1.stop()
     web_manager.stop()
-    sys.exit(0)
     
 # register the signal handler for SIGINT and SIGTERM
 signal.signal(signal.SIGINT, signal_handler)
@@ -67,8 +66,16 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True)
 
 
+@app.post('/query_plan/')
+async def writeQueryPlan(query: str = Form(...)):
+    logging.info(f'Writing query plan for query {query}')
+    response, elapsed_time = queryplan_manager.query_plan(query)
+    logging.info('Elapsed time for operation: %s',
+                 elapsed_time)  # log the elapsed time
+    return {'results': response, 'elapsed_time': elapsed_time}
+
 @app.post('/push_memory/')
-async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), ):
+async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
     logging.info(f'Writing memory for user {user_id}')
     memory_manager = MemoryManager(user_id)
     elapsed_time = memory_manager.push_memory(message, llm_response)
@@ -86,7 +93,6 @@ async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(..
     elapsed_time = memory_manager1.push_memory(user_id, query, llm_response)
     logging.info(f'Pushed memory for user {user_id}, query: {query}, response: {llm_response}')  # log the data push
     logging.info(f'Elapsed time for operation: {elapsed_time}')  # log the elapsed time
-
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_html/')

@@ -55,7 +55,7 @@ class TestFunctionsManager1(unittest.TestCase):
 
     @patch("functions_manager.Document")
     @patch("functions_manager.VectorStoreIndex")
-    def test_push_functions(self, mock_vector_store_index, mock_document):
+    def test_push_functions(self, mock_index, mock_document):
         
         functions = {
             'informationretrieval_functions': [{'name': 'function1', 'description': 'description1'}],
@@ -75,12 +75,12 @@ class TestFunctionsManager1(unittest.TestCase):
     @patch("functions_manager.LLMRerank")
     @patch("functions_manager.os.path.exists")
     @patch("functions_manager.os.path.isdir")
-    def test_load(self, mock_isdir, mock_exists, mock_llm_rerank, mock_vector_store_index, mock_load_index_from_storage):
+    def test_load(self, mock_isdir, mock_exists, mock_llm_rerank, mock_index, mock_load_index_from_storage):
         mock_exists.return_value = True
         mock_isdir.return_value = True
         mock_load_index_from_storage.return_value = MagicMock()
         mock_llm_rerank.return_value = MagicMock()
-        mock_vector_store_index.as_query_engine.return_value = MagicMock()
+        mock_index.as_query_engine.return_value = MagicMock()
 
         fm = FunctionsManager1()
         result = fm.load()

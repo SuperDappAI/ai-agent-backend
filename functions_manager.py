@@ -1,7 +1,8 @@
 import time
 from dotenv import load_dotenv
-from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
+from llama_index import ServiceContext, Document, StorageContext, load_index_from_storage
 from llama_index.llms import OpenAI
+from llama_index import VectorStoreIndex
 from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 import sys
