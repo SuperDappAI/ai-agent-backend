@@ -141,7 +141,7 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
                  elapsed_time)  # log the elapsed time
     return {'results': results, 'elapsed_time': elapsed_time}
 
-@app.post('/semantic_search_html1/')
+@app.post('/semantic_search_html_1/')
 async def semanticSearchHTML(query: str = Form(...), hash: str = Form(...)):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Semantic search HTML')
