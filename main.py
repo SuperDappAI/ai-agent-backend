@@ -217,7 +217,7 @@ async def overwriteFunctions(functionsJson: str = Form(...), examplesJson: str =
 
     if functionsJson is None:
         return {'Reverted': True} 
-    if functionsJson['informationretrieval_functions'] is None:
+    if functionsJson['information_retrieval'] is None:
         return {'Reverted': True}
 
     functions_manager = FunctionsManager() 
@@ -235,7 +235,7 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
     with open('utils/functions.json', 'r') as f:
         functionsJson = json.load(f)
 
-    if functionsJson is None or functionsJson['informationretrieval_functions'] is None:
+    if functionsJson is None or functionsJson['information_retrieval'] is None:
         return {'Reverted': True} 
 
     result, elapsed_time = functions_manager1.push_functions(functionsJson)

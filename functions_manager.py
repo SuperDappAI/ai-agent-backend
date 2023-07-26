@@ -72,6 +72,7 @@ class FunctionsManager1:
         result = []
         for item in data:
             page_content = {'name': item['name'], 'category': category, 'description': str(item['description'])}
+            print(f"page_content {page_content}")
             result.append(page_content)
         return result
 
@@ -90,10 +91,10 @@ class FunctionsManager1:
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
-        function_types = ['informationretrieval_functions', 
-                        'communication_functions', 
-                        'dataprocessing_functions', 
-                        'sensoryperception_functions']
+        function_types = ['information_retrieval', 
+                        'communication', 
+                        'data_processing', 
+                        'sensory_perception']
 
         encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
         tokens = [] 
@@ -113,6 +114,7 @@ class FunctionsManager1:
             if self.query_engine is not None:
                 for action_item in function_input.action_items:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+                    print(query)
                     response.append(self.query_engine.query(query))
         finally:
             self.lock.reader_release()
@@ -152,10 +154,10 @@ class FunctionsManager1:
         try:
             print("FunctionsManager: adding functions to index...")
 
-            function_types = ['informationretrieval_functions', 
-                            'communication_functions', 
-                            'dataprocessing_functions', 
-                            'sensoryperception_functions']
+            function_types = ['information_retrieval', 
+                            'communication', 
+                            'data_processing', 
+                            'sensory_perception']
 
             all_docs = []
 

@@ -164,7 +164,7 @@ class MemoryManager:
                     # leave this commented out for now, might add another fallback later
                     # {
                     #     "name": "searchWebGeneral",
-                    #     "category": "informationretrieval_functions"
+                    #     "category": "information_retrieval"
                     # }
                 ]
             else:

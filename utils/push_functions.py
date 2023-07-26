@@ -36,24 +36,24 @@ category = 'Information Retrieval'
 #manually loading just info and comm functions
 
 informationretrieval_functons = transform(data, 'Information Retrieval')
-communication_functions = transform(data, 'Communication')
-dataprocessing_functions = transform (data, 'Data Processing')
-sensoryperception_functions = transform(data, 'Sensory Perception')
+communication = transform(data, 'Communication')
+data_processing = transform (data, 'Data Processing')
+sensory_perception = transform(data, 'Sensory Perception')
 
 info_docs = []
 for doc in informationretrieval_functons:
     info_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
 comm_docs = []
-for doc in communication_functions:
+for doc in communication:
     comm_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
 dataprocessing_docs = []
-for doc in dataprocessing_functions:
+for doc in data_processing:
     dataprocessing_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
 sensoryperception_docs = []
-for doc in sensoryperception_functions:
+for doc in sensory_perception:
     sensoryperception_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
 pinecone_db = Pinecone.from_existing_index(

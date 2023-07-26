@@ -59,10 +59,10 @@ class TestFunctionsManager1(unittest.TestCase):
     def test_push_functions(self, mock_index, mock_document):
         
         functions = {
-            'informationretrieval_functions': [{'name': 'function1', 'description': 'description1'}],
-            'communication_functions': [{'name': 'function2', 'description': 'description2'}],
-            'dataprocessing_functions': [{'name': 'function3', 'description': 'description3'}],
-            'sensoryperception_functions': [{'name': 'function4', 'description': 'description4'}]
+            'information_retrieval': [{'name': 'function1', 'description': 'description1'}],
+            'communication': [{'name': 'function2', 'description': 'description2'}],
+            'data_processing': [{'name': 'function3', 'description': 'description3'}],
+            'sensory_perception': [{'name': 'function4', 'description': 'description4'}]
         }
         fm = FunctionsManager1()
         for idx, func_type in enumerate(functions):
@@ -100,7 +100,7 @@ class TestFunctionsManager1(unittest.TestCase):
     def test_count_tokens(self, mock_encoding_for_model):
         mock_encoding_for_model.return_value = MagicMock()
         mock_encoding_for_model.return_value.encode.side_effect = ['token1', 'token2', 'token3']
-        functions = {'informationretrieval_functions': [{'name': 'function1', 'description': 'description1'}]}
+        functions = {'information_retrieval': [{'name': 'function1', 'description': 'description1'}]}
         fm = FunctionsManager1()
         result = fm.count_tokens(functions)
         expected_result = [{'function1': 6}]

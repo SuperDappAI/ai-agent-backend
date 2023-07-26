@@ -1,5 +1,5 @@
 {
-    "informationretrieval_functions": [
+    "information_retrieval": [
         {
             "name": "searchWebGeneral",
             "description": "Performs a regular Google search. Example: {\"name\": \"general\", \"parameters\": {\"q\": \"OpenAI\"}}",
@@ -517,7 +517,7 @@
             }
         }
     ],
-    "communication_functions": [
+    "communication": [
         {
             "name": "translateText",
             "description": "Performs a Google translation. Example: {'name': 'translateText', 'parameters': {'q': 'translate from english to german: good morning'}}",
@@ -946,7 +946,7 @@
             }
         }
     ],
-    "dataprocessing_functions": [
+    "data_processing": [
         {
             "name": "doSemanticSearch",
             "description": "Performs a semantic search over provided data. The results are indexed into a vector database for semantic lookup controlled by num_chunks, num_neighbour_chunks, and similarity_threshold. The `num_chunks`, `num_neighbour_chunks`, and `similarity_threshold` fields are described in `getInformationFromMemory`. Number of tokens formula: num_chunks x (num_neighbour_chunks+1) x 256 (chunk size). Example: {\"name\": \"semantic_search\", \"parameters\": {\"data\": \"Text to analyze\", \"num_chunks\": 5, \"num_neighbour_chunks\": 2, \"similarity_threshold\": 0.73}",
@@ -1013,7 +1013,7 @@
             }
         }
     ],
-    "sensoryperception_functions": [
+    "sensory_perception": [
         {
             "name": "doImageAnalysis",
             "description": "Performs a Google Lens call based on an image URL. Can do image recognition and transcribe it or extract text. Example: {'name': 'doImageAnalysis', 'parameters': {'url': 'https://example.com/image.jpg'}}",

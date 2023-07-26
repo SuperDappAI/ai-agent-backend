@@ -48,29 +48,29 @@ class FunctionsManager:
     def count_tokens(self,functions):
         mode = 1
         encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-        informationretrieval_functons = self.transform(functions, 'informationretrieval_functions',mode)
-        communication_functions = self.transform(functions, 'communication_functions',mode)
-        dataprocessing_functions = self.transform(functions, 'dataprocessing_functions',mode)
+        informationretrieval_functons = self.transform(functions, 'information_retrieval',mode)
+        communication = self.transform(functions, 'communication',mode)
+        data_processing = self.transform(functions, 'data_processing',mode)
         # sensory perception
-        sensory_perception = self.transform(functions, 'sensoryperception_functions',mode)
+        sensory_perception = self.transform(functions, 'sensory_perception',mode)
 
         info_functions = []
         for doc in informationretrieval_functons:
             info_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
         comm_functions = []
-        for doc in communication_functions:
+        for doc in communication:
             comm_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
-        dataprocessing_functions = []
-        for doc in dataprocessing_functions:
-            dataprocessing_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
+        data_processing = []
+        for doc in data_processing:
+            data_processing.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
         sensory_perception_functions= []
         for doc in sensory_perception:
             sensory_perception_functions.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
-        all_docs = info_functions + comm_functions + dataprocessing_functions + sensory_perception_functions 
+        all_docs = info_functions + comm_functions + data_processing + sensory_perception_functions 
         tokens = [] 
         for doc in all_docs:
             tokens.append({doc.metadata['name']: len(encoding.encode(doc.page_content))})
@@ -79,13 +79,13 @@ class FunctionsManager:
     def transform_and_push(self,functions,examples,namespace,mode):
 
         formatted = []
-        category = 'informationretrieval_functions'
+        category = 'information_retrieval'
 
         #manually loading just info and comm functions
 
         informationretrieval_functons = self.transform(examples, 'Information Retrieval',mode)
-        communication_functions = self.transform(examples, 'Communication',mode)
-        dataprocessing_functions = self.transform(examples, 'Data Processing',mode)
+        communication = self.transform(examples, 'Communication',mode)
+        data_processing = self.transform(examples, 'Data Processing',mode)
         # sensory perception
         sensory_perception = self.transform(examples, 'Sensory Perception',mode)
         try:
@@ -104,11 +104,11 @@ class FunctionsManager:
             info_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
         comm_docs = []
-        for doc in communication_functions:
+        for doc in communication:
             comm_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
         dataprocessing_docs = []
-        for doc in dataprocessing_functions:
+        for doc in data_processing:
             dataprocessing_docs.append(Document(page_content=doc['page-content'],metadata=doc['metadata']))
 
         sensory_perception_docs = []
