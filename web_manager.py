@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
 from llama_index.llms import OpenAI
 from llama_index.indices.postprocessor import LLMRerank
+from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
 import schedule
 import threading
@@ -17,88 +18,116 @@ class WebManager:
         self.dirpath = "./web"
         self.index = {}
         self.query_engine = {}
+        self.locks = {}  # Dictionary to store locks for each hash
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
             llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
         ))
         schedule.every(300).to(600).seconds.do(self.save)
-        
+
         # Create new thread for schedule
-        with threading.Thread(target=self.run_continuously) as thread:
-            thread.start()
+        self.stop_event = threading.Event()
+        self.scheduler_thread = threading.Thread(target=self.run_continuously)
+        self.scheduler_thread.start()
 
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
-        while True:
+        while not self.stop_event.is_set():
             schedule.run_pending()
             time.sleep(1)
 
-    def load(self, hash):
-        """Load existing index data from the filesystem for a specific hash."""
-        print("WebManager: Loading from disk")
-        start = time.time()
-        hashpath = Path(f"{self.dirpath}_{hash}")
-        if hashpath.exists() and hashpath.is_dir():
-            # rebuild storage context
-            storage_context = StorageContext.from_defaults(persist_dir=hashpath)
+    def stop(self):
+        """Stops the scheduler thread."""
+        self.stop_event.set()
+        self.scheduler_thread.join()
 
-            # load index
-            self.index[hash] = load_index_from_storage(storage_context)
-            self.query_engine[hash] = self.index[hash].as_query_engine(
+    def get_hash_lock(self, hash_key):
+        return self.locks.setdefault(hash_key, ReaderWriterLock())
+
+
+    def load(self, hash_key):
+        """Load existing index data from the filesystem for a specific hash."""
+        lock = self.get_hash_lock(hash_key)
+        lock.writer_acquire()
+        try:
+            print("WebManager: Loading from disk")
+            start = time.time()
+            hashpath = Path(f"{self.dirpath}_{hash_key}")
+            if hashpath.exists() and hashpath.is_dir():
+                storage_context = StorageContext.from_defaults(persist_dir=hashpath)
+                self.index[hash_key] = load_index_from_storage(storage_context)
+                self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
+                    similarity_top_k=10,
+                    node_postprocessors=[self.reranker],
+                    response_mode="tree_summarize"
+                )
+            end = time.time()
+            print(f"WebManager: Load operation took {end - start} seconds")
+        finally:
+            lock.writer_release()
+
+    def save(self):
+        """Persist current index data to the filesystem."""
+        for hash_key, idx in self.index.items():
+            lock = self.get_hash_lock(hash_key)
+            lock.writer_acquire()
+            try:
+                start = time.time()
+                if idx.dirty:
+                    filepath = f"{self.dirpath}_{hash_key}"
+                    idx.storage_context.persist(persist_dir=filepath)
+                    idx.dirty = False
+                end = time.time()
+                print(f"WebManager: Save operation for hash {hash_key} took {end - start} seconds")
+            finally:
+                lock.writer_release()
+
+    def push_html(self, hash_key, urls, html_docs):
+        """Add new HTML data to the current index for a specific hash."""
+        if hash_key in self.index:
+            print("WebManager: Error push_html, hash already exists")
+            return
+        lock = self.get_hash_lock(hash_key)
+        lock.writer_acquire()
+        try:
+            start = time.time()
+            documents = [Document(text=t, metadata={'url': urls[idx]}) for idx, t in enumerate(html_docs)]
+            self.index[hash_key] = VectorStoreIndex.from_documents(documents)
+            self.index[hash_key].dirty = True
+            self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker],
                 response_mode="tree_summarize"
             )
-        end = time.time()
-        print(f"WebManager: Load operation took {end - start} seconds")
+            end = time.time()
+            print(f"WebManager: push_html operation took {end - start} seconds")
+        finally:
+            lock.writer_release()
 
-    def save(self):
-        """Persist current index data to the filesystem."""
-        start = time.time()
-        self.saving = True
-        for hash_key in self.index:
-            if self.index[hash_key].dirty is True:
-                self.index[hash_key].storage_context.persist(persist_dir=f"{self.dirpath}_{hash_key}")
-                self.index[hash_key].dirty = False
-        self.saving = False
-        end = time.time()
-        print(f"WebManager: Save operation took {end - start} seconds")
-
-    def push_html(self, hash, urls, html_docs):
-        """Add new HTML data to the current index for a specific hash."""
-        if hash in self.index:
-            print("WebManager: Error push_html, hash already exists")
-            return
-        start = time.time()
-        documents = [Document(t) for t in html_docs]
-        self.index[hash] = VectorStoreIndex.from_documents(documents)
-        for idx, doc in enumerate(documents):
-            doc.extra_info.url = urls[idx]
-        self.index[hash].dirty = True
-        self.query_engine[hash] = self.index[hash].as_query_engine(
-            similarity_top_k=10,
-            node_postprocessors=[self.reranker],
-            response_mode="tree_summarize"
-        )
-        end = time.time()
-        print(f"WebManager: push_html operation took {end - start} seconds")
-
-    def pull_html(self, hash, query):
+    def pull_html(self, hash_key, query):
         """Fetch HTML data based on a query for a specific hash."""
-        if hash not in self.query_engine:
-            print("WebManager: Error pull_html, hash doesn't exists")
-            return None
-        start = time.time()
-        response = self.query_engine[hash].query(
-            query, 
-        )
-        end = time.time()
-        print(f"WebManager: pull_html operation took {end - start} seconds")
-        return response
+        lock = self.get_hash_lock(hash_key)
+        lock.reader_acquire()
+        try:
+            if hash_key not in self.query_engine:
+                print("WebManager: Error pull_html, hash doesn't exist")
+                return None
+            start = time.time()
+            response = self.query_engine[hash_key].query(query)
+            end = time.time()
+            print(f"WebManager: pull_html operation took {end - start} seconds")
+            return response
+        finally:
+            lock.reader_release()
 
-    def delete_memory(self, hash):
+    def delete_memory(self, hash_key):
         """Delete all memories for a specific hash."""
-        hashpath = Path(f"{self.dirpath}_{hash}")
-        if hashpath.exists() and hashpath.is_dir():
-            shutil.rmtree(hashpath)
-        self.index.pop(hash, None)
-        self.query_engine.pop(hash, None)
+        lock = self.get_hash_lock(hash_key)
+        lock.writer_acquire()
+        try:
+            hashpath = Path(f"{self.dirpath}_{hash_key}")
+            if hashpath.exists() and hashpath.is_dir():
+                shutil.rmtree(hashpath)
+            self.index.pop(hash_key, None)
+            self.query_engine.pop(hash_key, None)
+        finally:
+            lock.writer_release()

@@ -1,7 +1,10 @@
 import time
 from dotenv import load_dotenv
-from llama_index import OpenAI, ServiceContext, LLMRerank, Document, VectorStoreIndex, StorageContext, load_index_from_storage
+from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
+from llama_index.llms import OpenAI
+from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
+import sys
 import os
 import tiktoken
 import schedule
@@ -22,8 +25,8 @@ class FunctionsManager1:
             service_context=ServiceContext.from_defaults(
                 llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
             ))
-        # Try to load index data from the filesystem
-        if not self.load():
+        # Try to load index data from the filesystem only if not running tests
+        if 'unittest' not in sys.modules.keys() and not self.load():
             # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
             with open('./utils/functions.json', 'r') as f:
                 functions_json = json.load(f)
@@ -33,19 +36,26 @@ class FunctionsManager1:
         schedule.every(300).to(600).seconds.do(self.save)
         
         # Create new thread for schedule
-        threading.Thread(target=self.run_continuously).start()
+        self.stop_event = threading.Event()
+        self.scheduler_thread = threading.Thread(target=self.run_continuously)
+        self.scheduler_thread.start()
 
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
-        while True:
+        while not self.stop_event.is_set():
             schedule.run_pending()
             time.sleep(1)
+
+    def stop(self):
+        """Stops the scheduler thread."""
+        self.stop_event.set()
+        self.scheduler_thread.join()
 
     def transform(self, data, category):
         """Transforms function data for a specific category."""
         result = []
-        for item in data[category]:
-            page_content = {'name': item['name'], 'description': str(item['description']), 'category': category}
+        for item in data:
+            page_content = {'name': item['name'], 'category': category, 'description': str(item['description'])}
             result.append(page_content)
         return result
 
@@ -73,8 +83,10 @@ class FunctionsManager1:
         encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
         tokens = [] 
         for func_type in function_types:
-            for doc in functions[func_type]:
-                tokens.append({doc['name']: len(encoding.encode(doc))})
+            if func_type in functions:
+                for func in functions[func_type]:
+                    function_string = json.dumps(func)
+                    tokens.append({func['name']: len(encoding.encode(function_string))})
         return tokens
 
     def pull_functions(self, query):
@@ -117,7 +129,7 @@ class FunctionsManager1:
         """Update the current index with new functions."""
         self.lock.writer_acquire()
         try:
-            print("FunctionsManager: Deleting persistent directory, adding functions to index and persisting to disk...")
+            print("FunctionsManager: adding functions to index...")
             start = time.time()
 
             function_types = ['informationretrieval_functions', 
@@ -129,10 +141,12 @@ class FunctionsManager1:
 
             # Transform and concatenate function types
             for func_type in function_types:
-                transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
-                all_docs.extend(transformed_functions)
+                if func_type in functions:
+                    transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
+                    all_docs.extend(transformed_functions)
+
             
-            documents = [Document(t) for t in all_docs]
+            documents = [Document(text=json.dumps(t)) for t in all_docs]
         
             self.index = VectorStoreIndex.from_documents(documents)
             self.query_engine = self.index.as_query_engine(
@@ -149,4 +163,3 @@ class FunctionsManager1:
             return tokens
         finally:
             self.lock.writer_release()
-

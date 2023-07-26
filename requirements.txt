@@ -23,4 +23,5 @@ termcolor
 #sse-starlette
 gunicorn
 beautifulsoup4
-llama-index
+llama_index
+schedule
