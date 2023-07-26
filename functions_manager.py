@@ -72,7 +72,6 @@ class FunctionsManager1:
         result = []
         for item in data:
             page_content = {'name': item['name'], 'category': category, 'description': str(item['description'])}
-            print(f"page_content {page_content}")
             result.append(page_content)
         return result
 
