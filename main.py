@@ -179,7 +179,7 @@ async def getFunctions(function_input: FunctionInput):
     #     logging.error(str(e))
     #     raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
 
-@app.post('/get_functions1/')
+@app.post('/get_functions_1/')
 async def getFunctions(function_input: FunctionInput):
     """Endpoint to get functions based on provided input."""
     action_items = function_input.action_items
