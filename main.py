@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 import pinecone
 from fastapi import FastAPI, Form, HTTPException
 from pydantic import BaseModel, Field
-
+import signal
+import sys
+import atexit
 from memory_search import MemoryManager
 from memory_manager import MemoryManager1
 from web_manager import WebManager
@@ -42,6 +44,23 @@ functions_manager1 = FunctionsManager1()
 memory_manager1 = MemoryManager1()
 web_manager = WebManager()
 
+# register the stop method to be called on exit
+atexit.register(functions_manager1.stop)
+atexit.register(memory_manager1.stop)
+atexit.register(web_manager.stop)
+
+# define a handler for the signals
+def signal_handler(signum, frame):
+    print(f"Caught signal {signum}, stopping...")
+    functions_manager1.stop()
+    memory_manager1.stop()
+    web_manager.stop()
+    sys.exit(0)
+    
+# register the signal handler for SIGINT and SIGTERM
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+    
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
