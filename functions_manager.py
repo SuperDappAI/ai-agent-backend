@@ -165,13 +165,13 @@ class FunctionsManager1:
                 if func_type in functions:
                     transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
-
+            all_docs_strings = [str(doc) for doc in all_docs]
             # initialize the bm25 retriever and faiss retriever
-            bm25_retriever = BM25Retriever.from_texts(all_docs)
+            bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
             bm25_retriever.k = 2
 
             embedding = OpenAIEmbeddings()
-            faiss_vectorstore = FAISS.from_texts(all_docs, embedding)
+            faiss_vectorstore = FAISS.from_texts(all_docs_strings, embedding)
             faiss_retriever = faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
 
             # initialize the ensemble retriever
@@ -179,6 +179,8 @@ class FunctionsManager1:
 
             self.dirty = True
             tokens = self.count_tokens(functions)
+        except Exception as e:
+            print('FunctionsManager: push_functions error: '+ str(e))
         finally:
             self.lock.writer_release()
             end = time.time()
