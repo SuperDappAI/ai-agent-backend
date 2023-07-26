@@ -1,8 +1,7 @@
 import time
 from dotenv import load_dotenv
-from llama_index import ServiceContext, Document, StorageContext, load_index_from_storage
+from llama_index import ServiceContext, VectorStoreIndex, Document, StorageContext, load_index_from_storage
 from llama_index.llms import OpenAI
-from llama_index import VectorStoreIndex
 from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 import sys
@@ -31,7 +30,8 @@ class FunctionsManager1:
             # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
             with open('./utils/functions.json', 'r') as f:
                 functions_json = json.load(f)
-            self.push_functions(functions_json)
+                self.push_functions(functions_json)
+                self.save()
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
@@ -65,10 +65,9 @@ class FunctionsManager1:
         self.lock.writer_acquire()
         try:
             start = time.time()
-            for doc in self.index:
-                if doc.dirty is True:
-                    doc.storage_context.persist(persist_dir=self.dirpath)
-                    doc.dirty = False
+            if self.index.dirty is True:
+                self.index.storage_context.persist(persist_dir=self.dirpath)
+                self.index.dirty = False
             end = time.time()
             print(f"FunctionsManager: Save operation took {end - start} seconds")
         finally:
