@@ -1,6 +1,7 @@
 import time
 from dotenv import load_dotenv
 from llama_index import OpenAI, ServiceContext, LLMRerank, Document, VectorStoreIndex, StorageContext, load_index_from_storage
+from reader_writer_lock import ReaderWriterLock
 import os
 import tiktoken
 import schedule
@@ -16,6 +17,7 @@ class FunctionsManager1:
         self.dirpath = Path("./storage_functions")
         self.index = None
         self.query_engine = None
+        self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, 
             service_context=ServiceContext.from_defaults(
                 llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
@@ -31,8 +33,7 @@ class FunctionsManager1:
         schedule.every(300).to(600).seconds.do(self.save)
         
         # Create new thread for schedule
-        with threading.Thread(target=self.run_continuously) as thread:
-            thread.start()
+        threading.Thread(target=self.run_continuously).start()
 
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
@@ -50,15 +51,17 @@ class FunctionsManager1:
 
     def save(self):
         """Persist current index data to the filesystem."""
-        start = time.time()
-        self.saving = True
-        for doc in self.index:
-            if doc.dirty is True:
-                doc.storage_context.persist(persist_dir=self.dirpath)
-                doc.dirty = False
-        self.saving = False
-        end = time.time()
-        print(f"FunctionsManager: Save operation took {end - start} seconds")
+        self.lock.writer_acquire()
+        try:
+            start = time.time()
+            for doc in self.index:
+                if doc.dirty is True:
+                    doc.storage_context.persist(persist_dir=self.dirpath)
+                    doc.dirty = False
+            end = time.time()
+            print(f"FunctionsManager: Save operation took {end - start} seconds")
+        finally:
+            self.lock.writer_release()
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
@@ -76,61 +79,74 @@ class FunctionsManager1:
 
     def pull_functions(self, query):
         """Fetch functions based on a query."""
-        if self.query_engine is None:
-            print("FunctionsManager: Error pull_functions, query_engine doesn't exist")
-            return None
-        response = self.query_engine.query(query)
-        return response
+        self.lock.reader_acquire()
+        try:
+            if self.query_engine is None:
+                print("FunctionsManager: Error pull_functions, query_engine doesn't exist")
+                return None
+            response = self.query_engine.query(query)
+            return response
+        finally:
+            self.lock.reader_release()
 
     def load(self):
         """Load existing index data from the filesystem."""
-        print("FunctionsManager: Loading from disk")
-        start = time.time()
-        if self.dirpath.exists() and self.dirpath.is_dir():
-            # rebuild storage context
-            storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
+        self.lock.writer_acquire()
+        try:
+            print("FunctionsManager: Loading from disk")
+            start = time.time()
+            if self.dirpath.exists() and self.dirpath.is_dir():
+                # rebuild storage context
+                storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
 
-            # load index
-            self.index = load_index_from_storage(storage_context)
+                # load index
+                self.index = load_index_from_storage(storage_context)
+                self.query_engine = self.index.as_query_engine(
+                    similarity_top_k=10,
+                    node_postprocessors=[self.reranker]
+                )
+                end = time.time()
+                print(f"FunctionsManager: Load took {end - start} seconds")
+                return True  # Return True when loading is successful
+            else:
+                return False  # Return False when there's no data to load
+        finally:
+            self.lock.writer_release()
+
+    def push_functions(self, functions):
+        """Update the current index with new functions."""
+        self.lock.writer_acquire()
+        try:
+            print("FunctionsManager: Deleting persistent directory, adding functions to index and persisting to disk...")
+            start = time.time()
+
+            function_types = ['informationretrieval_functions', 
+                            'communication_functions', 
+                            'dataprocessing_functions', 
+                            'sensoryperception_functions']
+
+            all_docs = []
+
+            # Transform and concatenate function types
+            for func_type in function_types:
+                transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
+                all_docs.extend(transformed_functions)
+            
+            documents = [Document(t) for t in all_docs]
+        
+            self.index = VectorStoreIndex.from_documents(documents)
             self.query_engine = self.index.as_query_engine(
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker]
             )
+            self.index.dirty = True
+
             end = time.time()
-            print(f"FunctionsManager: Load took {end - start} seconds")
-            return True  # Return True when loading is successful
-        else:
-            return False  # Return False when there's no data to load
 
-    def push_functions(self, functions):
-        """Update the current index with new functions."""
-        print("FunctionsManager: Deleting persistent directory, adding functions to index and persisting to disk...")
-        start = time.time()
+            print(f"FunctionsManager: push_functions took {end - start} seconds")
+            tokens = self.count_tokens(functions)
 
-        function_types = ['informationretrieval_functions', 
-                        'communication_functions', 
-                        'dataprocessing_functions', 
-                        'sensoryperception_functions']
+            return tokens
+        finally:
+            self.lock.writer_release()
 
-        all_docs = []
-
-        # Transform and concatenate function types
-        for func_type in function_types:
-            transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
-            all_docs.extend(transformed_functions)
-        
-        documents = [Document(t) for t in all_docs]
-    
-        self.index = VectorStoreIndex.from_documents(documents)
-        self.query_engine = self.index.as_query_engine(
-            similarity_top_k=10,
-            node_postprocessors=[self.reranker]
-        )
-        self.index.dirty = True
-
-        end = time.time()
-
-        print(f"FunctionsManager: push_functions took {end - start} seconds")
-        tokens = self.count_tokens(functions)
-
-        return tokens
