@@ -1,4 +1,3 @@
-import pinecone
 import time
 from dotenv import load_dotenv
 from llama_index import OpenAI, ServiceContext, LLMRerank, Document, VectorStoreIndex, StorageContext, load_index_from_storage
@@ -8,32 +7,35 @@ import schedule
 import threading
 from pathlib import Path
 
-load_dotenv()
-os.getenv("OPENAI_API_KEY")
-
-pinecone.init()
-
-#load json from file
-
 class FunctionsManager1:
     def __init__(self):
+        load_dotenv()  # Load environment variables
+        os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
+
         self.dirpath = Path("./storage_functions")
         self.index = None
         self.query_engine = None
-        self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
-            llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
-        ))
+        self.reranker = LLMRerank(choice_batch_size=5, top_n=3, 
+            service_context=ServiceContext.from_defaults(
+                llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
+            ))
         self.load()
+
+        # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
-        thread = threading.Thread(target=self.run_continuously)
-        thread.start()
         
+        # Create new thread for schedule
+        with threading.Thread(target=self.run_continuously) as thread:
+            thread.start()
+
     def run_continuously(self):
+        """Keep checking and running pending tasks every second."""
         while True:
             schedule.run_pending()
             time.sleep(1)
 
-    def transform(self,data,category):
+    def transform(self, data, category):
+        """Transforms function data for a specific category."""
         result = []
         for item in data[category]:
             page_content = {'name': item['name'], 'description': str(item['description']), 'category': category}
@@ -41,6 +43,7 @@ class FunctionsManager1:
         return result
 
     def save(self):
+        """Persist current index data to the filesystem."""
         start = time.time()
         self.saving = True
         for doc in self.index:
@@ -52,6 +55,7 @@ class FunctionsManager1:
         print(f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
+        """Count the tokens for all the functions."""
         function_types = ['informationretrieval_functions', 
                         'communication_functions', 
                         'dataprocessing_functions', 
@@ -64,17 +68,16 @@ class FunctionsManager1:
                 tokens.append({doc['name']: len(encoding.encode(doc))})
         return tokens
 
-
     def pull_functions(self, query):
+        """Fetch functions based on a query."""
         if self.query_engine is None:
             print("FunctionsManager: Error pull_functions, query_engine doesn't exist")
             return None
-        response = self.query_engine.query(
-            query, 
-        )
+        response = self.query_engine.query(query)
         return response
 
     def load(self):
+        """Load existing index data from the filesystem."""
         print("FunctionsManager: Loading from disk")
         start = time.time()
         if self.dirpath.exists() and self.dirpath.is_dir():
@@ -91,6 +94,7 @@ class FunctionsManager1:
         print(f"FunctionsManager: Load took {end - start} seconds")
 
     def push_functions(self, functions):
+        """Update the current index with new functions."""
         print("FunctionsManager: Deleting persistent directory, adding functions to index and persisting to disk...")
         start = time.time()
 
@@ -121,6 +125,3 @@ class FunctionsManager1:
         tokens = self.count_tokens(functions)
 
         return tokens
-
-
-
