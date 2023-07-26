@@ -91,12 +91,12 @@ class TestWebManager(unittest.TestCase):
     @patch('web_manager.shutil.rmtree')
     @patch('web_manager.Path.exists')
     @patch('web_manager.Path.is_dir')
-    def test_delete_memory(self, mock_is_dir, mock_exists, mock_rmtree):
+    def test_delete_html(self, mock_is_dir, mock_exists, mock_rmtree):
         hash_key = 'hash1'
         mock_exists.return_value = True
         mock_is_dir.return_value = True
         web_manager = WebManager()
-        web_manager.delete_memory(hash_key)
+        web_manager.delete_html(hash_key)
         assert hash_key not in web_manager.index
         assert hash_key not in web_manager.query_engine
         mock_rmtree.assert_called()

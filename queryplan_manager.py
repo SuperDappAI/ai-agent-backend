@@ -31,4 +31,4 @@ class QueryPlanManager:
         response = self.query_engine.query(query)
         end = time.time()
         print(f"QueryPlanManager: query_plan operation took {end - start} seconds")
-        return response
+        return response, {end - start}

@@ -41,6 +41,7 @@ class MemoryManager1:
 
     def stop(self):
         """Stops the scheduler thread."""
+        self.save()
         self.stop_event.set()
         self.scheduler_thread.join()
 
@@ -86,12 +87,12 @@ class MemoryManager1:
 
     def push_memory(self, user_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
+        start = time.time()
         if user_id not in self.index:
             self.load(user_id)
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
-            start = time.time()
             # Create a dictionary to represent the memory data
             memory = {
                 "user": query,
@@ -111,29 +112,30 @@ class MemoryManager1:
                 node_postprocessors=[self.reranker],
                 response_mode="tree_summarize"
             )
-            end = time.time()
-            print(f"MemoryManager: push_memory operation took {end - start} seconds")
         finally:
             lock.writer_release()
+            end = time.time()
+            print(f"MemoryManager: push_memory operation took {end - start} seconds")
+            return {end - start}
 
     def pull_memory(self, user_id, query):
         """Fetch memory based on a query for a specific user."""
+        start = time.time()
         lock = self.get_user_lock(user_id)
         lock.reader_acquire()
+        response = None
         try:
-            if user_id not in self.query_engine:
-                print("MemoryManager: Error pull_memory, hash doesn't exist")
-                return None
-            start = time.time()
-            response = self.query_engine[user_id].query(query)
-            end = time.time()
-            print(f"MemoryManager: pull_memory operation took {end - start} seconds")
-            return response
+            if user_id in self.query_engine:
+                response = self.query_engine[user_id].query(query)
         finally:
             lock.reader_release()
+            end = time.time()
+            print(f"MemoryManager: pull_memory operation took {end - start} seconds")
+            return response, {end - start}
 
     def delete_memory(self, user_id):
         """Delete all memories for a specific user."""
+        start = time.time()
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
@@ -144,3 +146,5 @@ class MemoryManager1:
             self.query_engine.pop(user_id, None)
         finally:
             lock.writer_release()
+            end = time.time()
+            return {end - start}

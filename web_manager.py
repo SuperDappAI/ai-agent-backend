@@ -47,6 +47,7 @@ class WebManager:
 
     def stop(self):
         """Stops the scheduler thread."""
+        self.save()
         self.stop_event.set()
         self.scheduler_thread.join()
 
@@ -56,11 +57,11 @@ class WebManager:
 
     def load(self, hash_key):
         """Load existing index data from the filesystem for a specific hash."""
+        start = time.time()
         lock = self.get_hash_lock(hash_key)
         lock.writer_acquire()
         try:
             print("WebManager: Loading from disk")
-            start = time.time()
             hashpath = Path(f"{self.dirpath}_{hash_key}")
             if hashpath.exists() and hashpath.is_dir():
                 storage_context = StorageContext.from_defaults(persist_dir=hashpath)
@@ -70,37 +71,38 @@ class WebManager:
                     node_postprocessors=[self.reranker],
                     response_mode="tree_summarize"
                 )
-            end = time.time()
-            print(f"WebManager: Load operation took {end - start} seconds")
         finally:
             lock.writer_release()
+            end = time.time()
+            print(f"WebManager: Load operation took {end - start} seconds")
 
     def save(self):
         """Persist current index data to the filesystem."""
+        start = time.time()
         for hash_key, idx in self.index.items():
             lock = self.get_hash_lock(hash_key)
             lock.writer_acquire()
             try:
-                start = time.time()
                 if idx.dirty:
                     filepath = f"{self.dirpath}_{hash_key}"
                     idx.storage_context.persist(persist_dir=filepath)
                     idx.dirty = False
-                end = time.time()
-                print(f"WebManager: Save operation for hash {hash_key} took {end - start} seconds")
             finally:
                 lock.writer_release()
+        end = time.time()
+        print(f"WebManager: Save operation took {end - start} seconds")
 
     def push_html(self, function_input: HTMLInput):
         """Add new HTML data to the current index for a specific hash."""
+        start = time.time()
         hash_key = function_input.hash
         if hash_key in self.index:
             print("WebManager: Error push_html, hash already exists")
-            return
+            end = time.time()
+            return {end - start}
         lock = self.get_hash_lock(hash_key)
         lock.writer_acquire()
         try:
-            start = time.time()
             documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
             self.index[hash_key] = VectorStoreIndex.from_documents(documents)
             self.index[hash_key].dirty = True
@@ -109,29 +111,30 @@ class WebManager:
                 node_postprocessors=[self.reranker],
                 response_mode="tree_summarize"
             )
-            end = time.time()
-            print(f"WebManager: push_html operation took {end - start} seconds")
         finally:
             lock.writer_release()
+            end = time.time()
+            print(f"WebManager: push_html operation took {end - start} seconds")
+            return {end - start}
 
     def pull_html(self, hash_key, query):
         """Fetch HTML data based on a query for a specific hash."""
+        start = time.time()
         lock = self.get_hash_lock(hash_key)
         lock.reader_acquire()
+        response = None
         try:
-            if hash_key not in self.query_engine:
-                print("WebManager: Error pull_html, hash doesn't exist")
-                return None
-            start = time.time()
-            response = self.query_engine[hash_key].query(query)
-            end = time.time()
-            print(f"WebManager: pull_html operation took {end - start} seconds")
-            return response
+            if hash_key in self.query_engine:
+                response = self.query_engine[hash_key].query(query)
         finally:
             lock.reader_release()
+            end = time.time()
+            print(f"WebManager: pull_html operation took {end - start} seconds")
+            return response, {end - start}
 
-    def delete_memory(self, hash_key):
+    def delete_html(self, hash_key):
         """Delete all memories for a specific hash."""
+        start = time.time()
         lock = self.get_hash_lock(hash_key)
         lock.writer_acquire()
         try:
@@ -142,3 +145,5 @@ class WebManager:
             self.query_engine.pop(hash_key, None)
         finally:
             lock.writer_release()
+            end = time.time()
+            return {end - start}

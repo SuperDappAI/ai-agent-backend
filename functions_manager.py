@@ -11,6 +11,19 @@ import schedule
 import threading
 from pathlib import Path
 import json
+from typing import List
+from pydantic import BaseModel, Field
+
+class ActionItem(BaseModel):
+    action: str
+    intent: str
+    category: str
+
+class FunctionInput(BaseModel):
+    action_items: List[ActionItem] = Field(..., example=[{"action": "action_example", "intent": "intent_example", "category": "category_example"}])
+    num_results: int = Field(..., example=5)
+    similarity_threshold: float = Field(..., example=0.8)
+
 
 class FunctionsManager1:
     def __init__(self):
@@ -50,6 +63,7 @@ class FunctionsManager1:
 
     def stop(self):
         """Stops the scheduler thread."""
+        self.save()
         self.stop_event.set()
         self.scheduler_thread.join()
 
@@ -63,16 +77,16 @@ class FunctionsManager1:
 
     def save(self):
         """Persist current index data to the filesystem."""
+        start = time.time()
         self.lock.writer_acquire()
         try:
-            start = time.time()
             if self.dirty is True:
                 self.index.storage_context.persist(persist_dir=self.dirpath)
                 self.dirty = False
-            end = time.time()
-            print(f"FunctionsManager: Save operation took {end - start} seconds")
         finally:
             self.lock.writer_release()
+            end = time.time()
+            print(f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
@@ -90,26 +104,29 @@ class FunctionsManager1:
                     tokens.append({func['name']: len(encoding.encode(function_string))})
         return tokens
 
-    def pull_functions(self, query):
+    def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
+        start = time.time()
         self.lock.reader_acquire()
         response = []
         try:
-            if self.query_engine is None:
-                print("FunctionsManager: Error pull_functions, query_engine doesn't exist")
-                return None
-            for q in query:
-                response.append(self.query_engine.query(str(q)))
-            return response
+            if self.query_engine is not None:
+                for action_item in function_input.action_items:
+                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+                    response.append(self.query_engine.query(query))
         finally:
             self.lock.reader_release()
+            end = time.time()
+            return response, {end-start}
+
 
     def load(self):
         """Load existing index data from the filesystem."""
+        start = time.time()
         self.lock.writer_acquire()
+        result = False
         try:
             print("FunctionsManager: Loading from disk")
-            start = time.time()
             if self.dirpath.exists() and self.dirpath.is_dir():
                 # rebuild storage context
                 storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
@@ -120,20 +137,20 @@ class FunctionsManager1:
                     similarity_top_k=10,
                     node_postprocessors=[self.reranker]
                 )
-                end = time.time()
-                print(f"FunctionsManager: Load took {end - start} seconds")
-                return True  # Return True when loading is successful
-            else:
-                return False  # Return False when there's no data to load
+                result = True
         finally:
             self.lock.writer_release()
+            end = time.time()
+            print(f"FunctionsManager: Load took {end - start} seconds")
+            return result
 
     def push_functions(self, functions):
         """Update the current index with new functions."""
+        start = time.time()
         self.lock.writer_acquire()
+        tokens = None
         try:
             print("FunctionsManager: adding functions to index...")
-            start = time.time()
 
             function_types = ['informationretrieval_functions', 
                             'communication_functions', 
@@ -150,19 +167,15 @@ class FunctionsManager1:
 
             
             documents = [Document(text=json.dumps(t)) for t in all_docs]
-        
             self.index = VectorStoreIndex.from_documents(documents)
             self.query_engine = self.index.as_query_engine(
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker]
             )
             self.dirty = True
-
-            end = time.time()
-
-            print(f"FunctionsManager: push_functions took {end - start} seconds")
             tokens = self.count_tokens(functions)
-
-            return tokens
         finally:
             self.lock.writer_release()
+            end = time.time()
+            print(f"FunctionsManager: push_functions took {end - start} seconds")
+            return tokens, {end-start}

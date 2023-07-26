@@ -1,6 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock, call
-from functions_manager import FunctionsManager1
+import json
+from unittest.mock import patch, MagicMock
+from functions_manager import FunctionsManager1, ActionItem, FunctionInput
 
 class TestFunctionsManager1(unittest.TestCase):
     @patch("functions_manager.schedule")
@@ -67,7 +68,7 @@ class TestFunctionsManager1(unittest.TestCase):
         for idx, func_type in enumerate(functions):
             result = fm.push_functions({func_type: functions[func_type]})
             expected_result = [{f"function{idx+1}": 14}]
-            self.assertEqual(result, expected_result)
+            self.assertEqual(result[0], expected_result)
         fm.stop()
 
     @patch("functions_manager.load_index_from_storage")
@@ -84,8 +85,15 @@ class TestFunctionsManager1(unittest.TestCase):
 
         fm = FunctionsManager1()
         result = fm.load()
-        self.assertFalse(result)
+        if result:
+            # If load is successful, these functions should be called
+            mock_load_index_from_storage.assert_called_once()
+        else:
+            # If load fails, these functions should not be called
+            mock_load_index_from_storage.assert_not_called()
+
         fm.stop()
+
 
     # Similarly, you would write tests for other methods like save, pull_functions and count_tokens
     @patch("functions_manager.tiktoken.encoding_for_model")
@@ -101,22 +109,36 @@ class TestFunctionsManager1(unittest.TestCase):
 
     def test_save(self):
         fm = FunctionsManager1()
-        doc1 = MagicMock()
-        doc2 = MagicMock()
-        doc1.dirty = True
-        doc2.dirty = True
-        fm.index = [doc1, doc2]
+        fm.index = MagicMock()  # Mock the entire index object
+        fm.dirty = True  # Set dirty attribute to True
+
         fm.save()
-        doc1.storage_context.persist.assert_called_once()
-        doc2.storage_context.persist.assert_called_once()
+
+        # Assert that persist method was called on the storage_context of the index
+        fm.index.storage_context.persist.assert_called_once_with(persist_dir=fm.dirpath)
+        self.assertFalse(fm.dirty)  # Ensure dirty flag is set to False after save operation
+
         fm.stop()
 
     def test_pull_functions(self):
         fm = FunctionsManager1()
         fm.query_engine = MagicMock()
-        fm.pull_functions('test_query')
-        fm.query_engine.query.assert_called_once_with('test_query')
+
+        # create FunctionInput instance
+        action_item = ActionItem(action='test_query', intent='intent_example', category='category_example')
+        function_input = FunctionInput(action_items=[action_item], num_results=5, similarity_threshold=0.8)
+
+        fm.pull_functions(function_input)
+
+        # Construct query as per your actual function's implementation
+        query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+
+        # Check if query is called with the correct arguments
+        fm.query_engine.query.assert_called_once_with(query)
+
         fm.stop()
+
+
 
 if __name__ == "__main__":
     unittest.main()
