@@ -1,1034 +1,888 @@
 {
-    "information_retrieval": [
-        {
-            "name": "searchWebGeneral",
-            "description": "Performs a regular Google search. Example: {\"name\": \"general\", \"parameters\": {\"q\": \"OpenAI\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can use anything that you would use in a regular Google search. Supports advanced search query parameters. See the full list of supported advanced search query parameters at https://serpapi.com/advanced-google-query-parameters."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination. Google Local Results only accepts multiples of 20 as the start value."
-                    },
-                    "num": {
-                        "type": "integer",
-                        "description": "Defines the maximum number of results to return."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebMapLocations",
-            "description": "Performs a Google Maps search. Example: {\"name\": \"maps\", \"parameters\": {\"q\": \"restaurants near me\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can use anything that you would use in a regular Google Maps search. The parameter is only required if type is set to search."
-                    },
-                    "ll": {
-                        "type": "string",
-                        "description": "Defines GPS coordinates of location where you want your q (query) to be applied. It has to be constructed in the next sequence: @ + latitude + , + longitude + , + zoom. This will form a string that looks like this: e.g. @40.7455096,-74.0083012,14z. The zoom parameter is optional but recommended for higher precision (it ranges from 3z, map completely zoomed out - to 21z, map completely zoomed in). The parameter should only be used when type is set to search."
-                    },
-                    "data": {
-                        "type": "string",
-                        "description": "Parameter is only required if type is set to place. In that case, it defines a search for a specific place. It has to be constructed in the next sequence: !4m5!3m4!1s + data_id + !8m2!3d + latitude + !4d + longitude. This will form a string that looks like this: e.g. !4m5!3m4!1s0x89c259b7abdd4769:0xc385876db174521a!8m2!3d40.750231!4d-74.004019. Parameter can also be used to filter the search results."
-                    },
-                    "place_id": {
-                        "type": "string",
-                        "description": "Defines the unique reference to a place on a Google Map. Place IDs are available for most locations, including businesses, landmarks, parks, and intersections."
-                    },
-                    "type": {
-                        "type": "string",
-                        "description": "Defines the type of search you want to make. It can be set to: search - returns a list of results for the set q parameter, place - returns results for a specific place when data parameter is set"
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 20 is the 2nd page of results, 40 is the 3rd page of results, etc.)."
-                    }
-                },
-                "required": [
-                    "type"
-                ]
-            }
-        },
-        {
-            "name": "searchWebJobs",
-            "description": "Performs a job search. Example: {\"name\": \"jobs\", \"parameters\": {\"q\": \"software engineer\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 10 is the 2nd page of results, 20 is the 3rd page of results, etc.)."
-                    },
-                    "chips": {
-                        "type": "string",
-                        "description": "Defines additional query conditions. Top of a job search page contains elements called chips, its values are extracted in order to be passed to chips parameter. E.g. city:Owg_06VPwoli_nfhBo8LyA== will return results for New York."
-                    },
-                    "lrad": {
-                        "type": "integer",
-                        "description": "Defines search radius in kilometers. Does not strictly limit the radius."
-                    },
-                    "ltype": {
-                        "type": "string",
-                        "description": "Parameter will filter the results by work from home."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebShopping",
-            "description": "Performs a Google Shopping search. Example: {\"name\": \"shopping\", \"parameters\": {\"q\": \"laptop\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can use anything that you would use in a regular Google Shopping search."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 60 is the 2nd page of results, 120 is the 3rd page of results, etc.)."
-                    },
-                    "num": {
-                        "type": "integer",
-                        "description": "Defines the maximum number of results to return. (e.g., 60 (default) returns 60 results, 40 returns 40 results, and 100 (maximum) returns 100 results). Any number greater than maximum number (100) will default to 100. Any number lesser than minimum number (1) will default to 60."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebImages",
-            "description": "Performs a Google Images search. Example: {\"name\": \"images\", \"parameters\": {\"q\": \"cat\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can use anything that you would use in a regular Google Images search. e.g. inurl:, site:, intitle:."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "chips": {
-                        "type": "string",
-                        "description": "Enables to filter image search. It's a string provided by Google as suggested search, like: red apple. Chips are provided under the section: suggested_searches when ijn = 0."
-                    },
-                    "ijn": {
-                        "type": "integer",
-                        "description": "Defines the page number for Google Images. There are 100 images per page. This parameter is equivalent to start (offset) = ijn * 100."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebVideos",
-            "description": "Performs a Google Videos search. Example: {\"name\": \"videos\", \"parameters\": {\"q\": \"funny videos\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can use anything that you would use in a regular Google Videos search. e.g. inurl:, site:, intitle:. We also support advanced search query parameters such as as_dt and as_eq. See https://serpapi.com/advanced-google-query-parameters for list of supported advanced search query parameters."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination."
-                    },
-                    "num": {
-                        "type": "integer",
-                        "description": "Defines the maximum number of results to return."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebThingsNearMe",
-            "description": "Performs a Google Local search. Example: {\"name\": \"local\", \"parameters\": {\"q\": \"coffee shops near me\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can use anything that you would use in a regular Google Local search."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination. On desktop, parameter only accepts multiples of 20 (e.g. 20 for the second page results, 40 for the third page results, etc.). On mobile, parameter only accepts multiples of 10 (e.g. 10 for the second page results, 20 for the third page results, etc.)."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebTrends",
-            "description": "Performs a Google Trends search. Example: {\"name\": \"trends\", \"parameters\": {\"q\": \"technology\"}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query or queries you want to search. You can use anything that you would use in a regular Google Trends search. The maximum number of queries per search is 5 (this only applies to 'Interest over time' and 'Compared breakdown by region' data_type, other types of data will only accept 1 query per search). When passing multiple queries you need to use a comma (,) to separate them (e.g. coffee,pizza,dark chocolate,/m/027lnzs,bread)."
-                    },
-                    "geo": {
-                        "type": "string",
-                        "description": "Defines the location from where you want the search to originate. It defaults to Worldwide (activated when the value of geo parameter is not set or empty). Use https://serpapi.com/google-trends-locations for a full list of supported Google Trends locations."
-                    },
-                    "region": {
-                        "type": "string",
-                        "description": "Used for getting more specific results when using 'Compared breakdown by region' and 'Interest by region' data_type charts. Other data_type charts do not accept region parameter. The default value depends on the geo location that is set. Available options: COUNTRY - Country REGION - Subregion DMA - Metro CITY - City"
-                    },
-                    "data_type": {
-                        "type": "string",
-                        "description": "Defines the type of search you want to do. Available options: TIMESERIES - Interest over time (default) - Accepts both single and multiple queries per search. GEO_MAP - Compared breakdown by region - Accepts only multiple queries per search. GEO_MAP_0 - Interest by region - Accepts only single query per search. RELATED_TOPICS - Related topics - Accepts only single query per search. RELATED_QUERIES - Related queries - Accepts only single query per search."
-                    },
-                    "tz": {
-                        "type": "integer",
-                        "description": "Used to define a time zone. The default value is set to 420 (Pacific Day Time(PDT): -07:00). Value is shown in minutes and can span from -1439 to 1439. tz can be calculated using the time difference between UTC +0 and desired timezone. Example: 60 x ((Time in UTC+0 Now) - (Time in PDT Now)) = 420 will give results for PDT now. Because the reference point is UTC+0, the positive time zones will result in negative tz whereas negative time zones will result in positive tz. tz parameter also affects timestamps in response."
-                    },
-                    "cat": {
-                        "type": "integer",
-                        "description": "Used to define a search category. The default value is set to 0 ('All categories'). Use https://serpapi.com/google-trends-categories for a full list of supported Google Trends Categories."
-                    },
-                    "gprop": {
-                        "type": "string",
-                        "description": "Used for sorting results by property. The default property is set to Web Search (activated when the value of gprop parameter is not set or empty). Other available options: images - Image Search news - News Search froogle - Google Shopping youtube - YouTube Search"
-                    },
-                    "date": {
-                        "type": "string",
-                        "description": "Used to define a date. Available options: now 1-H - Past hour now 4-H - Past 4 hours now 1-d - Past day now 7-d - Past 7 days today 1-m - Past 30 days today 3-m - Past 90 days today 12-m - Past 12 months today 5-y - Past 5 years all - 2004 - present You can also pass custom values: Dates from 2004 to present: yyyy-mm-dd yyyy-mm-dd (e.g. 2021-10-15 2022-05-25) Dates with hours within a week range: yyyy-mm-ddThh yyyy-mm-ddThh (e.g. 2022-05-19T10 2022-05-24T22). Hours will be calculated depending on the tz (time zone) parameter."
-                    },
-                    "csv": {
-                        "type": "boolean",
-                        "description": "Used for retrieving the CSV results. Set the parameter to true to retrieve CSV results as an array."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebStockMarketTickers",
-            "description": "Performs a financial search for stocks, indices, mutual funds, currencies, or futures. Relevant queries should be in stock ticker format like 'GOOG:NASDAQ' or 'BTC-USD'. Example: {'name': 'stock_market_tickers', 'parameters': {'q': 'GOOG:NASDAQ'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. It can be a stock, index, mutual fund, currency or futures. Example: GOOG:NASDAQ"
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebScholar",
-            "description": "Performs a search on Google Scholar for academic articles and publications. Example: {'name': 'scholar', 'parameters': {'q': 'author:John Doe'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can also use helpers in your query such as: author:, or source. The 'cites' parameter makes 'q' optional. The combined usage of 'cites' and 'q' triggers search within citing articles. The combined usage of 'cluster' with 'q' and 'cites' is prohibited. Use 'cluster' parameter only when necessary."
-                    },
-                    "cites": {
-                        "type": "string",
-                        "description": "Defines unique ID for an article to trigger Cited By searches. Usage of 'cites' will bring up a list of citing documents in Google Scholar. Example value: cites=1275980731835430123. The combined usage of 'cites' and 'q' triggers search within citing articles."
-                    },
-                    "as_ylo": {
-                        "type": "string",
-                        "description": "Defines the earliest year from which you want the results to be included. (e.g., setting 'as_ylo' to 2018 omits results from before that year). This parameter can be combined with the 'as_yhi' parameter."
-                    },
-                    "as_yhi": {
-                        "type": "string",
-                        "description": "Defines the latest year until which you want the results to be included. (e.g., setting 'as_yhi' to 2018 omits results from after that year). This parameter can be combined with the 'as_ylo' parameter."
-                    },
-                    "cluster": {
-                        "type": "string",
-                        "description": "Defines unique ID for an article to trigger All Versions searches. Example value: cluster=1275980731835430123. The combined usage of 'cluster' with 'q' and 'cites' is prohibited. Use 'cluster' parameter only when necessary."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination."
-                    },
-                    "num": {
-                        "type": "integer",
-                        "description": "Defines the maximum number of results to return, limited to 20."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebPlayStore",
-            "description": "Performs a search on the Google Play Store for apps, games, movies, or books. Example: {'name': 'play_store', 'parameters': {'q': 'best games', 'store': 'games'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. You can search for apps, games, movies or books."
-                    },
-                    "store": {
-                        "type": "string",
-                        "description": "Defines the type of Google Play store. Available options: apps - Apps store (default), games - Games store, movies - Movies store, books - Books store"
-                    },
-                    "apps_category": {
-                        "type": "string",
-                        "description": "Defines the apps and games store category. Use https://serpapi.com/google-play-apps-categories for a full list of supported Google Play Apps store categories."
-                    },
-                    "movies_category": {
-                        "type": "string",
-                        "description": "Defines the movies store category. Use https://serpapi.com/google-play-movies-categories for a full list of supported Google Play Movies store categories."
-                    },
-                    "books_category": {
-                        "type": "string",
-                        "description": "Defines the books store category. Use https://serpapi.com/google-play-books-categories for a full list of supported Google Play Books store categories."
-                    },
-                    "age": {
-                        "type": "string",
-                        "description": "Defines age subcategory. age works, and should be applied only in combination with next parameter / value pairs: store=apps, apps_category=FAMILY; store=movies, movies_category=FAMILY; store=books, books_category=coll_1689. It can be set to: AGE_RANGE1 - Ages up to 5, AGE_RANGE2 - Ages 6-8, AGE_RANGE3 - Ages 9-12"
-                    },
-                    "price": {
-                        "type": "integer",
-                        "description": "Used for sorting items by price. It is exclusive to the Google Play Books store, and it should be used only in combination with the q parameter. It can be set to: 1 - Free, 2 - Paid"
-                    },
-                    "store_device": {
-                        "type": "string",
-                        "description": "Defines the device for sorting results. Available options: phone - Phone device (default), tablet - Tablet device, tv - TV device, chromebook - Chromebook device, watch - Watch device, car - Car device"
-                    },
-                    "chart": {
-                        "type": "string",
-                        "description": "Used for showing top charts. It can return up to 50 results. Each store contains different charts which require different values for retrieving results. To get the value of a specific chart you can use our Google Play Store API JSON output: chart_options[index].value (e.g. chart=topselling_free)."
-                    },
-                    "see_more_token": {
-                        "type": "string",
-                        "description": "Defines the token used for retrieving all of the results from a specific sections."
-                    },
-                    "next_page_token": {
-                        "type": "string",
-                        "description": "Defines the next page token. It is used for retrieving the next page results."
-                    }
-                },
-                "required": [
-                    "store"
-                ]
-            }
-        },
-        {
-            "name": "searchWebSpecificProductInformation",
-            "description": "Performs a search for product information based on a product ID. Example: {'name': 'product', 'parameters': {'product_id': 'ABC123'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "product_id": {
-                        "type": "string",
-                        "description": "Defines the product to get results for. Normally found from shopping results for supported products (e.g., https://www.google.com/shopping/product/{product_id})."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination."
-                    },
-                    "page": {
-                        "type": "integer",
-                        "description": "Defines the page number for Google Online Sellers and Reviews. There are 10 results per page."
-                    },
-                    "offers": {
-                        "type": "boolean",
-                        "description": "Parameter for fetching offers results. Replaces former sellers=online results."
-                    },
-                    "specs": {
-                        "type": "boolean",
-                        "description": "Parameter for fetching specs results."
-                    },
-                    "reviews": {
-                        "type": "boolean",
-                        "description": "Parameter for fetching reviews results."
-                    },
-                    "filters": {
-                        "type": "string",
-                        "description": "Parameter defines filters and sorting for reviews and offers results. Available options: Offers filters: freeship:1 Show only products with free shipping ucond:1 Show only used products scoring:p Sort by base price scoring:tp Sort by total price scoring:cpd Sort by current promotion deals (special offers) scoring:mrd Sort by sellers rating Reviews filters: rsort:0 Sort by relevance rsort:1 Sort by date pub:{source} {source} is where the review originated, e.g., Best Buy rnum:{number} Number of results (100 is max). rnum takes precedence over the start and page parameters rpt:{number} Encoded pagination offset (check serpapi_pagination.next for the value)"
-                    }
-                },
-                "required": [
-                    "product_id"
-                ]
-            }
-        },
-        {
-            "name": "searchWebEvents",
-            "description": "Performs a search for events in a specific location. Example: {'name': 'events', 'parameters': {'q': 'music concerts', 'location': 'Austin, TX'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the query you want to search. To search for events in a specific location, just include the location inside your search query (e.g. Events in Austin, TX)."
-                    },
-                    "location": {
-                        "type": "string",
-                        "description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
-                    },
-                    "start": {
-                        "type": "integer",
-                        "description": "Defines the result offset. It skips the given number of results. It's used for pagination."
-                    },
-                    "htichips": {
-                        "type": "string",
-                        "description": "Allows the use of different filters. You can mix different kinds of filters by separating them with a comma. Available filters: date:today - Today's Events,date:tomorrow - Tomorrow's Events,date:week - This Week's Events,date:today - Today's Weekend's Events,date:next_week - Next Week's Events,date:month - This Month's Events,date:next_month - Next Month's Events,event_type:Virtual-Event - Online Events"
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "searchWebLocalServices",
-            "description": "Performs a search for local services such as restaurants, plumbers, or electricians. Example: {'name': 'local_services', 'parameters': {'q': 'coffee shops near me'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the service you want to search for. Use https://serpapi.com/google-local-services-queries for a full list of supported Google local services queries."
-                    },
-                    "data_cid": {
-                        "type": "string",
-                        "description": "Defines the Google CID (customer identifier) of a place. To acquire the data_cid you can either use the 'maps' function which has the data_cid field in the local_results object. Example CID for 'New York, NY, USA': 14414772292044717666."
-                    },
-                    "job_type": {
-                        "type": "string",
-                        "description": "Defines the type of a job, or a subcategory of a service you have searched for. For example, if you search for 'electrician', you can be more specific by adding a job_type (e.g. job_type=restore_power). Use https://serpapi.com/google-local-services-job-types for a full list of supported Google local services job types."
-                    },
-                    "cid": {
-                        "type": "string",
-                        "description": "Defines a unique ID of a place. The ID is available in our 'local_services' JSON response. Parameter is required when accessing a specific business and should be used with bid and pid parameters."
-                    },
-                    "bid": {
-                        "type": "string",
-                        "description": "Defines a unique ID of a place. The ID is available in our 'local_services' JSON response. Parameter is required when accessing a specific business and should be used with cid and pid parameters."
-                    },
-                    "pid": {
-                        "type": "string",
-                        "description": "Defines a unique ID of a place. The ID is available in our 'local_services' JSON response. Parameter is required when accessing a specific business and should be used with cid and bid parameters."
-                    }
-                },
-                "required": [
-                    "q",
-                    "data_cid"
-                ]
-            }
-        },
-        {
-            "name": "infoAboutWebSearchResult",
-            "description": "Retrieves information about a specific search result based on the URL or ILPS. Example: {'name': 'info_about_url', 'parameters': {'q': 'https://www.example.com/'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the URL of a website which results you want to show. Value should be formatted in the next order: About URL (e.g. About https://www.starbucks.com/)"
-                    },
-                    "ilps": {
-                        "type": "string",
-                        "description": "Defines unique ID of a website which results you want to show. This field is found in the 'organic_results' section of the 'search' API."
-                    }
-                },
-                "required": [
-                    "q",
-                    "ilps"
-                ]
-            }
-        },
-        {
-            "name": "scrapeWebURLsForRawHTMLData",
-            "description": "Downloads the data behind web URLs. The data is not processed or indexed.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "urls": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "required": [
-                    "urls"
-                ]
-            }
-        }
-    ],
-    "communication": [
-        {
-            "name": "translateText",
-            "description": "Performs a Google translation. Example: {'name': 'translateText', 'parameters': {'q': 'translate from english to german: good morning'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "q": {
-                        "type": "string",
-                        "description": "Defines the translation query. Should follow the format 'translate from [source language] to [target language]: [text to translate]'."
-                    }
-                },
-                "required": [
-                    "q"
-                ]
-            }
-        },
-        {
-            "name": "makeAudioOrVideoCallToYourContact",
-            "description": "Initiates a call (audio or video) to another user by their User ID. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeAudioOrVideoCallToUser', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "toUserID": {
-                        "type": "string"
-                    },
-                    "isVideo": {
-                        "type": "boolean"
-                    }
-                },
-                "required": [
-                    "toUserID",
-                    "isVideo"
-                ]
-            }
-        },
-        {
-            "name": "sendCryptoToYourContact",
-            "description": "Sends a specified amount of cryptocurrency to another user by their User ID or address'. Example: {'name': 'sendCrypto', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'symbol': 'ETH'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "toUserID": {
-                        "type": "string"
-                    },
-                    "amount": {
-                        "type": "number"
-                    },
-                    "symbol": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "toUserID",
-                    "amount",
-                    "symbol"
-                ]
-            }
-        },
-        {
-            "name": "requestCryptoToYourContact",
-            "description": "Requests a specified amount of cryptocurrency from another user by their User ID. Example: {'name': 'requestCrypto', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fromUserID": {
-                        "type": "string"
-                    },
-                    "amount": {
-                        "type": "number"
-                    },
-                    "symbol": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "fromUserID",
-                    "amount",
-                    "symbol"
-                ]
-            }
-        },
-        {
-            "name": "buyCrypto",
-            "description": "Buys a specified amount of cryptocurrency using a specific symbol. Example: {'name': 'buyCrypto', 'parameters': {'amount': 100, 'fromSymbol': 'USD', 'toSymbol': 'BTC'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "amount": {
-                        "type": "number"
-                    },
-                    "fromSymbol": {
-                        "type": "string"
-                    },
-                    "toSymbol": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "amount",
-                    "fromSymbol",
-                    "toSymbol"
-                ]
-            }
-        },
-        {
-            "name": "sellCrypto",
-            "description": "Sells a specified amount of cryptocurrency for a specific symbol. Example: {'name': 'sellCrypto', 'parameters': {'amount': 50, 'fromSymbol': 'BTC', 'toSymbol': 'USD'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "amount": {
-                        "type": "number"
-                    },
-                    "fromSymbol": {
-                        "type": "string"
-                    },
-                    "toSymbol": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "amount",
-                    "fromSymbol",
-                    "toSymbol"
-                ]
-            }
-        },
-        {
-            "name": "sendMessageBetweenYourContacts",
-            "description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenUsers', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "message": {
-                        "type": "string"
-                    },
-                    "isGroupMessage": {
-                        "type": "boolean"
-                    }
-                },
-                "required": [
-                    "userIDs",
-                    "message",
-                    "isGroupMessage"
-                ]
-            }
-        },
-        {
-            "name": "sendContactRequestToUsers",
-            "description": "Sends a contact request to specified User IDs.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "The unique identifiers of the users to whom the contact requests will be sent."
-                    }
-                },
-                "required": [
-                    "userIDs"
-                ]
-            }
-        },
-        {
-            "name": "deleteYourContacts",
-            "description": "Deletes specified users from the contact list.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "The unique identifiers of the users to be deleted from the contact list."
-                    }
-                },
-                "required": [
-                    "userIDs"
-                ]
-            }
-        },
-        {
-            "name": "deleteYourConversations",
-            "description": "Deletes specified conversations from the user's conversation list.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "conversationIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "The unique identifiers of the conversations to be deleted."
-                    }
-                },
-                "required": [
-                    "conversationIDs"
-                ]
-            }
-        },
-        {
-            "name": "findMutualFreeTimeWithYourContacts",
-            "description": "Finds a mutual free time slot with the specified users.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "The users with whom to find a mutual free time slot."
-                    },
-                    "start": {
-                        "type": "string",
-                        "description": "The start of the time range within which to find a mutual free time slot."
-                    },
-                    "end": {
-                        "type": "string",
-                        "description": "The end of the time range within which to find a mutual free time slot."
-                    }
-                },
-                "required": [
-                    "userIDs",
-                    "start",
-                    "end"
-                ]
-            }
-        },
-        {
-            "name": "scheduleCallWithYourContacts",
-            "description": "Schedules a call with specified users at a specified time.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "The IDs of the users with whom to schedule the call."
-                    },
-                    "time": {
-                        "type": "string",
-                        "format": "date-time",
-                        "description": "The time at which to schedule the call."
-                    }
-                },
-                "required": [
-                    "userIDs",
-                    "time"
-                ]
-            }
-        },
-        {
-            "name": "getYourCryptoTransactions",
-            "description": "Retrieves the transaction history of the user for a specific cryptocurrency.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "symbol": {
-                        "type": "string",
-                        "description": "The symbol of the cryptocurrency to fetch the transaction history for."
-                    }
-                },
-                "required": [
-                    "symbol"
-                ]
-            }
-        },
-        {
-            "name": "fetchConversationsWithYourContacts",
-            "description": "Fetches conversations based on provided filters.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "filters": {
-                        "type": "object",
-                        "description": "The filters to apply when fetching conversations. Possible filters can be by participants, keywords, dates, etc."
-                    }
-                },
-                "required": []
-            }
-        },
-        {
-            "name": "fetchYourContactsFromConversations",
-            "description": "Fetches contacts based on provided conversation IDs and filters.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "conversationIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "The unique identifiers of the conversations to fetch contacts from."
-                    },
-                    "filters": {
-                        "type": "object",
-                        "description": "Optional. The filters to apply when fetching contacts. Possible filters can be by name, email, user IDs, etc."
-                    },
-                    "onlineStatus": {
-                        "type": "string",
-                        "description": "The online status of the contacts to fetch. Can be 'online', 'offline', 'away', etc."
-                    }
-                },
-                "required": [
-                    "conversationIDs"
-                ]
-            }
-        },
-        {
-            "name": "inviteFriendsByEmail",
-            "description": "Invite friends to join the application by sending them an invitation email.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "emails": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "List of email addresses to invite."
-                    },
-                    "personalMessage": {
-                        "type": "string",
-                        "description": "Optional. A personal message to include in the invitation email."
-                    }
-                }
-            }
-        },
-        {
-            "name": "sendSuperDappMailToYourContacts",
-            "description": "Send a persistent message to the inbox of selected contacts. Different than regular messages which are like chat, this is more like mail within the app.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "List of recipient User IDs."
-                    },
-                    "subject": {
-                        "type": "string",
-                        "description": "Subject of the mail."
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "Content of the mail."
-                    }
-                },
-                "required": [
-                    "userIDs",
-                    "subject",
-                    "message"
-                ]
-            }
-        },
-        {
-            "name": "shareFolderWithYourContacts",
-            "description": "Share a folder with selected contacts.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "userIDs": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "List of recipient User IDs."
-                    },
-                    "permission": {
-                        "type": "string",
-                        "enum": [
-                            "write",
-                            "read"
-                        ],
-                        "description": "The permission level (write or read) to grant to the recipients."
-                    }
-                },
-                "required": [
-                    "userIDs",
-                    "permission"
-                ]
-            }
-        },
-        {
-            "name": "sendEmail",
-            "description": "Send an email to specified recipients with a given subject and message.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "to": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "List of email addresses to send the email to."
-                    },
-                    "subject": {
-                        "type": "string",
-                        "description": "The subject of the email."
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "The content of the email message."
-                    }
-                },
-                "required": [
-                    "to",
-                    "subject",
-                    "message"
-                ]
-            }
-        }
-    ],
-    "data_processing": [
-        {
-            "name": "doSemanticSearch",
-            "description": "Performs a semantic search over provided data. The results are indexed into a vector database for semantic lookup controlled by num_chunks, num_neighbour_chunks, and similarity_threshold. The `num_chunks`, `num_neighbour_chunks`, and `similarity_threshold` fields are described in `getInformationFromMemory`. Number of tokens formula: num_chunks x (num_neighbour_chunks+1) x 256 (chunk size). Example: {\"name\": \"semantic_search\", \"parameters\": {\"data\": \"Text to analyze\", \"num_chunks\": 5, \"num_neighbour_chunks\": 2, \"similarity_threshold\": 0.73}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "data": {
-                        "type": "string"
-                    },
-                    "num_chunks": {
-                        "type": "integer"
-                    },
-                    "num_neighbour_chunks": {
-                        "type": "integer"
-                    },
-                    "similarity_threshold": {
-                        "type": "number"
-                    },
-                    "data_type": {
-                        "type": "string",
-                        "description": "'html' for HTML data so we can clean it to reduce size and increase semantic search effectiveness, or 'other'"
-                    }
-                },
-                "required": [
-                    "data"
-                ]
-            }
-        },
-        {
-            "name": "createFolder",
-            "description": "Create a new folder in the user's file storage.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "folderName": {
-                        "type": "string",
-                        "description": "The name of the new folder."
-                    }
-                },
-                "required": [
-                    "folderName"
-                ]
-            }
-        },
-        {
-            "name": "createTextFile",
-            "description": "Create a new text file in the user's file storage.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fileName": {
-                        "type": "string",
-                        "description": "The name of the new file."
-                    },
-                    "fileContent": {
-                        "type": "string",
-                        "description": "The content to write in the new file."
-                    }
-                },
-                "required": [
-                    "fileName",
-                    "fileContent"
-                ]
-            }
-        }
-    ],
-    "sensory_perception": [
-        {
-            "name": "doImageAnalysis",
-            "description": "Performs a Google Lens call based on an image URL. Can do image recognition and transcribe it or extract text. Example: {'name': 'doImageAnalysis', 'parameters': {'url': 'https://example.com/image.jpg'}}",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "Defines the URL of an image to perform the Google Lens call."
-                    }
-                },
-                "required": [
-                    "url"
-                ]
-            }
-        }
-    ]
+	"information_retrieval": [{
+			"name": "searchWebMapLocations",
+			"description": "Performs a Google Maps search. Example: {\"searchWebMapLocations\": \"maps\", \"parameters\": {\"q\": \"restaurants near me\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Maps search. The parameter is only required if type is set to search."
+					},
+					"ll": {
+						"type": "string",
+						"description": "Defines GPS coordinates of location where you want your q (query) to be applied. It has to be constructed in the next sequence: @ + latitude + , + longitude + , + zoom. This will form a string that looks like this: e.g. @40.7455096,-74.0083012,14z. The zoom parameter is optional but recommended for higher precision (it ranges from 3z, map completely zoomed out - to 21z, map completely zoomed in). The parameter should only be used when type is set to search."
+					},
+					"data": {
+						"type": "string",
+						"description": "Parameter is only required if type is set to place. In that case, it defines a search for a specific place. It has to be constructed in the next sequence: !4m5!3m4!1s + data_id + !8m2!3d + latitude + !4d + longitude. This will form a string that looks like this: e.g. !4m5!3m4!1s0x89c259b7abdd4769:0xc385876db174521a!8m2!3d40.750231!4d-74.004019. Parameter can also be used to filter the search results."
+					},
+					"place_id": {
+						"type": "string",
+						"description": "Defines the unique reference to a place on a Google Map. Place IDs are available for most locations, including businesses, landmarks, parks, and intersections."
+					},
+					"type": {
+						"type": "string",
+						"description": "Defines the type of search you want to make. It can be set to: search - returns a list of results for the set q parameter, place - returns results for a specific place when data parameter is set"
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 20 is the 2nd page of results, 40 is the 3rd page of results, etc.)."
+					}
+				},
+				"required": [
+					"type"
+				]
+			}
+		},
+		{
+			"name": "searchWebJobs",
+			"description": "Performs a job search. Example: {\"name\": \"searchWebJobs\", \"parameters\": {\"q\": \"software engineer\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 10 is the 2nd page of results, 20 is the 3rd page of results, etc.)."
+					},
+					"chips": {
+						"type": "string",
+						"description": "Defines additional query conditions. Top of a job search page contains elements called chips, its values are extracted in order to be passed to chips parameter. E.g. city:Owg_06VPwoli_nfhBo8LyA== will return results for New York."
+					},
+					"lrad": {
+						"type": "integer",
+						"description": "Defines search radius in kilometers. Does not strictly limit the radius."
+					},
+					"ltype": {
+						"type": "string",
+						"description": "Parameter will filter the results by work from home."
+					}
+				},
+				"required": [
+					"q"
+				]
+			}
+		},
+		{
+			"name": "searchWebShopping",
+			"description": "Performs a Google Shopping search. Example: {\"name\": \"searchWebShopping\", \"parameters\": {\"q\": \"laptop\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Shopping search."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 60 is the 2nd page of results, 120 is the 3rd page of results, etc.)."
+					},
+					"num": {
+						"type": "integer",
+						"description": "Defines the maximum number of results to return. (e.g., 60 (default) returns 60 results, 40 returns 40 results, and 100 (maximum) returns 100 results). Any number greater than maximum number (100) will default to 100. Any number lesser than minimum number (1) will default to 60."
+					}
+				},
+				"required": [
+					"q"
+				]
+			}
+		},
+		{
+			"name": "searchWebImages",
+			"description": "Performs a Google Images search. Example: {\"name\": \"searchWebImages\", \"parameters\": {\"q\": \"cat\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Images search. e.g. inurl:, site:, intitle:."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"chips": {
+						"type": "string",
+						"description": "Enables to filter image search. It's a string provided by Google as suggested search, like: red apple. Chips are provided under the section: suggested_searches when ijn = 0."
+					},
+					"ijn": {
+						"type": "integer",
+						"description": "Defines the page number for Google Images. There are 100 images per page. This parameter is equivalent to start (offset) = ijn * 100."
+					}
+				},
+				"required": [
+					"q"
+				]
+			}
+		},
+		{
+			"name": "searchWebVideos",
+			"description": "Performs a Google Videos search. Example: {\"name\": \"searchWebVideos\", \"parameters\": {\"q\": \"funny videos\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Videos search. e.g. inurl:, site:, intitle:. We also support advanced search query parameters such as as_dt and as_eq. See https://serpapi.com/advanced-google-query-parameters for a list of supported advanced search query parameters."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination."
+					},
+					"num": {
+						"type": "integer",
+						"description": "Defines the maximum number of results to return."
+					}
+				},
+				"required": [
+					"q"
+				]
+			}
+		},
+		{
+			"name": "searchWebThingsNearMe",
+			"description": "Performs a Google Local search. You have the ability to do a searchWebMapLocations search and use a local services category and data_cid to get a more curated result using searchWebLocalServices or use this for a more general search. Example: {\"name\": \"searchWebThingsNearMe\", \"parameters\": {\"q\": \"coffee shops near me\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Local search."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination. On desktop, parameter only accepts multiples of 20 (e.g. 20 for the second page results, 40 for the third page results, etc.). On mobile, parameter only accepts multiples of 10 (e.g. 10 for the second page results, 20 for the third page results, etc.)."
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "searchWebTrends",
+			"description": "Performs a Google Trends search. Example: {\"name\": \"searchWebTrends\", \"parameters\": {\"q\": \"technology\"}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query or queries you want to search. You can use anything that you would use in a regular Google Trends search. The maximum number of queries per search is 5 (this only applies to 'Interest over time' and 'Compared breakdown by region' data_type, other types of data will only accept 1 query per search). When passing multiple queries you need to use a comma (,) to separate them (e.g. coffee,pizza,dark chocolate,/m/027lnzs,bread)."
+					},
+					"geo": {
+						"type": "string",
+						"description": "Defines the location from where you want the search to originate. It defaults to Worldwide (activated when the value of geo parameter is not set or empty). Use https://serpapi.com/google-trends-locations for a full list of supported Google Trends locations."
+					},
+					"region": {
+						"type": "string",
+						"description": "Used for getting more specific results when using 'Compared breakdown by region' and 'Interest by region' data_type charts. Other data_type charts do not accept region parameter. The default value depends on the geo location that is set. Available options: COUNTRY - Country, REGION - Subregion, DMA - Metro, CITY - City"
+					},
+					"data_type": {
+						"type": "string",
+						"description": "Defines the type of search you want to do. Available options: TIMESERIES - Interest over time (default) - Accepts both single and multiple queries per search. GEO_MAP - Compared breakdown by region - Accepts only multiple queries per search. GEO_MAP_0 - Interest by region - Accepts only single query per search. RELATED_TOPICS - Related topics - Accepts only single query per search. RELATED_QUERIES - Related queries - Accepts only single query per search."
+					},
+					"tz": {
+						"type": "integer",
+						"description": "Used to define a time zone. The default value is set to 420 (Pacific Day Time(PDT): -07:00). Value is shown in minutes and can span from -1439 to 1439. tz can be calculated using the time difference between UTC +0 and desired timezone. Example: 60 x ((Time in UTC+0 Now) - (Time in PDT Now)) = 420 will give results for PDT now. Because the reference point is UTC+0, the positive time zones will result in negative tz whereas negative time zones will result in positive tz. tz parameter also affects timestamps in response."
+					},
+					"cat": {
+						"type": "integer",
+						"description": "Used to define a search category. The default value is set to 0 ('All categories'). Use https://serpapi.com/google-trends-categories for a full list of supported Google Trends Categories."
+					},
+					"gprop": {
+						"type": "string",
+						"description": "Used for sorting results by property. The default property is set to Web Search (activated when the value of gprop parameter is not set or empty). Other available options: images - Image Search, news - News Search, froogle - Google Shopping, youtube - YouTube Search"
+					},
+					"date": {
+						"type": "string",
+						"description": "Used to define a date. Available options: now, 1-H - Past hour, 4-H - Past 4 hours, 1-d - Past day, 7-d - Past 7 days, today 1-m - Past 30 days, today 3-m - Past 90 days, today 12-m - Past 12 months, today 5-y - Past 5 years, all - 2004 - present. You can also pass custom values: Dates from 2004 to present: yyyy-mm-dd yyyy-mm-dd (e.g. 2021-10-15 2022-05-25) Dates with hours within a week range: yyyy-mm-ddThh yyyy-mm-ddThh (e.g. 2022-05-19T10 2022-05-24T22). Hours will be calculated depending on the tz (time zone) parameter."
+					},
+					"csv": {
+						"type": "boolean",
+						"description": "Used for retrieving the CSV results. Set the parameter to true to retrieve CSV results as an array."
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "searchWebStockTickers",
+			"description": "Performs a financial search for stocks, indices, mutual funds, currencies, or futures. Relevant queries should be in stock ticker format like 'GOOG:NASDAQ' or 'BTC-USD'. Example: {'name': 'searchWebStockTickers', 'parameters': {'tickers': ['GOOG:NASDAQ', 'BTC-USD']}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"tickers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Defines the tickers you want to search. They can be stocks, indices, mutual funds, currencies, or futures. Example: ['GOOG:NASDAQ', 'BTC-USD']"
+					}
+				},
+				"required": ["tickers"]
+			}
+		},
+		{
+			"name": "searchWebScholar",
+			"description": "Performs a search on Google Scholar for academic articles and publications. Example: {'name': 'searchWebScholar', 'parameters': {'q': 'author:John Doe'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can also use helpers in your query such as: author:, or source. The 'cites' parameter makes 'q' optional. The combined usage of 'cites' and 'q' triggers search within citing articles. The combined usage of 'cluster' with 'q' and 'cites' is prohibited. Use 'cluster' parameter only when necessary."
+					},
+					"cites": {
+						"type": "string",
+						"description": "Defines unique ID for an article to trigger Cited By searches. Usage of 'cites' will bring up a list of citing documents in Google Scholar. Example value: cites=1275980731835430123. The combined usage of 'cites' and 'q' triggers search within citing articles."
+					},
+					"as_ylo": {
+						"type": "string",
+						"description": "Defines the earliest year from which you want the results to be included. (e.g., setting 'as_ylo' to 2018 omits results from before that year). This parameter can be combined with the 'as_yhi' parameter."
+					},
+					"as_yhi": {
+						"type": "string",
+						"description": "Defines the latest year until which you want the results to be included. (e.g., setting 'as_yhi' to 2018 omits results from after that year). This parameter can be combined with the 'as_ylo' parameter."
+					},
+					"cluster": {
+						"type": "string",
+						"description": "Defines unique ID for an article to trigger All Versions searches. Example value: cluster=1275980731835430123. The combined usage of 'cluster' with 'q' and 'cites' is prohibited. Use 'cluster' parameter only when necessary."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination."
+					},
+					"num": {
+						"type": "integer",
+						"description": "Defines the maximum number of results to return, limited to 20."
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "searchWebPlayStore",
+			"description": "Performs a search on the Google Play Store for apps, games, movies, or books. Example: {'name': 'searchWebPlayStore', 'parameters': {'q': 'best games', 'store': 'games'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. You can search for apps, games, movies, or books."
+					},
+					"store": {
+						"type": "string",
+						"description": "Defines the type of Google Play store. Available options: apps - Apps store (default), games - Games store, movies - Movies store, books - Books store"
+					},
+					"apps_category": {
+						"type": "string",
+						"description": "Defines the apps and games store category. Use https://serpapi.com/google-play-apps-categories for a full list of supported Google Play Apps store categories."
+					},
+					"movies_category": {
+						"type": "string",
+						"description": "Defines the movies store category. Use https://serpapi.com/google-play-movies-categories for a full list of supported Google Play Movies store categories."
+					},
+					"books_category": {
+						"type": "string",
+						"description": "Defines the books store category. Use https://serpapi.com/google-play-books-categories for a full list of supported Google Play Books store categories."
+					},
+					"age": {
+						"type": "string",
+						"description": "Defines age subcategory. age works, and should be applied only in combination with next parameter / value pairs: store=apps, apps_category=FAMILY; store=movies, movies_category=FAMILY; store=books, books_category=coll_1689. It can be set to: AGE_RANGE1 - Ages up to 5, AGE_RANGE2 - Ages 6-8, AGE_RANGE3 - Ages 9-12"
+					},
+					"price": {
+						"type": "integer",
+						"description": "Used for sorting items by price. It is exclusive to the Google Play Books store, and it should be used only in combination with the q parameter. It can be set to: 1 - Free, 2 - Paid"
+					},
+					"store_device": {
+						"type": "string",
+						"description": "Defines the device for sorting results. Available options: phone - Phone device (default), tablet - Tablet device, tv - TV device, chromebook - Chromebook device, watch - Watch device, car - Car device"
+					},
+					"chart": {
+						"type": "string",
+						"description": "Used for showing top charts. It can return up to 50 results. Each store contains different charts which require different values for retrieving results. To get the value of a specific chart you can use our Google Play Store API JSON output: chart_options[index].value (e.g. chart=topselling_free)."
+					},
+					"see_more_token": {
+						"type": "string",
+						"description": "Defines the token used for retrieving all of the results from a specific sections."
+					},
+					"next_page_token": {
+						"type": "string",
+						"description": "Defines the next page token. It is used for retrieving the next page results."
+					}
+				},
+				"required": ["store"]
+			}
+		},
+		{
+			"name": "searchWebProductInformation",
+			"description": "Performs a search for product information based on a product ID. Used in conjunction with searchWebShopping so you may find product_id. Example: {'name': 'searchWebProductInformation', 'parameters': {'product_id': 'ABC123'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"product_id": {
+						"type": "string",
+						"description": "Defines the product to get results for. Normally found from shopping results (searchWebShopping) for supported products (e.g., https://www.google.com/shopping/product/{product_id})."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination."
+					},
+					"page": {
+						"type": "integer",
+						"description": "Defines the page number for Google Online Sellers and Reviews. There are 10 results per page."
+					},
+					"offers": {
+						"type": "boolean",
+						"description": "Parameter for fetching offers results. Replaces former sellers=online results."
+					},
+					"specs": {
+						"type": "boolean",
+						"description": "Parameter for fetching specs results."
+					},
+					"reviews": {
+						"type": "boolean",
+						"description": "Parameter for fetching reviews results."
+					},
+					"filters": {
+						"type": "string",
+						"description": "Parameter defines filters and sorting for reviews and offers results. Available options: Offers filters: freeship:1 Show only products with free shipping ucond:1 Show only used products scoring:p Sort by base price scoring:tp Sort by total price scoring:cpd Sort by current promotion deals (special offers) scoring:mrd Sort by sellers rating Reviews filters: rsort:0 Sort by relevance rsort:1 Sort by date pub:{source} {source} is where the review originated, e.g., Best Buy rnum:{number} Number of results (100 is max). rnum takes precedence over the start and page parameters rpt:{number} Encoded pagination offset (check serpapi_pagination.next for the value)"
+					}
+				},
+				"required": ["product_id"]
+			}
+		},
+		{
+			"name": "searchWebEvents",
+			"description": "Performs a search for events in a specific location. Example: {'name': 'searchWebEvents', 'parameters': {'q': 'music concerts', 'location': 'Austin, TX'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the query you want to search. To search for events in a specific location, just include the location inside your search query (e.g. Events in Austin, TX)."
+					},
+					"location": {
+						"type": "string",
+						"description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
+					},
+					"start": {
+						"type": "integer",
+						"description": "Defines the result offset. It skips the given number of results. It's used for pagination."
+					},
+					"htichips": {
+						"type": "string",
+						"description": "Allows the use of different filters. You can mix different kinds of filters by separating them with a comma. Available filters: date:today - Today's Events,date:tomorrow - Tomorrow's Events,date:week - This Week's Events,date:today - Today's Weekend's Events,date:next_week - Next Week's Events,date:month - This Month's Events,date:next_month - Next Month's Events,event_type:Virtual-Event - Online Events"
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "searchWebLocalServices",
+			"description": "Performs a search for local services. Examples include 'electrician', 'estate_lawyer', 'financial_planner'. Use in conjunction with searchWebMapLocations so you may find location to search for local services. If you do not have data_cid then just use searchWebThingsNearMe to find things near an area specified by user. Example: {'name': 'searchWebLocalServices', 'parameters': {'q': 'garage_door_pro', 'data_cid': 13676701942912889197}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the service you want to search for. Use https://serpapi.com/google-local-services-queries for a full list of supported Google local services queries."
+					},
+					"data_cid": {
+						"type": "string",
+						"description": "Defines the Google CID (customer identifier) of a place. To acquire the data_cid you can either use the 'searchWebMapLocations' function which has the data_cid field in the local_results object. Example CID for 'New York, NY, USA': 14414772292044717666."
+					},
+					"job_type": {
+						"type": "string",
+						"description": "Defines the type of a job, or a subcategory of a service you have searched for. For example, if you search for 'electrician', you can be more specific by adding a job_type (e.g. job_type=restore_power). Use https://serpapi.com/google-local-services-job-types for a full list of supported Google local services job types."
+					},
+					"cid": {
+						"type": "string",
+						"description": "Defines a unique ID of a place. The ID is available in our 'searchWebLocalServices' JSON response. Parameter is required when accessing a specific business and should be used with bid and pid parameters."
+					},
+					"bid": {
+						"type": "string",
+						"description": "Defines a unique ID of a place. The ID is available in our 'local_sesearchWebLocalServicesrvices' JSON response. Parameter is required when accessing a specific business and should be used with cid and pid parameters."
+					},
+					"pid": {
+						"type": "string",
+						"description": "Defines a unique ID of a place. The ID is available in our 'searchWebLocalServices' JSON response. Parameter is required when accessing a specific business and should be used with cid and bid parameters."
+					}
+				},
+				"required": ["q", "data_cid"]
+			}
+		}
+	],
+	"communication": [{
+			"name": "translateText",
+			"description": "Performs a Google translation. Example: {'name': 'translateText', 'parameters': {'q': 'translate from english to german: good morning'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the translation query. Should follow the format 'translate from [source language] to [target language]: [text to translate]'."
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "makeAudioOrVideoCallToYourContact",
+			"description": "Initiates a call (audio or video) to another user by their User ID. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeAudioOrVideoCallToYourContact', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"toUserID": {
+						"type": "string"
+					},
+					"isVideo": {
+						"type": "boolean"
+					}
+				},
+				"required": ["toUserID", "isVideo"]
+			}
+		},
+		{
+			"name": "sendCryptoToYourContact",
+			"description": "Sends a specified amount of cryptocurrency to another user by their User ID or address'. Example: {'name': 'sendCryptoToYourContact', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'symbol': 'ETH'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"toUserID": {
+						"type": "string"
+					},
+					"amount": {
+						"type": "number"
+					},
+					"symbol": {
+						"type": "string"
+					}
+				},
+				"required": ["toUserID", "amount", "symbol"]
+			}
+		},
+		{
+			"name": "requestCryptoToYourContact",
+			"description": "Requests a specified amount of cryptocurrency from another user by their User ID. Example: {'name': 'requestCryptoToYourContact', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"fromUserID": {
+						"type": "string"
+					},
+					"amount": {
+						"type": "number"
+					},
+					"symbol": {
+						"type": "string"
+					}
+				},
+				"required": ["fromUserID", "amount", "symbol"]
+			}
+		},
+		{
+			"name": "buyCrypto",
+			"description": "Buys a specified amount of cryptocurrency using a specific symbol. Example: {'name': 'buyCrypto', 'parameters': {'amount': 100, 'fromSymbol': 'USD', 'toSymbol': 'BTC'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"amount": {
+						"type": "number"
+					},
+					"fromSymbol": {
+						"type": "string"
+					},
+					"toSymbol": {
+						"type": "string"
+					}
+				},
+				"required": ["amount", "fromSymbol", "toSymbol"]
+			}
+		},
+		{
+			"name": "sellCrypto",
+			"description": "Sells a specified amount of cryptocurrency for a specific symbol. Example: {'name': 'sellCrypto', 'parameters': {'amount': 50, 'fromSymbol': 'BTC', 'toSymbol': 'USD'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"amount": {
+						"type": "number"
+					},
+					"fromSymbol": {
+						"type": "string"
+					},
+					"toSymbol": {
+						"type": "string"
+					}
+				},
+				"required": ["amount", "fromSymbol", "toSymbol"]
+			}
+		},
+		{
+			"name": "sendMessageBetweenYourContacts",
+			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"message": {
+						"type": "string"
+					},
+					"isGroupMessage": {
+						"type": "boolean"
+					}
+				},
+				"required": ["userIDs", "message", "isGroupMessage"]
+			}
+		},
+		{
+			"name": "sendContactRequestToUsers",
+			"description": "Sends a contact request to specified User IDs.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the users to whom the contact requests will be sent."
+					}
+				},
+				"required": ["userIDs"]
+			}
+		},
+
+
+		{
+			"name": "deleteYourContacts",
+			"description": "Deletes specified users from the contact list.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the users to be deleted from the contact list."
+					}
+				},
+				"required": ["userIDs"]
+			}
+		},
+		{
+			"name": "deleteYourConversations",
+			"description": "Deletes specified conversations from the user's conversation list.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"conversationIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the conversations to be deleted."
+					}
+				},
+				"required": ["conversationIDs"]
+			}
+		},
+		{
+			"name": "findMutualFreeTimeWithYourContacts",
+			"description": "Finds a mutual free time slot with the specified users.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The users with whom to find a mutual free time slot."
+					},
+					"start": {
+						"type": "string",
+						"description": "The start of the time range within which to find a mutual free time slot."
+					},
+					"end": {
+						"type": "string",
+						"description": "The end of the time range within which to find a mutual free time slot."
+					}
+				},
+				"required": ["userIDs", "start", "end"]
+			}
+		},
+		{
+			"name": "scheduleCallWithYourContacts",
+			"description": "Schedules a call with specified users at a specified time.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The IDs of the users with whom to schedule the call."
+					},
+					"time": {
+						"type": "string",
+						"format": "date-time",
+						"description": "The time at which to schedule the call."
+					}
+				},
+				"required": ["userIDs", "time"]
+			}
+		},
+		{
+			"name": "getYourCryptoTransactions",
+			"description": "Retrieves the transaction history of the user for a specific cryptocurrency.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"symbol": {
+						"type": "string",
+						"description": "The symbol of the cryptocurrency to fetch the transaction history for."
+					}
+				},
+				"required": ["symbol"]
+			}
+		},
+		{
+			"name": "fetchConversationsWithYourContacts",
+			"description": "Fetches conversations based on provided filters.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"filters": {
+						"type": "object",
+						"description": "The filters to apply when fetching conversations. Possible filters can be by participants, keywords, dates, etc."
+					}
+				},
+				"required": []
+			}
+		},
+		{
+			"name": "fetchYourContactsFromConversations",
+			"description": "Fetches contacts based on provided conversation IDs and filters.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"conversationIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the conversations to fetch contacts from."
+					},
+					"filters": {
+						"type": "object",
+						"description": "Optional. The filters to apply when fetching contacts. Possible filters can be by name, email, user IDs, etc."
+					},
+					"onlineStatus": {
+						"type": "string",
+						"description": "The online status of the contacts to fetch. Can be 'online', 'offline', 'away', etc."
+					}
+				},
+				"required": ["conversationIDs"]
+			}
+		},
+		{
+			"name": "inviteFriendsByEmail",
+			"description": "Invite friends to join the application by sending them an invitation email.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"emails": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of email addresses to invite."
+					},
+					"personalMessage": {
+						"type": "string",
+						"description": "Optional. A personal message to include in the invitation email."
+					}
+				}
+			}
+		},
+		{
+			"name": "sendSuperDappMailToYourContacts",
+			"description": "Send a persistent message to the inbox of selected contacts. Different than regular messages which are like chat, this is more like mail within the app.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of recipient User IDs."
+					},
+					"subject": {
+						"type": "string",
+						"description": "Subject of the mail."
+					},
+					"message": {
+						"type": "string",
+						"description": "Content of the mail."
+					}
+				},
+				"required": ["userIDs", "subject", "message"]
+			}
+		},
+		{
+			"name": "shareFolderWithYourContacts",
+			"description": "Share a folder with selected contacts.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of recipient User IDs."
+					},
+					"permission": {
+						"type": "string",
+						"enum": ["write", "read"],
+						"description": "The permission level (write or read) to grant to the recipients."
+					}
+				},
+				"required": ["userIDs", "permission"]
+			}
+		},
+		{
+			"name": "sendEmail",
+			"description": "Send an email to specified recipients with a given subject and message.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of email addresses to send the email to."
+					},
+					"subject": {
+						"type": "string",
+						"description": "The subject of the email."
+					},
+					"message": {
+						"type": "string",
+						"description": "The content of the email message."
+					}
+				},
+				"required": ["to", "subject", "message"]
+			}
+		}
+
+	],
+	"data_processing": [{
+			"name": "createFolder",
+			"description": "Create a new folder in the user's file storage.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"folderName": {
+						"type": "string",
+						"description": "The name of the new folder."
+					}
+				},
+				"required": ["folderName"]
+			}
+		},
+		{
+			"name": "createOrMoveTextFile",
+			"description": "Create a new text file in the user's file storage or move a downloaded file handle to the user's local storage for persistence.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"fileName": {
+						"type": "string",
+						"description": "The name of the new file or the downloaded file to be moved."
+					},
+					"fileContent": {
+						"type": "string",
+						"description": "The content to write in the new file. Not required when moving a downloaded file."
+					},
+					"downloadedFilePath": {
+						"type": "string",
+						"description": "The path of the downloaded file to be moved. Required when moving a downloaded file."
+					}
+				},
+				"required": ["fileName"]
+			}
+		},
+		{
+			"name": "summarizeURLs",
+			"description": "Creates a summary of the content at the provided URLs. The summary will be concise, highlight the key points, and accept a maximum token size for the summary. URLs must point to text-based content (e.g., TXT, CSV, HTML, JSON, XML, etc.) or PDF files.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"urls": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"context": {
+						"type": "string",
+						"description": "Optional. Additional context to guide the summarization."
+					},
+					"maxTokens": {
+						"type": "integer",
+						"description": "The maximum token size for the summary. Should be at least 1000 usually for usefulness."
+					}
+				},
+				"required": ["urls"]
+			}
+		}
+	],
+	"sensory_perception": [{
+		"name": "doImageAnalysis",
+		"description": "Performs a Google Lens call based on an image URL or file handle. Can do image recognition and transcribe it or extract text. Example: {'name': 'doImageAnalysis', 'parameters': {'url': 'https://example.com/image.jpg'}}",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"url": {
+					"type": "string",
+					"description": "Defines the URL or file handle of an image to perform the Google Lens call."
+				}
+			},
+			"required": ["url"]
+		}
+	}]
 }
