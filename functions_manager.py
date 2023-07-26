@@ -92,11 +92,13 @@ class FunctionsManager1:
     def pull_functions(self, query):
         """Fetch functions based on a query."""
         self.lock.reader_acquire()
+        response = []
         try:
             if self.query_engine is None:
                 print("FunctionsManager: Error pull_functions, query_engine doesn't exist")
                 return None
-            response = self.query_engine.query(query)
+            for q in query:
+                response.append(self.query_engine.query(str(q)))
             return response
         finally:
             self.lock.reader_release()
