@@ -61,13 +61,12 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_memory_1/')
-async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), ):
+async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
+    """Endpoint to push memory for a specific user."""
     logging.info(f'Writing memory for user {user_id}')
     elapsed_time = memory_manager1.push_memory(user_id, query, llm_response)
-    logging.info('Pushed memory for user %s, query: %s, response: %s',
-                 user_id, query, llm_response)  # log the data push
-    logging.info('Elapsed time for operation: %s',
-                 elapsed_time)  # log the elapsed time
+    logging.info(f'Pushed memory for user {user_id}, query: {query}, response: {llm_response}')  # log the data push
+    logging.info(f'Elapsed time for operation: {elapsed_time}')  # log the elapsed time
 
     return {'elapsed_time': elapsed_time}
 
@@ -95,13 +94,15 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
 
 @app.post('/push_html_1/')
 async def loadHTML(html_docs: List[str] = Form(...), source_urls: List[str] = Form(...), hash: str = Form(...)):
-    logging.info(f'Loading HTML')
+    """Endpoint to load HTML content."""
+    logging.info('Loading HTML')
     web_manager.push_html(hash, source_urls, html_docs)
     return {'success': 'success'}
 
 @app.post('/delete_html/')
 async def deleteHTML(hash: str = Form(...)):
-    logging.info(f'Deleting HTML')
+    """Endpoint to delete HTML content."""
+    logging.info('Deleting HTML')
     web_manager.delete_html(hash)
     return {'success': 'success'}
 
@@ -120,12 +121,11 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
 
 @app.post('/pull_memory_1/')
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
+    """Endpoint to pull relevant memories for a specific user."""
     logging.info(f'Pulling relevant memories for user {user_id}')
     memories, elapsed_time = memory_manager1.pull_memory(user_id, query, context=context)
-    logging.info('Pulled relevant memories for user %s, query: %s, context: %s',
-                 user_id, query, context)  # log the data pull
-    logging.info('Elapsed time for operation: %s',
-                 elapsed_time)  # log the elapsed time
+    logging.info(f'Pulled relevant memories for user {user_id}, query: {query}, context: {context}')  # log the data pull
+    logging.info(f'Elapsed time for operation: {elapsed_time}')  # log the elapsed time
 
     return {'memories': memories, 'elapsed_time': elapsed_time}
 
@@ -143,12 +143,11 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
 
 @app.post('/semantic_search_html1/')
 async def semanticSearchHTML(query: str = Form(...), hash: str = Form(...)):
-    logging.info(f'Semantic search HTML')
+    """Endpoint to conduct a semantic search in HTML content."""
+    logging.info('Semantic search HTML')
     results, elapsed_time = memory_manager1.pull_html(hash, query)
-    logging.info('Pulled relevant results for query: %s',
-                 query)  # log the data pull
-    logging.info('Elapsed time for operation: %s',
-                 elapsed_time)  # log the elapsed time
+    logging.info(f'Pulled relevant results for query: {query}')  # log the data pull
+    logging.info(f'Elapsed time for operation: {elapsed_time}')  # log the elapsed time
     return {'results': results, 'elapsed_time': elapsed_time}
 
 class ActionItem(BaseModel):
@@ -182,19 +181,15 @@ async def getFunctions(function_input: FunctionInput):
 
 @app.post('/get_functions1/')
 async def getFunctions(function_input: FunctionInput):
+    """Endpoint to get functions based on provided input."""
     action_items = function_input.action_items
-    # try:
 
     logging.info(f'Processing Action Item: {action_items}')
     result, cb = await memory_manager1.get_functions(action_items)
-    
-    logging.info('Pulled relevant results for query: %s', action_items)
-    logging.info('Elapsed time for operation: %s', cb)
-        
+    logging.info(f'Pulled relevant results for query: {action_items}')
+    logging.info(f'Elapsed time for operation: {cb}')
+
     return result
-    # except Exception as e:
-    #     logging.error(str(e))
-    #     raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
 
 @app.post('/overwrite_functions/')
 async def overwriteFunctions(functionsJson: str = Form(...), examplesJson: str = Form(...)):
@@ -230,20 +225,15 @@ async def overwriteFunctions(functionsJson: str = Form(...), examplesJson: str =
 
 @app.post('/overwrite_functions_1/')
 async def overwriteFunctions(functionsJson: str = Form(...)):
-
-    logging.info(f'Overwriting functions')
+    """Endpoint to overwrite functions."""
+    logging.info('Overwriting functions')
     with open('utils/functions.json', 'w') as f:
         f.write(functionsJson)
-        f.close() 
-
     with open('utils/functions.json', 'r') as f:
         functionsJson = json.load(f)
-        f.close()
-    
-    if functionsJson is None:
+
+    if functionsJson is None or functionsJson['informationretrieval_functions'] is None:
         return {'Reverted': True} 
-    if functionsJson['informationretrieval_functions'] is None:
-        return {'Reverted': True}
 
     result = functions_manager1.push_functions(functionsJson)
     logging.info('Overwrote functions')
@@ -259,13 +249,15 @@ async def clearUserMemory(user_id: str = Form(...)):
 
 @app.post('/clear_user_memory_1/')
 async def clearUserMemory(user_id: str = Form(...)):
+    """Endpoint to clear memory for a specific user."""
     logging.info(f'Clearing user memory for user {user_id}')
-    logging.info('Cleared user memory for user %s', user_id)
-    return memory_manager1.delete_memory(user_id)
+    memory_manager1.delete_memory(user_id)
+    logging.info(f'Cleared user memory for user {user_id}')
+    return {'success': 'success'}
 
 
 @app.get('/test_callback/')
 async def test_callback():
-    logging.info(f'Test callback')
-
+    """Test callback endpoint."""
+    logging.info('Test callback')
     return {'test': 'test'}
