@@ -6,10 +6,20 @@ from llama_index.llms import OpenAI
 from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
+from typing import List
+from pydantic import BaseModel, Field
 import schedule
 import threading
 import os
 
+class HTMLItem(BaseModel):
+    source_url: str
+    html_doc: str
+
+class HTMLInput(BaseModel):
+    action_items: List[HTMLItem] = Field(..., example=[{"source_url": "http://example.com", "html_doc": "text1"}])
+    hash: str
+    
 class WebManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -81,8 +91,9 @@ class WebManager:
             finally:
                 lock.writer_release()
 
-    def push_html(self, hash_key, urls, html_docs):
+    def push_html(self, function_input: HTMLInput):
         """Add new HTML data to the current index for a specific hash."""
+        hash_key = function_input.hash
         if hash_key in self.index:
             print("WebManager: Error push_html, hash already exists")
             return
@@ -90,7 +101,7 @@ class WebManager:
         lock.writer_acquire()
         try:
             start = time.time()
-            documents = [Document(text=t, metadata={'url': urls[idx]}) for idx, t in enumerate(html_docs)]
+            documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
             self.index[hash_key] = VectorStoreIndex.from_documents(documents)
             self.index[hash_key].dirty = True
             self.query_engine[hash_key] = self.index[hash_key].as_query_engine(

@@ -10,7 +10,7 @@ import sys
 import atexit
 from memory_search import MemoryManager
 from memory_manager import MemoryManager1
-from web_manager import WebManager
+from web_manager import WebManager, HTMLInput
 from custom_text_loader import TextLoader
 from functions_endpoint import FunctionsManager
 from functions_manager import FunctionsManager1
@@ -118,10 +118,10 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
     return {'success': 'success', 'elapsed_time': elapsed_time}
 
 @app.post('/push_html_1/')
-async def loadHTML(html_docs: List[str] = Form(...), source_urls: List[str] = Form(...), hash: str = Form(...)):
+async def loadHTML(function_input: HTMLInput):
     """Endpoint to load HTML content."""
     logging.info('Loading HTML')
-    web_manager.push_html(hash, source_urls, html_docs)
+    web_manager.push_html(function_input)
     return {'success': 'success'}
 
 @app.post('/delete_html/')

@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
-from web_manager import WebManager
+from web_manager import WebManager, HTMLItem, HTMLInput
 
 class TestWebManager(unittest.TestCase):
     @patch('web_manager.load_dotenv')
@@ -65,10 +65,18 @@ class TestWebManager(unittest.TestCase):
     def test_push_html(self):
         hash_key = 'hash1'
         web_manager = WebManager()
-        urls = ['https://example1.com', 'https://example2.com']
-        html_docs = ['<html><body>Page 1</body></html>', '<html><body>Page 2</body></html>']
-        web_manager.push_html(hash_key, urls, html_docs)
-        assert web_manager.index[hash_key].dirty is True  # Here you check if 'dirty' is True
+        
+        html_input = HTMLInput(
+            action_items=[
+                HTMLItem(source_url='https://example1.com', html_doc='<html><body>Page 1</body></html>'),
+                HTMLItem(source_url='https://example2.com', html_doc='<html><body>Page 2</body></html>')
+            ],
+            hash=hash_key
+        )
+
+        web_manager.push_html(html_input)
+
+        assert web_manager.index[hash_key].dirty is True
         web_manager.stop()
 
     def test_pull_html(self):

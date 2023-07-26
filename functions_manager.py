@@ -19,6 +19,7 @@ class FunctionsManager1:
 
         self.dirpath = Path("./storage_functions")
         self.index = None
+        self.dirty = False
         self.query_engine = None
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, 
@@ -65,9 +66,9 @@ class FunctionsManager1:
         self.lock.writer_acquire()
         try:
             start = time.time()
-            if self.index.dirty is True:
+            if self.dirty is True:
                 self.index.storage_context.persist(persist_dir=self.dirpath)
-                self.index.dirty = False
+                self.dirty = False
             end = time.time()
             print(f"FunctionsManager: Save operation took {end - start} seconds")
         finally:
@@ -155,7 +156,7 @@ class FunctionsManager1:
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker]
             )
-            self.index.dirty = True
+            self.dirty = True
 
             end = time.time()
 
