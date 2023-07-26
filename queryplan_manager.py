@@ -8,9 +8,9 @@ from llama_index.indices.query.query_transform.base import StepDecomposeQueryTra
 from llama_index.query_engine.multistep_query_engine import MultiStepQueryEngine
 from llama_index.response_synthesizers import Accumulate
 from langchain.experimental.plan_and_execute import load_chat_planner
-from langchain.chains import LLMChain
 from langchain.schema import SystemMessage, ChatMessage
 from langchain.chat_models import ChatOpenAI
+import re
 
 
 
@@ -40,14 +40,17 @@ class QueryPlanManager:
         "the final step should almost always be 'Given the above steps taken, "
         "please respond to the users original question'. "
         "At the end of your plan, say '<END_OF_PLAN>'")
-
+    def parse(self, text: str):
+        steps = [v for v in re.split("\n\s*\d+\. ", text)[1:]]
+        return steps 
 
     def query_plan(self, query):
         start = time.time()
 
         messages = [self.system_message, ChatMessage(content=str(query),role="user")]
         response = self.llm(messages)
+        print(response.content)
         # response = self.query_engine.query(query)
         end = time.time()
         print(f"QueryPlanManager: query_plan operation took {end - start} seconds")
-        return response, {end - start}
+        return self.parse(response.content), {end - start}
