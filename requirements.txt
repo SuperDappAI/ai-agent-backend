@@ -27,3 +27,4 @@ beautifulsoup4
 llama-index
 schedule
 faiss-cpu
+google-api-python-client

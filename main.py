@@ -8,7 +8,7 @@ import sys
 import atexit
 from memory_search import MemoryManager
 from agent_manager import AgentManager
-from web_manager import WebManager, HTMLInput
+from web_manager import WebManager
 from custom_text_loader import TextLoader
 from functions_endpoint import FunctionsManager
 from functions_manager import FunctionsManager1, FunctionInput
@@ -45,14 +45,12 @@ queryplan_manager = QueryPlanManager()
 # register the stop method to be called on exit
 atexit.register(functions_manager1.stop)
 atexit.register(agent_manager.stop)
-atexit.register(web_manager.stop)
 
 # define a handler for the signals
 def signal_handler(signum, frame):
     print(f"Caught signal {signum}, stopping...")
     functions_manager1.stop()
     agent_manager.stop()
-    web_manager.stop()
     
 # register the signal handler for SIGINT and SIGTERM
 signal.signal(signal.SIGINT, signal_handler)
@@ -113,19 +111,13 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
 
     return {'success': 'success', 'elapsed_time': elapsed_time}
 
-@app.post('/push_html_1/')
-async def loadHTML(function_input: HTMLInput):
+@app.post('/search_html/')
+async def searchHTML(source_url: str = Form(...), hash_key: str = Form(...)):
     """Endpoint to load HTML content."""
     logging.info('Loading HTML')
-    elapsed_time = web_manager.push_html(function_input)
+    elapsed_time = web_manager.search_html(source_url, hash_key)
     return {'elapsed_time': elapsed_time}
 
-@app.post('/delete_html/')
-async def deleteHTML(hash: str = Form(...)):
-    """Endpoint to delete HTML content."""
-    logging.info('Deleting HTML')
-    elapsed_time = web_manager.delete_html(hash)
-    return {'elapsed_time': elapsed_time}
 
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
@@ -159,12 +151,6 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
                  elapsed_time)  # log the elapsed time
     return {'results': results, 'elapsed_time': elapsed_time}
 
-@app.post('/semantic_search_html_1/')
-async def semanticSearchHTML(query: str = Form(...), hash: str = Form(...)):
-    """Endpoint to conduct a semantic search in HTML content."""
-    logging.info('Semantic search HTML')
-    results, elapsed_time = web_manager.pull_html(hash, query)
-    return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/get_functions/')
 async def getFunctions(function_input: FunctionInput):
