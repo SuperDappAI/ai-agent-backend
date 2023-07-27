@@ -81,10 +81,10 @@ class FunctionsManager1:
             if self.dirty is True:
                 self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
                 self.dirty = False
+                end = time.time()
+                print(f"FunctionsManager: Save operation took {end - start} seconds")
         finally:
             self.lock.writer_release()
-            end = time.time()
-            print(f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
@@ -147,26 +147,19 @@ class FunctionsManager1:
         try:
             print("FunctionsManager: Loading from disk")
             if self.dirpath.exists() and self.dirpath.is_dir():
-                    
+                self.faiss_vectorstore = FAISS.load_local(self.dirpath,self.embeddings,"faiss_functions")
+                print("Loaded Faiss from disk")
+            else:
                 all_docs_strings = self.get_doc_strings(functions)
-                # initialize the faiss retriever
-                #for first initialization
-                try:
-                    self.faiss_vectorstore = FAISS.load_local(self.dirpath,self.embeddings,"faiss_functions")
-                    print("Loaded Faiss from disk")
-                except:
-                    try:
-                        self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
-                        self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
-                        print("Rebuilt FAISS from scratch")
-                    except Exception as e:
-                        print('FunctionsManager: FAISS load error: '+ str(e))
-                try:     
-                    # initialize the ensemble retriever
-                    self.ensemble_retriever = self.create_retriever()
-                    result = True
-                except Exception as e:
-                    print('FunctionsManager: load error: '+ str(e))
+                self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
+                self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
+                print("Rebuilt FAISS from scratch")
+            try:     
+                # initialize the ensemble retriever
+                self.ensemble_retriever = self.create_retriever()
+                result = True
+            except Exception as e:
+                print('FunctionsManager: create_retriever error: '+ str(e))
         finally:
             self.lock.writer_release()
             end = time.time()
