@@ -34,6 +34,7 @@ class FunctionsManager1:
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
         self.dirpath = Path("./storage_functions")
+        self.embeddings = OpenAIEmbeddings()
         self.index = None
         self.ensemble_retriever = None
         self.dirty = False
@@ -45,8 +46,9 @@ class FunctionsManager1:
         # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
         with open('./utils/functions.json', 'r') as f:
             functions_json = json.load(f)
-            self.push_functions(functions_json)
-            #self.save()
+            # self.push_functions(functions_json)
+            self.load(functions_json)
+            self.save()
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
@@ -82,7 +84,8 @@ class FunctionsManager1:
         self.lock.writer_acquire()
         try:
             if self.dirty is True:
-                self.index.storage_context.persist(persist_dir=self.dirpath)
+                # self.index.storage_context.persist(persist_dir=self.dirpath)
+                self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
                 self.dirty = False
         finally:
             self.lock.writer_release()
@@ -121,7 +124,7 @@ class FunctionsManager1:
             return response, {end-start}
 
 
-    def load(self):
+    def load(self, functions):
         """Load existing index data from the filesystem."""
         start = time.time()
         self.lock.writer_acquire()
@@ -129,15 +132,39 @@ class FunctionsManager1:
         try:
             print("FunctionsManager: Loading from disk")
             if self.dirpath.exists() and self.dirpath.is_dir():
-                # rebuild storage context
-                storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
-
+                    
                 # load index
-                self.index = load_index_from_storage(storage_context)
-                self.query_engine = self.index.as_query_engine(
-                    similarity_top_k=10,
-                    node_postprocessors=[self.reranker]
-                )
+                function_types = ['information_retrieval', 
+                            'communication', 
+                            'data_processing', 
+                            'sensory_perception']
+
+                all_docs = []
+
+                # Transform and concatenate function types
+                for func_type in function_types:
+                    if func_type in functions:
+                        transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
+                        all_docs.extend(transformed_functions)
+                all_docs_strings = [str(doc) for doc in all_docs]
+                # initialize the bm25 retriever and faiss retriever
+                #for first initialization
+                try:
+                    self.faiss_vectorstore = FAISS.load_local(self.dirpath,self.embeddings,"faiss_functions")
+                    print("Loaded Faiss from disk")
+                except:
+                    self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
+                    self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
+                    print("Rebuilt FAISS from scratch")
+
+                bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
+                bm25_retriever.k = 2
+                
+                faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
+                # mmr_retriever = faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
+
+                # initialize the ensemble retriever
+                self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever], weights=[0.5, 0.5])
                 result = True
         finally:
             self.lock.writer_release()
@@ -169,10 +196,9 @@ class FunctionsManager1:
             # initialize the bm25 retriever and faiss retriever
             bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
             bm25_retriever.k = 2
-
-            embedding = OpenAIEmbeddings()
-            faiss_vectorstore = FAISS.from_texts(all_docs_strings, embedding)
-            faiss_retriever = faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
+            
+            self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
+            faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
             # mmr_retriever = faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
 
             # initialize the ensemble retriever
