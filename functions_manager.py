@@ -1,8 +1,5 @@
 import time
 from dotenv import load_dotenv
-from llama_index import ServiceContext, VectorStoreIndex, Document, StorageContext, load_index_from_storage
-from llama_index.llms import OpenAI
-from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 import sys
 import os
@@ -35,28 +32,26 @@ class FunctionsManager1:
 
         self.dirpath = Path("./storage_functions")
         self.embeddings = OpenAIEmbeddings()
-        self.index = None
         self.ensemble_retriever = None
+        self.faiss_vectorstore = None
         self.dirty = False
-        self.query_engine = None
         self.lock = ReaderWriterLock()
         
         # Try to load index data from the filesystem only if not running tests
-        #if 'unittest' not in sys.modules.keys() and not self.load():
-        # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-        with open('./utils/functions.json', 'r') as f:
-            functions_json = json.load(f)
-            # self.push_functions(functions_json)
-            self.load(functions_json)
-            self.save()
+        if 'unittest' not in sys.modules.keys():
+            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+            with open('./utils/functions.json', 'r') as f:
+                functions_json = json.load(f)
+                self.load(functions_json)
+                self.save()
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
         
         # Create new thread for schedule
-        #self.stop_event = threading.Event()
-        #self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        #self.scheduler_thread.start()
+        self.stop_event = threading.Event()
+        self.scheduler_thread = threading.Thread(target=self.run_continuously)
+        self.scheduler_thread.start()
 
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
@@ -84,7 +79,6 @@ class FunctionsManager1:
         self.lock.writer_acquire()
         try:
             if self.dirty is True:
-                # self.index.storage_context.persist(persist_dir=self.dirpath)
                 self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
                 self.dirty = False
         finally:
@@ -114,10 +108,11 @@ class FunctionsManager1:
         self.lock.reader_acquire()
         response = []
         try:
-            for action_item in function_input.action_items:
-                query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                print(query)
-                response.append(self.ensemble_retriever.get_relevant_documents(query))
+            if self.ensemble_retriever is not None:
+                for action_item in function_input.action_items:
+                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+                    print(query)
+                    response.append(self.ensemble_retriever.get_relevant_documents(query))
         finally:
             self.lock.reader_release()
             end = time.time()
@@ -153,19 +148,24 @@ class FunctionsManager1:
                     self.faiss_vectorstore = FAISS.load_local(self.dirpath,self.embeddings,"faiss_functions")
                     print("Loaded Faiss from disk")
                 except:
-                    self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
-                    self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
-                    print("Rebuilt FAISS from scratch")
+                    try:
+                        self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
+                        self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
+                        print("Rebuilt FAISS from scratch")
+                    except Exception as e:
+                        print('FunctionsManager: FAISS load error: '+ str(e))
+                try:
+                    bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
+                    bm25_retriever.k = 2
+                    
+                    faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
+                    mmr_retriever = self.faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
 
-                bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
-                bm25_retriever.k = 2
-                
-                faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
-                # mmr_retriever = faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
-
-                # initialize the ensemble retriever
-                self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever], weights=[0.5, 0.5])
-                result = True
+                    # initialize the ensemble retriever
+                    self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever, mmr_retriever], weights=[0.3, 0.3, 0.4])
+                    result = True
+                except Exception as e:
+                    print('FunctionsManager: load error: '+ str(e))
         finally:
             self.lock.writer_release()
             end = time.time()
@@ -199,11 +199,10 @@ class FunctionsManager1:
             
             self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
             faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
-            # mmr_retriever = faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
+            mmr_retriever = self.faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
 
             # initialize the ensemble retriever
-            self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever], weights=[0.5, 0.5])
-            # self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever,mmr_retriever], weights=[0.3, 0.3,0.4])
+            self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever, mmr_retriever], weights=[0.3, 0.3,0.4])
 
             self.dirty = True
             tokens = self.count_tokens(functions)
