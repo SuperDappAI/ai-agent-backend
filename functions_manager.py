@@ -111,7 +111,6 @@ class FunctionsManager1:
             if self.ensemble_retriever is not None:
                 for action_item in function_input.action_items:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                    print(query)
                     response.append(self.ensemble_retriever.get_relevant_documents(query))
         finally:
             self.lock.reader_release()
