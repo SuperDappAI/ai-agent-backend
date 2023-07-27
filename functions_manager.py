@@ -173,9 +173,11 @@ class FunctionsManager1:
             embedding = OpenAIEmbeddings()
             faiss_vectorstore = FAISS.from_texts(all_docs_strings, embedding)
             faiss_retriever = faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
+            # mmr_retriever = faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
 
             # initialize the ensemble retriever
             self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever], weights=[0.5, 0.5])
+            # self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever,mmr_retriever], weights=[0.3, 0.3,0.4])
 
             self.dirty = True
             tokens = self.count_tokens(functions)
