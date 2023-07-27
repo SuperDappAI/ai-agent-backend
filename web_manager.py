@@ -21,6 +21,7 @@ class WebManager:
         os.getenv("GOOGLE_API_KEY")
         self.search = GoogleSearchAPIWrapper()
         self.embeddings = OpenAIEmbeddings()
+        self.web_research_retriever = {}
         self.llm = ChatOpenAI(temperature=0)
         self.locks = {}  # Dictionary to store locks for each hash
 
@@ -81,6 +82,7 @@ class WebManager:
         try:
             if hash_key in self.web_research_retriever:
                 response = self.web_research_retriever[hash_key].get_relevant_documents(query)
+                print(f"WebManager: search_web {response}")
                 self.web_research_retriever.pop(hash_key, None)
         finally:
             lock.reader_release()

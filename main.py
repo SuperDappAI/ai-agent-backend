@@ -112,10 +112,10 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
     return {'success': 'success', 'elapsed_time': elapsed_time}
 
 @app.post('/search_html/')
-async def searchHTML(source_url: str = Form(...), hash_key: str = Form(...)):
+async def searchHTML(query: str = Form(...), hash_key: str = Form(...)):
     """Endpoint to load HTML content."""
     logging.info('Loading HTML')
-    elapsed_time = web_manager.search_html(source_url, hash_key)
+    elapsed_time = web_manager.search_web(hash_key, query)
     return {'elapsed_time': elapsed_time}
 
 
