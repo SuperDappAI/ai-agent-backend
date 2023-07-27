@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 from typing import List
 from pydantic import BaseModel, Field
-from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain.retrievers import EnsembleRetriever
 from langchain.vectorstores import FAISS
 from langchain.embeddings.openai import OpenAIEmbeddings
 
@@ -118,6 +118,27 @@ class FunctionsManager1:
             end = time.time()
             return response, {end-start}
 
+    def get_doc_strings(self, functions):
+        function_types = ['information_retrieval', 
+                            'communication', 
+                            'data_processing', 
+                            'sensory_perception']
+
+        all_docs = []
+
+        # Transform and concatenate function types
+        for func_type in function_types:
+            if func_type in functions:
+                transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
+                all_docs.extend(transformed_functions)
+        return [str(doc) for doc in all_docs]
+
+    def create_retriever(self):
+        faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
+        mmr_retriever = self.faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
+
+        # initialize the ensemble retriever
+        return EnsembleRetriever(retrievers=[faiss_retriever, mmr_retriever], weights=[0.5, 0.5])
 
     def load(self, functions):
         """Load existing index data from the filesystem."""
@@ -128,21 +149,8 @@ class FunctionsManager1:
             print("FunctionsManager: Loading from disk")
             if self.dirpath.exists() and self.dirpath.is_dir():
                     
-                # load index
-                function_types = ['information_retrieval', 
-                            'communication', 
-                            'data_processing', 
-                            'sensory_perception']
-
-                all_docs = []
-
-                # Transform and concatenate function types
-                for func_type in function_types:
-                    if func_type in functions:
-                        transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
-                        all_docs.extend(transformed_functions)
-                all_docs_strings = [str(doc) for doc in all_docs]
-                # initialize the bm25 retriever and faiss retriever
+                all_docs_strings = self.get_doc_strings(functions)
+                # initialize the faiss retriever
                 #for first initialization
                 try:
                     self.faiss_vectorstore = FAISS.load_local(self.dirpath,self.embeddings,"faiss_functions")
@@ -154,15 +162,9 @@ class FunctionsManager1:
                         print("Rebuilt FAISS from scratch")
                     except Exception as e:
                         print('FunctionsManager: FAISS load error: '+ str(e))
-                try:
-                    bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
-                    bm25_retriever.k = 2
-                    
-                    faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
-                    mmr_retriever = self.faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
-
+                try:     
                     # initialize the ensemble retriever
-                    self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever, mmr_retriever], weights=[0.3, 0.3, 0.4])
+                    self.ensemble_retriever = self.create_retriever()
                     result = True
                 except Exception as e:
                     print('FunctionsManager: load error: '+ str(e))
@@ -180,29 +182,13 @@ class FunctionsManager1:
         try:
             print("FunctionsManager: adding functions to index...")
 
-            function_types = ['information_retrieval', 
-                            'communication', 
-                            'data_processing', 
-                            'sensory_perception']
-
-            all_docs = []
-
-            # Transform and concatenate function types
-            for func_type in function_types:
-                if func_type in functions:
-                    transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
-                    all_docs.extend(transformed_functions)
-            all_docs_strings = [str(doc) for doc in all_docs]
-            # initialize the bm25 retriever and faiss retriever
-            bm25_retriever = BM25Retriever.from_texts(all_docs_strings)
-            bm25_retriever.k = 2
+            all_docs_strings = self.get_doc_strings(functions)
+            # initialize the faiss retriever
             
             self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
-            faiss_retriever = self.faiss_vectorstore.as_retriever(search_kwargs={"k": 2})
-            mmr_retriever = self.faiss_vectorstore.as_retriever(search_type="mmr",search_kwargs={"k": 2, "fetch_k": 10, "lambda_mult": 0.5})
 
             # initialize the ensemble retriever
-            self.ensemble_retriever = EnsembleRetriever(retrievers=[bm25_retriever, faiss_retriever, mmr_retriever], weights=[0.3, 0.3,0.4])
+            self.ensemble_retriever = self.create_retriever()
 
             self.dirty = True
             tokens = self.count_tokens(functions)

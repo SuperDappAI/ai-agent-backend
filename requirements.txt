@@ -25,5 +25,4 @@ gunicorn
 beautifulsoup4
 llama-index
 schedule
-rank_bm25
 faiss-cpu
