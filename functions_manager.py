@@ -43,7 +43,6 @@ class FunctionsManager1:
             with open('./utils/functions.json', 'r') as f:
                 functions_json = json.load(f)
                 self.load(functions_json)
-                self.save()
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
@@ -152,7 +151,7 @@ class FunctionsManager1:
             else:
                 all_docs_strings = self.get_doc_strings(functions)
                 self.faiss_vectorstore = FAISS.from_texts(all_docs_strings, self.embeddings)
-                self.faiss_vectorstore.save_local(self.dirpath,"faiss_functions")
+                self.dirty = True
                 print("Rebuilt FAISS from scratch")
             try:     
                 # initialize the ensemble retriever

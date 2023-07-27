@@ -7,7 +7,7 @@ import signal
 import sys
 import atexit
 from memory_search import MemoryManager
-from memory_manager import MemoryManager1
+from agent_manager import AgentManager
 from web_manager import WebManager, HTMLInput
 from custom_text_loader import TextLoader
 from functions_endpoint import FunctionsManager
@@ -39,19 +39,19 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
 pinecone.init(api_key=PINECONE_API_KEY)
 
 functions_manager1 = FunctionsManager1()
-memory_manager1 = MemoryManager1()
+agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
 # register the stop method to be called on exit
 atexit.register(functions_manager1.stop)
-atexit.register(memory_manager1.stop)
+atexit.register(agent_manager.stop)
 atexit.register(web_manager.stop)
 
 # define a handler for the signals
 def signal_handler(signum, frame):
     print(f"Caught signal {signum}, stopping...")
     functions_manager1.stop()
-    memory_manager1.stop()
+    agent_manager.stop()
     web_manager.stop()
     
 # register the signal handler for SIGINT and SIGTERM
@@ -88,7 +88,7 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
 async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
     """Endpoint to push memory for a specific user."""
     logging.info(f'Writing memory for user {user_id}')
-    elapsed_time = memory_manager1.push_memory(user_id, query, llm_response)
+    elapsed_time = agent_manager.push_memory(user_id, query, llm_response)
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_html/')
@@ -144,7 +144,7 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
     """Endpoint to pull relevant memories for a specific user."""
     logging.info(f'Pulling relevant memories for user {user_id}')
-    memories, elapsed_time = memory_manager1.pull_memory(user_id, query, context=context)
+    memories, elapsed_time = agent_manager.pull_memory(user_id, query, context=context)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
@@ -163,9 +163,7 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
 async def semanticSearchHTML(query: str = Form(...), hash: str = Form(...)):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Semantic search HTML')
-    results, elapsed_time = memory_manager1.pull_html(hash, query)
-    logging.info(f'Pulled relevant results for query: {query}')  # log the data pull
-    logging.info(f'Elapsed time for operation: {elapsed_time}')  # log the elapsed time
+    results, elapsed_time = web_manager.pull_html(hash, query)
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/get_functions/')
@@ -254,8 +252,7 @@ async def clearUserMemory(user_id: str = Form(...)):
 async def clearUserMemory(user_id: str = Form(...)):
     """Endpoint to clear memory for a specific user."""
     logging.info(f'Clearing user memory for user {user_id}')
-    elapsed_time = memory_manager1.delete_memory(user_id)
-    logging.info(f'Cleared user memory for user {user_id}')
+    elapsed_time = agent_manager.delete_memory(user_id)
     return {'elapsed_time': elapsed_time}
 
 

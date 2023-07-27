@@ -1,4 +1,5 @@
 langchain
+langchain_experimental
 openai
 pandas
 gitpython
