@@ -9,6 +9,7 @@ import os
 import tiktoken
 import schedule
 import threading
+from typing import List
 from pathlib import Path
 import json
 from pydantic import BaseModel, Field
@@ -42,7 +43,7 @@ class FunctionsManager1:
             # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
             with open('./utils/functions.json', 'r') as f:
                 functions_json = json.load(f)
-                self.load(functions_json)
+                self.push_functions(functions_json)
 
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
