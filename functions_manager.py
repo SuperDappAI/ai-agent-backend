@@ -112,6 +112,8 @@ class FunctionsManager1:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}. Return response (as name+category in JSON) only if you are 100% sure of the result otherwise return 'nothing'."
                     self.reranker.query_str = query
                     response.append(self.query_engine.query(query))
+        except:
+            return []
         finally:
             self.lock.reader_release()
             end = time.time()

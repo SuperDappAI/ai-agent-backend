@@ -131,8 +131,11 @@ async def deleteHTML(hash: str = Form(...)):
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
     logging.info(f'Pulling relevant memories for user {user_id}')
     memory_manager = MemoryManager(user_id, num_chunks)
-    memories, elapsed_time = memory_manager.get_relevant_memory_docs(
+    try:
+        memories, elapsed_time = memory_manager.get_relevant_memory_docs(
         query, context=context, num_chunks=num_chunks, num_neighbors=num_neighbors, similarity_threshold=similarity_threshold)
+    except:
+        return {'memories': [], 'elapsed_time': 0, 'error': 'No memories found'}
     logging.info('Pulled relevant memories for user %s, query: %s, context: %s',
                  user_id, query, context)  # log the data pull
     logging.info('Elapsed time for operation: %s',
