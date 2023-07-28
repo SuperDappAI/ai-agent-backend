@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
 # from llama_index.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
-from llama_index.indices.postprocessor import LLMRerank
+from llmreranker import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
 from typing import List
@@ -20,7 +20,7 @@ class HTMLItem(BaseModel):
 class HTMLInput(BaseModel):
     action_items: List[HTMLItem] = Field(..., example=[{"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
-    
+
 class WebManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -84,10 +84,10 @@ class WebManager:
             lock = self.get_hash_lock(hash_key)
             lock.writer_acquire()
             try:
-                if idx.dirty:
+                if lock.dirty:
                     filepath = f"{self.dirpath}_{hash_key}"
                     idx.storage_context.persist(persist_dir=filepath)
-                    idx.dirty = False
+                    lock.dirty = False
             finally:
                 lock.writer_release()
         end = time.time()
@@ -106,7 +106,7 @@ class WebManager:
         try:
             documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
             self.index[hash_key] = VectorStoreIndex.from_documents(documents)
-            self.index[hash_key].dirty = True
+            lock.dirty = True
             self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker],
@@ -126,7 +126,11 @@ class WebManager:
         response = None
         try:
             if hash_key in self.query_engine:
-                response = self.query_engine[hash_key].query(query)
+                try:
+                    self.reranker.query_str = query
+                    response = self.query_engine[hash_key].query(query)
+                except Exception as e:
+                    print(f"WebManager: pull_html exception {e}")
         finally:
             lock.reader_release()
             end = time.time()

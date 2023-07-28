@@ -1,7 +1,7 @@
 {
 	"information_retrieval": [{
-			"name": "searchWebMapLocations",
-			"description": "Performs a Google Maps search. Example: {\"searchWebMapLocations\": \"maps\", \"parameters\": {\"q\": \"restaurants near me\"}}",
+			"name": "searchWebMapPlaces",
+			"description": "Performs a Google Maps search. Example: {\"searchWebMapPlaces\": \"maps\", \"parameters\": {\"q\": \"restaurants near me\"}}",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -69,112 +69,6 @@
 				"required": [
 					"q"
 				]
-			}
-		},
-		{
-			"name": "searchWebShopping",
-			"description": "Performs a Google Shopping search. Example: {\"name\": \"searchWebShopping\", \"parameters\": {\"q\": \"laptop\"}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"q": {
-						"type": "string",
-						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Shopping search."
-					},
-					"location": {
-						"type": "string",
-						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-					},
-					"start": {
-						"type": "integer",
-						"description": "Defines the result offset. It skips the given number of results. It's used for pagination. (e.g., 0 (default) is the first page of results, 60 is the 2nd page of results, 120 is the 3rd page of results, etc.)."
-					},
-					"num": {
-						"type": "integer",
-						"description": "Defines the maximum number of results to return. (e.g., 60 (default) returns 60 results, 40 returns 40 results, and 100 (maximum) returns 100 results). Any number greater than maximum number (100) will default to 100. Any number lesser than minimum number (1) will default to 60."
-					}
-				},
-				"required": [
-					"q"
-				]
-			}
-		},
-		{
-			"name": "searchWebImages",
-			"description": "Performs a Google Images search. Example: {\"name\": \"searchWebImages\", \"parameters\": {\"q\": \"cat\"}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"q": {
-						"type": "string",
-						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Images search. e.g. inurl:, site:, intitle:."
-					},
-					"location": {
-						"type": "string",
-						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-					},
-					"chips": {
-						"type": "string",
-						"description": "Enables to filter image search. It's a string provided by Google as suggested search, like: red apple. Chips are provided under the section: suggested_searches when ijn = 0."
-					},
-					"ijn": {
-						"type": "integer",
-						"description": "Defines the page number for Google Images. There are 100 images per page. This parameter is equivalent to start (offset) = ijn * 100."
-					}
-				},
-				"required": [
-					"q"
-				]
-			}
-		},
-		{
-			"name": "searchWebVideos",
-			"description": "Performs a Google Videos search. Example: {\"name\": \"searchWebVideos\", \"parameters\": {\"q\": \"funny videos\"}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"q": {
-						"type": "string",
-						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Videos search. e.g. inurl:, site:, intitle:. We also support advanced search query parameters such as as_dt and as_eq. See https://serpapi.com/advanced-google-query-parameters for a list of supported advanced search query parameters."
-					},
-					"location": {
-						"type": "string",
-						"description": "Defines from where you want the search to originate. Use https://serpapi.com/locations-api for more precise control."
-					},
-					"start": {
-						"type": "integer",
-						"description": "Defines the result offset. It skips the given number of results. It's used for pagination."
-					},
-					"num": {
-						"type": "integer",
-						"description": "Defines the maximum number of results to return."
-					}
-				},
-				"required": [
-					"q"
-				]
-			}
-		},
-		{
-			"name": "searchWebThingsNearMe",
-			"description": "Performs a Google Local search. You have the ability to do a searchWebMapLocations search and use a local services category and data_cid to get a more curated result using searchWebLocalServices or use this for a more general search. Example: {\"name\": \"searchWebThingsNearMe\", \"parameters\": {\"q\": \"coffee shops near me\"}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"q": {
-						"type": "string",
-						"description": "Defines the query you want to search. You can use anything that you would use in a regular Google Local search."
-					},
-					"location": {
-						"type": "string",
-						"description": "Defines from where you want the search to originate. If several locations match the location requested, the most popular one is picked. Use https://serpapi.com/locations-api for more precise control."
-					},
-					"start": {
-						"type": "integer",
-						"description": "Defines the result offset. It skips the given number of results. It's used for pagination. On desktop, parameter only accepts multiples of 20 (e.g. 20 for the second page results, 40 for the third page results, etc.). On mobile, parameter only accepts multiples of 10 (e.g. 10 for the second page results, 20 for the third page results, etc.)."
-					}
-				},
-				"required": ["q"]
 			}
 		},
 		{
@@ -401,37 +295,17 @@
 			}
 		},
 		{
-			"name": "searchWebLocalServices",
-			"description": "Performs a search for local services. Examples include 'electrician', 'estate_lawyer', 'financial_planner'. Use in conjunction with searchWebMapLocations so you may find location to search for local services. If you do not have data_cid then just use searchWebThingsNearMe to find things near an area specified by user. Example: {'name': 'searchWebLocalServices', 'parameters': {'q': 'garage_door_pro', 'data_cid': 13676701942912889197}}",
+			"name": "searchWikipedia",
+			"description": "Performs a search on Wikipedia, the web's leading user-edited encyclopedia, using the provided query. Returns relevant articles or content.",
 			"parameters": {
-				"type": "object",
-				"properties": {
-					"q": {
-						"type": "string",
-						"description": "Defines the service you want to search for. Use https://serpapi.com/google-local-services-queries for a full list of supported Google local services queries."
-					},
-					"data_cid": {
-						"type": "string",
-						"description": "Defines the Google CID (customer identifier) of a place. To acquire the data_cid you can either use the 'searchWebMapLocations' function which has the data_cid field in the local_results object. Example CID for 'New York, NY, USA': 14414772292044717666."
-					},
-					"job_type": {
-						"type": "string",
-						"description": "Defines the type of a job, or a subcategory of a service you have searched for. For example, if you search for 'electrician', you can be more specific by adding a job_type (e.g. job_type=restore_power). Use https://serpapi.com/google-local-services-job-types for a full list of supported Google local services job types."
-					},
-					"cid": {
-						"type": "string",
-						"description": "Defines a unique ID of a place. The ID is available in our 'searchWebLocalServices' JSON response. Parameter is required when accessing a specific business and should be used with bid and pid parameters."
-					},
-					"bid": {
-						"type": "string",
-						"description": "Defines a unique ID of a place. The ID is available in our 'local_sesearchWebLocalServicesrvices' JSON response. Parameter is required when accessing a specific business and should be used with cid and pid parameters."
-					},
-					"pid": {
-						"type": "string",
-						"description": "Defines a unique ID of a place. The ID is available in our 'searchWebLocalServices' JSON response. Parameter is required when accessing a specific business and should be used with cid and bid parameters."
-					}
-				},
-				"required": ["q", "data_cid"]
+			  "type": "object",
+			  "properties": {
+				"q": {
+				  "type": "string",
+				  "description": "Defines the query you want to search on Wikipedia."
+				}
+			  },
+			  "required": ["q"]
 			}
 		}
 	],
