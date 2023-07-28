@@ -84,10 +84,10 @@ class WebManager:
             lock = self.get_hash_lock(hash_key)
             lock.writer_acquire()
             try:
-                if idx.dirty:
+                if lock.dirty:
                     filepath = f"{self.dirpath}_{hash_key}"
                     idx.storage_context.persist(persist_dir=filepath)
-                    idx.dirty = False
+                    lock.dirty = False
             finally:
                 lock.writer_release()
         end = time.time()
@@ -106,7 +106,7 @@ class WebManager:
         try:
             documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
             self.index[hash_key] = VectorStoreIndex.from_documents(documents)
-            self.index[hash_key].dirty = True
+            lock.dirty = True
             self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker],

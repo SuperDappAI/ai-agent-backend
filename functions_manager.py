@@ -31,7 +31,6 @@ class FunctionsManager1:
 
         self.dirpath = Path("./storage_functions")
         self.index = None
-        self.dirty = False
         self.query_engine = None
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=10, top_n=3, 
@@ -78,9 +77,9 @@ class FunctionsManager1:
         start = time.time()
         self.lock.writer_acquire()
         try:
-            if self.dirty is True:
+            if self.lock.dirty is True:
                 self.index.storage_context.persist(persist_dir=self.dirpath)
-                self.dirty = False
+                self.lock.dirty = False
         finally:
             self.lock.writer_release()
             end = time.time()
@@ -110,7 +109,7 @@ class FunctionsManager1:
         try:
             if self.query_engine is not None:
                 for action_item in function_input.action_items:
-                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}. Return response (as name+category in JSON) only if you are 100% sure of the result otherwise return 'nothing'."
+                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                     self.reranker.query_str = query
                     response.append(self.query_engine.query(query))
         except:
@@ -173,7 +172,7 @@ class FunctionsManager1:
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker]
             )
-            self.dirty = True
+            self.lock.dirty = True
             tokens = self.count_tokens(functions)
         finally:
             self.lock.writer_release()

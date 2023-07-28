@@ -6,10 +6,9 @@ from pathlib import Path
 import schedule
 import threading
 import os
-import json
 import faiss
-import math
-import datetime
+import json
+from datetime import datetime
 from langchain.chat_models import ChatOpenAI
 from langchain.docstore import InMemoryDocstore
 from langchain.embeddings import OpenAIEmbeddings
@@ -50,16 +49,6 @@ class AgentManager:
     def get_user_lock(self, user_id):
         return self.locks.setdefault(user_id, ReaderWriterLock())
 
-    def relevance_score_fn(score: float) -> float:
-        """Return a similarity score on a scale [0, 1]."""
-        # This will differ depending on a few things:
-        # - the distance / similarity metric used by the VectorStore
-        # - the scale of your embeddings (OpenAI's are unit norm. Many others are not!)
-        # This function converts the euclidean norm of normalized embeddings
-        # (0 is most similar, sqrt(2) most dissimilar)
-        # to a similarity function (0 to 1)
-        return 1.0 - score / math.sqrt(2)
-
     def create_new_memory_retriever(self, vectorstore):
         """Create a new vector store retriever unique to the agent."""
         # Define your embedding model
@@ -71,8 +60,7 @@ class AgentManager:
                 self.embeddings.embed_query,
                 index,
                 InMemoryDocstore({}),
-                {},
-                relevance_score_fn=self.relevance_score_fn,
+                {}
             )
         
         return TimeWeightedVectorStoreRetriever(
@@ -98,13 +86,15 @@ class AgentManager:
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
-            print("AgentManager: Loading from disk")
             start = time.time()
-            if self.dirpath.exists() and self.dirpath.is_dir():
+            userpath = Path(f"{self.dirpath}/{user_id}.faiss")
+            if userpath.exists():
+                print("AgentManager: Loading from disk")
                 self.agent[user_id] = self.create_agent(FAISS.load_local(self.dirpath,self.embeddings,user_id), user_id)
-                self.agent[user_id].dirty = True
             else:
+                print("AgentManager: Creating from scratch")
                 self.agent[user_id] = self.create_agent(None, user_id)
+                lock.dirty = True
             end = time.time()
             print(f"AgentManager: Load operation took {end - start} seconds")
         finally:
@@ -117,9 +107,9 @@ class AgentManager:
             lock.writer_acquire()
             try:
                 start = time.time()
-                if idx.dirty:
-                    idx.memory.vectorstore.save_local(self.dirpath, user_id)
-                    idx.dirty = False
+                if lock.dirty:
+                    #idx.memory.memory_retriever.vectorstore.save_local(self.dirpath, user_id)
+                    lock.dirty = False
                 end = time.time()
                 print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
             finally:
@@ -133,36 +123,34 @@ class AgentManager:
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
-            self.agent[user_id].save_context(
-                {},
-                {
-                    self.agent[user_id].add_memory_key: f"{user_id} asked "
-                    f"{query} and got answer: {llm_response}",
-                    self.agent[user_id].now_key: datetime.now(),
-                },
-            )
-            self.agent[user_id].dirty = True
-      
+            obj = {"user": query, "AiDA": llm_response}
+            self.agent[user_id].memory.add_memory(json.dumps(obj))
+            lock.dirty = True
         finally:
             lock.writer_release()
             end = time.time()
             print(f"AgentManager: push_memory operation took {end - start} seconds")
-            return {end - start}
+            return end - start
 
     def pull_memory(self, user_id, query):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
+        if user_id not in self.agent:
+            self.load(user_id)
         lock = self.get_user_lock(user_id)
         lock.reader_acquire()
         response = None
         try:
-            if user_id in self.ensemble_retriever:
-                response = self.ensemble_retriever[user_id].get_relevant_documents(query)
+            if user_id in self.agent:
+                response = self.agent[user_id].memory.fetch_memories(query, now=datetime.now())
+        except Exception as e:
+            print(f"AgentManager: pull_memory exception {e}")
         finally:
             lock.reader_release()
             end = time.time()
             print(f"AgentManager: pull_memory operation took {end - start} seconds")
             return response, {end - start}
+
 
     def delete_memory(self, user_id):
         """Delete all memories for a specific user."""

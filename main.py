@@ -134,10 +134,10 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
     return {'memories': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/pull_memory_1/')
-async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
+async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...)):
     """Endpoint to pull relevant memories for a specific user."""
     logging.info(f'Pulling relevant memories for user {user_id}')
-    memories, elapsed_time = agent_manager.pull_memory(user_id, query, context=context)
+    memories, elapsed_time = agent_manager.pull_memory(user_id, query)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
