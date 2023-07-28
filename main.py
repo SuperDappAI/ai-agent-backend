@@ -3,9 +3,7 @@ import logging
 from dotenv import load_dotenv
 import pinecone
 from fastapi import FastAPI, Form
-import signal
-import sys
-import atexit
+import json
 from memory_search import MemoryManager
 from agent_manager import AgentManager
 from web_manager import WebManager, HTMLInput
@@ -42,21 +40,13 @@ functions_manager1 = FunctionsManager1()
 agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
-# register the stop method to be called on exit
-atexit.register(functions_manager1.stop)
-atexit.register(agent_manager.stop)
-atexit.register(web_manager.stop)
 
-# define a handler for the signals
-def signal_handler(signum, frame):
-    print(f"Caught signal {signum}, stopping...")
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("Application shutdown")
     functions_manager1.stop()
     agent_manager.stop()
     web_manager.stop()
-    
-# register the signal handler for SIGINT and SIGTERM
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
@@ -131,8 +121,11 @@ async def deleteHTML(hash: str = Form(...)):
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
     logging.info(f'Pulling relevant memories for user {user_id}')
     memory_manager = MemoryManager(user_id, num_chunks)
-    memories, elapsed_time = memory_manager.get_relevant_memory_docs(
+    try:
+        memories, elapsed_time = memory_manager.get_relevant_memory_docs(
         query, context=context, num_chunks=num_chunks, num_neighbors=num_neighbors, similarity_threshold=similarity_threshold)
+    except:
+        return {'memories': [], 'elapsed_time': 0, 'error': 'No memories found'}
     logging.info('Pulled relevant memories for user %s, query: %s, context: %s',
                  user_id, query, context)  # log the data pull
     logging.info('Elapsed time for operation: %s',
@@ -141,10 +134,10 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
     return {'memories': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/pull_memory_1/')
-async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
+async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...)):
     """Endpoint to pull relevant memories for a specific user."""
     logging.info(f'Pulling relevant memories for user {user_id}')
-    memories, elapsed_time = agent_manager.pull_memory(user_id, query, context=context)
+    memories, elapsed_time = agent_manager.pull_memory(user_id, query)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
