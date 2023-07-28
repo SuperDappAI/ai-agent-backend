@@ -3,9 +3,7 @@ import logging
 from dotenv import load_dotenv
 import pinecone
 from fastapi import FastAPI, Form
-import signal
-import sys
-import atexit
+import json
 from memory_search import MemoryManager
 from agent_manager import AgentManager
 from web_manager import WebManager, HTMLInput
@@ -42,21 +40,13 @@ functions_manager1 = FunctionsManager1()
 agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
-# register the stop method to be called on exit
-atexit.register(functions_manager1.stop)
-atexit.register(agent_manager.stop)
-atexit.register(web_manager.stop)
 
-# define a handler for the signals
-def signal_handler(signum, frame):
-    print(f"Caught signal {signum}, stopping...")
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("Application shutdown")
     functions_manager1.stop()
     agent_manager.stop()
     web_manager.stop()
-    
-# register the signal handler for SIGINT and SIGTERM
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
