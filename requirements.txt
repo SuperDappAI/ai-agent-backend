@@ -3,7 +3,6 @@ langchain_experimental
 openai
 pandas
 gitpython
-#chromadb
 lark
 #deeplake
 tiktoken

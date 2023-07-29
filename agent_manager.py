@@ -91,9 +91,6 @@ class AgentManager:
             if mempath.exists():
                 print("AgentManager: Loading memory stream from disk")
                 self.memory[user_id].memory_retriever.memory_stream = dill.load(open(mempath, "rb"))
-            else:
-                print("AgentManager: Creating memory stream from scratch")
-                lock.dirty = True
             end = time.time()
             print(f"AgentManager: Load operation took {end - start} seconds")
         finally:
@@ -110,9 +107,9 @@ class AgentManager:
                     userpath = Path(f"{self.dirpath}/{user_id}/memory_stream.wb")
                     with open(userpath, "wb") as f:
                         dill.dump(idx.memory_retriever.memory_stream, f)
-                    lock.dirty = False
-                end = time.time()
-                print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
+                        lock.dirty = False
+                        end = time.time()
+                        print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
             finally:
                 lock.writer_release()
 
@@ -125,8 +122,17 @@ class AgentManager:
         lock.writer_acquire()
         try:
             obj = {"user": query, "AiDA": llm_response}
-            self.memory[user_id].add_memory(json.dumps(obj))
+            self.memory[user_id].save_context(
+                {},
+                {
+                    self.memory[user_id].add_memory_key: json.dumps(obj),
+                    self.memory[user_id].now_key: datetime.now(),
+                },
+            )
             lock.dirty = True
+            print("set dirty to true")
+        except Exception as e:
+            print(f"AgentManager: push_memory exception {e}") 
         finally:
             lock.writer_release()
             end = time.time()
