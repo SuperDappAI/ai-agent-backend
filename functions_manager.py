@@ -31,6 +31,7 @@ class FunctionsManager1:
 
         self.dirpath = Path("./storage_functions")
         self.index = None
+        self.max_length_allowed = 512
         self.query_engine = None
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=10, top_n=3, 
@@ -69,6 +70,10 @@ class FunctionsManager1:
         result = []
         for item in data:
             page_content = {'name': item['name'], 'category': category, 'description': str(item['description'])}
+            lenData = len(str(page_content))
+            if lenData > self.max_length_allowed:
+                print(f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
+                continue
             result.append(page_content)
         return result
 
@@ -165,7 +170,6 @@ class FunctionsManager1:
                     transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
 
-            
             documents = [Document(text=json.dumps(t)) for t in all_docs]
             self.index = VectorStoreIndex.from_documents(documents)
             self.query_engine = self.index.as_query_engine(
