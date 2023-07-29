@@ -16,6 +16,26 @@ from langchain_experimental.generative_agents import GenerativeAgentMemory
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
+from typing import Any, List
+from langchain.schema import Document
+from copy import deepcopy
+
+class MyTimeWeightedVectorStoreRetriever(TimeWeightedVectorStoreRetriever):
+    def add_documents(self, documents: List[Document], **kwargs: Any) -> List[str]:
+        """Add documents to vectorstore."""
+        # SYSCOIN need to pop this because vectorstore does not expect this argument in kwargs
+        current_time = kwargs.pop("current_time", datetime.now())
+        # Avoid mutating input documents
+        dup_docs = [deepcopy(d) for d in documents]
+        for i, doc in enumerate(dup_docs):
+            if "last_accessed_at" not in doc.metadata:
+                doc.metadata["last_accessed_at"] = current_time
+            if "created_at" not in doc.metadata:
+                doc.metadata["created_at"] = current_time
+            doc.metadata["buffer_idx"] = len(self.memory_stream) + i
+        self.memory_stream.extend(dup_docs)
+        return self.vectorstore.add_documents(dup_docs, **kwargs)
+
 class AgentManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -68,7 +88,7 @@ class AgentManager:
         finally:
             print(f"AgentManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
-            return TimeWeightedVectorStoreRetriever(
+            return MyTimeWeightedVectorStoreRetriever(
                 vectorstore=vectorstore, decay_rate=0.001, other_score_keys=["importance"], k=15
             )
 
@@ -130,7 +150,6 @@ class AgentManager:
                 },
             )
             lock.dirty = True
-            print("set dirty to true")
         except Exception as e:
             print(f"AgentManager: push_memory exception {e}") 
         finally:
