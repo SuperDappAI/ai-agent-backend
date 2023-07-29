@@ -2,6 +2,7 @@ import time
 import shutil
 from dotenv import load_dotenv
 from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
+from llama_index.langchain_helpers.text_splitter import SentenceSplitter
 # from llama_index.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from llmreranker import LLMRerank
@@ -63,9 +64,9 @@ class WebManager:
         lock = self.get_hash_lock(hash_key)
         lock.writer_acquire()
         try:
-            print("WebManager: Loading from disk")
             hashpath = Path(f"{self.dirpath}/{hash_key}")
             if hashpath.exists() and hashpath.is_dir():
+                print("WebManager: Loading from disk")
                 storage_context = StorageContext.from_defaults(persist_dir=hashpath)
                 self.index[hash_key] = load_index_from_storage(storage_context)
                 self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
@@ -104,7 +105,11 @@ class WebManager:
         response = None
         try:
             if function_input.hash not in self.query_engine:
-                documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
+                documents = []
+                for item in function_input.action_items:
+                    text_splitter = SentenceSplitter()
+                    chunks = text_splitter.split_text(text=item.html_doc)
+                    documents.extend([Document(text=chunk, metadata={'url': item.source_url}) for chunk in chunks])
                 self.index[function_input.hash] = VectorStoreIndex.from_documents(documents)
                 lock.dirty = True
                 self.query_engine[function_input.hash] = self.index[function_input.hash].as_query_engine(
@@ -112,11 +117,10 @@ class WebManager:
                     node_postprocessors=[self.reranker],
                     response_mode="tree_summarize"
                 )
-            try:
-                self.reranker.query_str = function_input.query
-                response = self.query_engine[function_input.hash].query(function_input.query)
-            except Exception as e:
-                print(f"WebManager: search_html exception {e}")
+            self.reranker.query_str = function_input.query
+            response = self.query_engine[function_input.hash].query(function_input.query)
+        except Exception as e:
+            print(f"WebManager: search_html exception {e}")
         finally:
             lock.reader_release()
             end = time.time()
