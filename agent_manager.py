@@ -3,18 +3,16 @@ import shutil
 from dotenv import load_dotenv
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
-import schedule
-import threading
 import os
-import faiss
 import json
 from datetime import datetime
-from langchain.chat_models import ChatOpenAI
-from langchain.docstore import InMemoryDocstore
+from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers import TimeWeightedVectorStoreRetriever
-from langchain.vectorstores import FAISS
-from langchain_experimental.generative_agents import GenerativeAgent, GenerativeAgentMemory
+from langchain_experimental.generative_agents import GenerativeAgentMemory
+from langchain.vectorstores import Qdrant
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as rest
 class AgentManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -22,63 +20,41 @@ class AgentManager:
 
         self.dirpath = "./storage_memory"
         self.embeddings = OpenAIEmbeddings()
-        self.agent = {}
+        self.memory = {}
         self.locks = {} 
-        self.LLM = ChatOpenAI()
-
-        # Save function scheduled to run every 30 to 60 seconds
-        schedule.every(30).to(60).seconds.do(self.save)
-        
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            schedule.run_pending()
-            time.sleep(1)
-
-    def stop(self):
-        """Stops the scheduler thread."""
-        self.save()
-        self.stop_event.set()
-        self.scheduler_thread.join()
+        self.LLM = OpenAI()
 
     def get_user_lock(self, user_id):
         return self.locks.setdefault(user_id, ReaderWriterLock())
 
-    def create_new_memory_retriever(self, vectorstore):
+    def create_new_memory_retriever(self, path):
         """Create a new vector store retriever unique to the agent."""
-        # Define your embedding model
-        if vectorstore is None:
-            # Initialize the vectorstore as empty
-            embedding_size = 1536
-            index = faiss.IndexFlatL2(embedding_size)
-            vectorstore = FAISS(
-                self.embeddings.embed_query,
-                index,
-                InMemoryDocstore({}),
-                {}
+        collection_name = "base_memory"
+        client = QdrantClient(path=path)
+        # create collection if it doesn't exist (if it exists it will fall into finally)
+        try:
+            client.create_collection(
+                on_disk_payload=True,
+                collection_name=collection_name,
+                vectors_config=rest.VectorParams(
+                    size = 1536,
+                    distance = rest.Distance.COSINE,
+                ),
             )
-        
-        return TimeWeightedVectorStoreRetriever(
-            vectorstore=vectorstore, other_score_keys=["importance"], k=15
-        )
-    def create_agent(self, faiss_vectorstore, user_id):
-        memory = GenerativeAgentMemory(
+        except:
+            print("AgentManager: couldn't create collection? It probably already exists, and loaded from disk...")
+        finally:
+            print(f"AgentManager: Creating memory store with collection {collection_name}")
+            vectorstore = Qdrant(client, collection_name, self.embeddings)
+            return TimeWeightedVectorStoreRetriever(
+                vectorstore=vectorstore, decay_rate=0.001, other_score_keys=["importance"], k=15
+            )
+
+    def create_memory(self, path):
+        return GenerativeAgentMemory(
             llm=self.LLM,
-            memory_retriever=self.create_new_memory_retriever(faiss_vectorstore),
-            verbose=False,
-        )
-        return GenerativeAgent(
-            name="AiDA",
-            age=25,
-            traits="helpful, courteous, curious",
-            status=f"Personal assistant to {user_id}",
-            llm=self.LLM,
-            memory=memory,
+            memory_retriever=self.create_new_memory_retriever(path),
+            verbose=True
         )
 
     def load(self, user_id):
@@ -87,44 +63,23 @@ class AgentManager:
         lock.writer_acquire()
         try:
             start = time.time()
-            userpath = Path(f"{self.dirpath}/{user_id}.faiss")
-            if userpath.exists():
-                print("AgentManager: Loading from disk")
-                self.agent[user_id] = self.create_agent(FAISS.load_local(self.dirpath,self.embeddings,user_id), user_id)
-            else:
-                print("AgentManager: Creating from scratch")
-                self.agent[user_id] = self.create_agent(None, user_id)
-                lock.dirty = True
+            userpath = Path(f"{self.dirpath}/{user_id}")
+            self.memory[user_id] = self.create_memory(userpath)
             end = time.time()
             print(f"AgentManager: Load operation took {end - start} seconds")
         finally:
             lock.writer_release()
 
-    def save(self):
-        """Persist current index data to the filesystem."""
-        for user_id, idx in self.agent.items():
-            lock = self.get_user_lock(user_id)
-            lock.writer_acquire()
-            try:
-                start = time.time()
-                if lock.dirty:
-                    #idx.memory.memory_retriever.vectorstore.save_local(self.dirpath, user_id)
-                    lock.dirty = False
-                end = time.time()
-                print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
-            finally:
-                lock.writer_release()
-
     def push_memory(self, user_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
         start = time.time()
-        if user_id not in self.agent:
+        if user_id not in self.memory:
             self.load(user_id)
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
             obj = {"user": query, "AiDA": llm_response}
-            self.agent[user_id].memory.add_memory(json.dumps(obj))
+            self.memory[user_id].add_memory(json.dumps(obj))
             lock.dirty = True
         finally:
             lock.writer_release()
@@ -135,22 +90,44 @@ class AgentManager:
     def pull_memory(self, user_id, query):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
-        if user_id not in self.agent:
+        if user_id not in self.memory:
             self.load(user_id)
         lock = self.get_user_lock(user_id)
         lock.reader_acquire()
         response = None
         try:
-            if user_id in self.agent:
-                response = self.agent[user_id].memory.fetch_memories(query, now=datetime.now())
+            if user_id in self.memory:
+                response = self.memory[user_id].fetch_memories(query, now=datetime.now())
         except Exception as e:
             print(f"AgentManager: pull_memory exception {e}")
         finally:
             lock.reader_release()
             end = time.time()
             print(f"AgentManager: pull_memory operation took {end - start} seconds")
-            return response, {end - start}
+            return response, end - start
 
+    def get_latest_memories(self, user_id, token_count):
+        """Fetch latest memories up to token_acount for a specific user."""
+        token_count = 1200 if token_count is None else token_count
+        start = time.time()
+        if user_id not in self.memory:
+            self.load(user_id)
+        lock = self.get_user_lock(user_id)
+        lock.reader_acquire()
+        response = None
+        try:
+            if user_id in self.memory:
+                old_limit = self.memory[user_id].max_tokens_limit
+                self.memory[user_id].max_tokens_limit = token_count
+                response = self.memory[user_id].load_memory_variables({self.memory[user_id].most_recent_memories_token_key: 0})
+                self.memory[user_id].max_tokens_limit = old_limit
+        except Exception as e:
+            print(f"AgentManager: get_latest_memories exception {e}")
+        finally:
+            lock.reader_release()
+            end = time.time()
+            print(f"AgentManager: get_latest_memories token_count: {token_count} operation took {end - start} seconds")
+            return response, end - start
 
     def delete_memory(self, user_id):
         """Delete all memories for a specific user."""
@@ -161,8 +138,8 @@ class AgentManager:
             userpath = Path(f"{self.dirpath}/{user_id}")
             if userpath.exists() and userpath.is_dir():
                 shutil.rmtree(userpath)
-            self.agent.pop(user_id, None)
+            self.memory.pop(user_id, None)
         finally:
             lock.writer_release()
             end = time.time()
-            return {end - start}
+            return end - start

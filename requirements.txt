@@ -26,4 +26,4 @@ gunicorn
 beautifulsoup4
 llama-index
 schedule
-faiss-cpu
+qdrant-client
