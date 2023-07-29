@@ -20,6 +20,7 @@ class HTMLItem(BaseModel):
 class HTMLInput(BaseModel):
     action_items: List[HTMLItem] = Field(..., example=[{"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
+    query: str
 
 class WebManager:
     def __init__(self):
@@ -63,7 +64,7 @@ class WebManager:
         lock.writer_acquire()
         try:
             print("WebManager: Loading from disk")
-            hashpath = Path(f"{self.dirpath}_{hash_key}")
+            hashpath = Path(f"{self.dirpath}/{hash_key}")
             if hashpath.exists() and hashpath.is_dir():
                 storage_context = StorageContext.from_defaults(persist_dir=hashpath)
                 self.index[hash_key] = load_index_from_storage(storage_context)
@@ -85,7 +86,7 @@ class WebManager:
             lock.writer_acquire()
             try:
                 if lock.dirty:
-                    filepath = f"{self.dirpath}_{hash_key}"
+                    filepath = f"{self.dirpath}/{hash_key}"
                     idx.storage_context.persist(persist_dir=filepath)
                     lock.dirty = False
             finally:
@@ -93,48 +94,33 @@ class WebManager:
         end = time.time()
         print(f"WebManager: Save operation took {end - start} seconds")
 
-    def push_html(self, function_input: HTMLInput):
-        """Add new HTML data to the current index for a specific hash."""
-        start = time.time()
-        hash_key = function_input.hash
-        if hash_key in self.index:
-            print("WebManager: Error push_html, hash already exists")
-            end = time.time()
-            return {end - start}
-        lock = self.get_hash_lock(hash_key)
-        lock.writer_acquire()
-        try:
-            documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
-            self.index[hash_key] = VectorStoreIndex.from_documents(documents)
-            lock.dirty = True
-            self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
-                similarity_top_k=10,
-                node_postprocessors=[self.reranker],
-                response_mode="tree_summarize"
-            )
-        finally:
-            lock.writer_release()
-            end = time.time()
-            print(f"WebManager: push_html operation took {end - start} seconds")
-            return {end - start}
-
-    def pull_html(self, hash_key, query):
+    def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
         start = time.time()
-        lock = self.get_hash_lock(hash_key)
+        if function_input.hash not in self.query_engine:
+            self.load(function_input.hash)
+        lock = self.get_hash_lock(function_input.hash)
         lock.reader_acquire()
         response = None
         try:
-            if hash_key in self.query_engine:
-                try:
-                    self.reranker.query_str = query
-                    response = self.query_engine[hash_key].query(query)
-                except Exception as e:
-                    print(f"WebManager: pull_html exception {e}")
+            if function_input.hash not in self.query_engine:
+                documents = [Document(text=item.html_doc, metadata={'url': item.source_url}) for item in function_input.action_items]
+                self.index[function_input.hash] = VectorStoreIndex.from_documents(documents)
+                lock.dirty = True
+                self.query_engine[function_input.hash] = self.index[function_input.hash].as_query_engine(
+                    similarity_top_k=10,
+                    node_postprocessors=[self.reranker],
+                    response_mode="tree_summarize"
+                )
+            try:
+                self.reranker.query_str = function_input.query
+                response = self.query_engine[function_input.hash].query(function_input.query)
+            except Exception as e:
+                print(f"WebManager: search_html exception {e}")
         finally:
             lock.reader_release()
             end = time.time()
-            print(f"WebManager: pull_html operation took {end - start} seconds")
+            print(f"WebManager: search_html operation took {end - start} seconds")
             return response, {end - start}
 
     def delete_html(self, hash_key):
@@ -143,7 +129,7 @@ class WebManager:
         lock = self.get_hash_lock(hash_key)
         lock.writer_acquire()
         try:
-            hashpath = Path(f"{self.dirpath}_{hash_key}")
+            hashpath = Path(f"{self.dirpath}/{hash_key}")
             if hashpath.exists() and hashpath.is_dir():
                 shutil.rmtree(hashpath)
             self.index.pop(hash_key, None)
