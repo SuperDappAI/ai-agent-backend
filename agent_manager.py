@@ -49,25 +49,25 @@ class AgentManager:
     def get_user_lock(self, user_id):
         return self.locks.setdefault(user_id, ReaderWriterLock())
 
-    def create_new_memory_retriever(self, path):
+    def create_new_memory_retriever(self, vectorstore, path):
         """Create a new vector store retriever unique to the agent."""
         collection_name = "base_memory"
-        client = QdrantClient(path=path)
+        client = QdrantClient()
         # create collection if it doesn't exist (if it exists it will fall into finally)
-        try:
-            client.create_collection(
-                on_disk_payload=True,
-                collection_name=collection_name,
-                vectors_config=rest.VectorParams(
-                    size = 1536,
-                    distance = rest.Distance.COSINE,
-                ),
-            )
-        except:
-            print("AgentManager: couldn't create collection? It probably already exists, and loaded from disk...")
-        finally:
-            print(f"AgentManager: Creating memory store with collection {collection_name}")
-            vectorstore = Qdrant(client, collection_name, self.embeddings)
+        if vectorstore is not None:
+            try:
+                client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=rest.VectorParams(
+                        size = 1536,
+                        distance = rest.Distance.COSINE,
+                    ),
+                )
+            except:
+                print("AgentManager: couldn't create collection? It probably already exists, and loaded from disk...")
+            finally:
+                print(f"AgentManager: Creating memory store with collection {collection_name}")
+                vectorstore = Qdrant(client, collection_name, self.embeddings)
             return TimeWeightedVectorStoreRetriever(
                 vectorstore=vectorstore, decay_rate=0.001, other_score_keys=["importance"], k=15
             )
@@ -87,7 +87,10 @@ class AgentManager:
             start = time.time()
             userpath = Path(f"{self.dirpath}/{user_id}")
             mempath = Path(f"{self.dirpath}/{user_id}/memory_stream.wb")
-            self.memory[user_id] = self.create_memory(userpath)
+            vectorpath = Path(f"{self.dirpath}/{user_id}/vector_store.wb")
+            if mempath.exists():
+                  vectorstore = dill.load(open(vectorpath, "rb"))
+            self.memory[user_id] = self.create_memory(vectorstore, userpath)
             if mempath.exists():
                 print("AgentManager: Loading memory stream from disk")
                 self.memory[user_id].memory_retriever.memory_stream = dill.load(open(mempath, "rb"))
@@ -110,6 +113,9 @@ class AgentManager:
                     userpath = Path(f"{self.dirpath}/{user_id}/memory_stream.wb")
                     with open(userpath, "wb") as f:
                         dill.dump(idx.memory_retriever.memory_stream, f)
+                    vectorpath = Path(f"{self.dirpath}/{user_id}/vector_store.wb")
+                    with open(vectorpath, "wb") as f:
+                        dill.dump(idx.memory_retriever.vectorstore, f)
                     lock.dirty = False
                 end = time.time()
                 print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
@@ -127,6 +133,8 @@ class AgentManager:
             obj = {"user": query, "AiDA": llm_response}
             self.memory[user_id].add_memory(json.dumps(obj))
             lock.dirty = True
+        except Exception as e:
+            print(f"AgentManager: push_memory exception {e}")
         finally:
             lock.writer_release()
             end = time.time()
