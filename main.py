@@ -45,6 +45,7 @@ queryplan_manager = QueryPlanManager()
 async def shutdown_event():
     print("Application shutdown")
     functions_manager1.stop()
+    agent_manager.stop()
     web_manager.stop()
     
 LOGFILE_PATH = os.path.join(os.path.dirname(

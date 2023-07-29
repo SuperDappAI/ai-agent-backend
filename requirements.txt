@@ -27,3 +27,4 @@ beautifulsoup4
 llama-index
 schedule
 qdrant-client
+dill

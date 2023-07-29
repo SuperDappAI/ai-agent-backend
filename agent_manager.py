@@ -5,6 +5,9 @@ from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
 import os
 import json
+import dill
+import schedule
+import threading
 from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
@@ -23,6 +26,25 @@ class AgentManager:
         self.memory = {}
         self.locks = {} 
         self.LLM = OpenAI()
+        # Save function scheduled to run every 30 to 60 seconds
+        schedule.every(30).to(60).seconds.do(self.save)
+        
+        # Create new thread for schedule
+        self.stop_event = threading.Event()
+        self.scheduler_thread = threading.Thread(target=self.run_continuously)
+        self.scheduler_thread.start()
+
+    def run_continuously(self):
+        """Keep checking and running pending tasks every second."""
+        while not self.stop_event.is_set():
+            schedule.run_pending()
+            time.sleep(1)
+
+    def stop(self):
+        """Stops the scheduler thread."""
+        self.save()
+        self.stop_event.set()
+        self.scheduler_thread.join()
 
     def get_user_lock(self, user_id):
         return self.locks.setdefault(user_id, ReaderWriterLock())
@@ -54,7 +76,7 @@ class AgentManager:
         return GenerativeAgentMemory(
             llm=self.LLM,
             memory_retriever=self.create_new_memory_retriever(path),
-            verbose=True
+            verbose=False
         )
 
     def load(self, user_id):
@@ -64,11 +86,35 @@ class AgentManager:
         try:
             start = time.time()
             userpath = Path(f"{self.dirpath}/{user_id}")
+            mempath = Path(f"{self.dirpath}/{user_id}/memory_stream.wb")
             self.memory[user_id] = self.create_memory(userpath)
+            if mempath.exists():
+                print("AgentManager: Loading memory stream from disk")
+                self.memory[user_id].memory_retriever.memory_stream = dill.load(open(mempath, "rb"))
+            else:
+                print("AgentManager: Creating memory stream from scratch")
+                lock.dirty = True
             end = time.time()
             print(f"AgentManager: Load operation took {end - start} seconds")
         finally:
             lock.writer_release()
+
+    def save(self):
+        """Persist current index data to the filesystem."""
+        for user_id, idx in self.memory.items():
+            lock = self.get_user_lock(user_id)
+            lock.writer_acquire()
+            try:
+                start = time.time()
+                if lock.dirty:
+                    userpath = Path(f"{self.dirpath}/{user_id}/memory_stream.wb")
+                    with open(userpath, "wb") as f:
+                        dill.dump(idx.memory_retriever.memory_stream, f)
+                    lock.dirty = False
+                end = time.time()
+                print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
+            finally:
+                lock.writer_release()
 
     def push_memory(self, user_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
