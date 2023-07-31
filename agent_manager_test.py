@@ -1,98 +1,99 @@
 import unittest
-from unittest.mock import MagicMock, patch
-from agent_manager import AgentManager
+from unittest.mock import MagicMock, Mock, patch
+from your_module_path import Document, AgentManager, GenerativeAgentMemory, TimeWeightedVectorStoreRetriever
 
-class TestMemoryManager1(unittest.TestCase):
+class TestAgentManager(unittest.TestCase):
     @patch('agent_manager.load_dotenv')
     @patch('agent_manager.os.getenv')
-    @patch('agent_manager.threading.Thread')
-    @patch('agent_manager.ServiceContext.from_defaults')
-    @patch('agent_manager.LLMRerank')
-    def test_init(self, mock_llm_rerank, mock_service_context, mock_thread, mock_getenv, mock_load_dotenv):
-        mock_llm_rerank.return_value = MagicMock()
-        mock_service_context.return_value = MagicMock()
+    def setUp(self, mock_getenv, mock_load_dotenv):
+        mock_load_dotenv.return_value = MagicMock()
+        mock_getenv.return_value = "api_key"
+        self.time_weighted_retriever = MagicMock(spec=TimeWeightedVectorStoreRetriever)
+        self.generative_agent_memory = GenerativeAgentMemory(retriever=self.time_weighted_retriever)
+        self.agent_manager = AgentManager(memory=self.generative_agent_memory)
+        self.agent_manager.index = {}
 
-        mm = AgentManager()
+    def test_retrieve(self):
+        self.agent_manager.memory.retriever.get_salient_docs.return_value = [
+            Document(id='1', text='Hello, world!', vector=[0.1, 0.2, 0.3], metadata={}),
+            Document(id='2', text='Goodbye, world!', vector=[0.4, 0.5, 0.6], metadata={})
+        ]
+        documents = self.agent_manager.retrieve('user_id', 'query', 'conversation')
+        self.assertIsInstance(documents, list)
+        self.assertTrue(all(isinstance(doc, Document) for doc in documents))
 
-        mock_load_dotenv.assert_called_once()
-        mock_getenv.assert_called_once_with("OPENAI_API_KEY")
-        mock_thread.assert_called()
-        mm.stop()
+    def test_add_and_save(self):
+        document = Document(id='3', text='New text', vector=[0.7, 0.8, 0.9], metadata={})
+        self.agent_manager.add_and_save('user_id', document)
+        self.agent_manager.memory.add_and_save.assert_called_once_with(document)
 
-    @patch('agent_manager.schedule.run_pending')
-    @patch('agent_manager.time.sleep')
-    def test_run_continuously(self, mock_sleep, mock_run_pending):
-        mock_sleep.side_effect = lambda *args: exit(0)
-        agent_manager = AgentManager()
+    def test_index_memory(self):
+        self.agent_manager.index_memory('user_id', 'conversation', 'reflections', 'salient_doc_ids')
+        self.agent_manager.memory.index_memory.assert_called_once()
 
-        try:
-            agent_manager.run_continuously()
-        except SystemExit:
-            pass
-        mock_run_pending.assert_called()
-        agent_manager.stop()
+    def test_search(self):
+        mock_query = "test query"
+        mock_num_results = 5
+        self.agent_manager.memory.retriever.vector_store.search.return_value = [
+            Document(id='1', text='Hello, world!', vector=[0.1, 0.2, 0.3], metadata={}),
+            Document(id='2', text='Goodbye, world!', vector=[0.4, 0.5, 0.6], metadata={})
+        ]
+        documents = self.agent_manager.search('user_id', mock_query, mock_num_results)
+        self.assertIsInstance(documents, list)
+        self.assertTrue(all(isinstance(doc, Document) for doc in documents))
 
-    @patch('agent_manager.Path.exists')
-    @patch('agent_manager.Path.is_dir')
-    @patch('agent_manager.StorageContext.from_defaults')
-    @patch('agent_manager.load_index_from_storage')
-    def test_load(self, mock_load_index, mock_storage_context, mock_is_dir, mock_exists):
-        mock_exists.return_value = True
-        mock_is_dir.return_value = True
-        mock_load_index.return_value = MagicMock()
-        mock_storage_context.return_value = MagicMock()
+    def test_create_new_memory_retriever(self):
+        retriever = self.agent_manager.create_new_memory_retriever("user_id")
+        self.agent_manager.memory.create_new_memory_retriever.assert_called_once_with("user_id")
+
+    def test_create_memory(self):
         user_id = 'user1'
+        retriever_mock = MagicMock()
 
-        agent_manager = AgentManager()
-        agent_manager.load(user_id)
+        self.agent_manager.create_memory(user_id, retriever_mock)
 
-        mock_exists.assert_called()
-        mock_is_dir.assert_called()
-        mock_load_index.assert_called()
-        mock_storage_context.assert_called()
-        agent_manager.stop()
+        self.assertIn(user_id, self.agent_manager.index)
+        self.assertEqual(self.agent_manager.index[user_id], retriever_mock)
 
-    def test_save(self):
+    def test_load(self):
         user_id = 'user1'
-        agent_manager = AgentManager()
-        index_mock = MagicMock()
-        index_mock.dirty = True  # Here you set the 'dirty' attribute to your MagicMock object
-        agent_manager.index[user_id] = index_mock
-        agent_manager.save()
-        index_mock.storage_context.persist.assert_called()
-        agent_manager.stop()
+        retriever_mock = MagicMock()
+
+        self.agent_manager.index = {user_id: retriever_mock}
+        self.agent_manager.load(user_id)
+
+        retriever_mock.vector_store.load.assert_called()
 
     def test_push_memory(self):
         user_id = 'user1'
-        agent_manager = AgentManager()
         query = 'Hello, world!'
         llm_response = 'Hello, user!'
-        agent_manager.push_memory(user_id, query, llm_response)
-        assert agent_manager.index[user_id].dirty is True  # Here you check if 'dirty' is True
-        agent_manager.stop()
+        retriever_mock = MagicMock()
 
-    def test_pull_memory(self   ):
+        self.agent_manager.index = {user_id: retriever_mock}
+        self.agent_manager.push_memory(user_id, query, llm_response)
+
+        retriever_mock.add_and_save.assert_called()
+
+    def test_pull_memory(self):
         user_id = 'user1'
         query = 'Hello, world!'
-        agent_manager = AgentManager()
-        agent_manager.query_engine[user_id] = MagicMock()
-        agent_manager.pull_memory(user_id, query)
-        agent_manager.query_engine[user_id].query.assert_called()
-        agent_manager.stop()
+        retriever_mock = MagicMock()
 
-    @patch('agent_manager.shutil.rmtree')
-    @patch('agent_manager.Path.exists')
-    @patch('agent_manager.Path.is_dir')
-    def test_delete_memory(self, mock_is_dir, mock_exists, mock_rmtree):
+        self.agent_manager.index = {user_id: retriever_mock}
+        self.agent_manager.pull_memory(user_id, query)
+
+        retriever_mock.retrieve.assert_called()
+
+    def test_delete_memory(self):
         user_id = 'user1'
-        mock_exists.return_value = True
-        mock_is_dir.return_value = True
-        agent_manager = AgentManager()
-        agent_manager.delete_memory(user_id)
-        assert user_id not in agent_manager.index
-        assert user_id not in agent_manager.query_engine
-        mock_rmtree.assert_called()
-        agent_manager.stop()
+        retriever_mock = MagicMock()
+
+        self.agent_manager.index = {user_id: retriever_mock}
+        self.agent_manager.delete_memory(user_id)
+
+        self.assertNotIn(user_id, self.agent_manager.index)
+        retriever_mock.vector_store.clear.assert_called()
 
 if __name__ == "__main__":
     unittest.main()
