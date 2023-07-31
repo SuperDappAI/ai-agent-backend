@@ -22,10 +22,6 @@ class GenerativeAgentMemory(BaseMemory):
     memory_retriever: TimeWeightedVectorStoreRetriever
     """The retriever to fetch related memories."""
     verbose: bool = False
-    """The current plan of the agent."""
-    # A weight of 0.15 makes this less important than it
-    # would be otherwise, relative to salience and time
-    importance_weight: float = 0.15
     """How much weight to assign the memory importance."""
     
     # input keys
@@ -49,7 +45,7 @@ class GenerativeAgentMemory(BaseMemory):
         lines = [line for line in lines if line.strip()]  # remove empty lines
         return [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in lines]
 
-    def _get_topics_of_reflection(self, memory_content: str, conversation: str) -> [List[str], List[str]]:
+    def _get_topics_of_reflection(self, memory_content: str, conversation: str) -> [List[Document], List[str]]:
         """Return the 3 most salient high-level questions about recent observations."""
         prompt = PromptTemplate.from_template(
             "{observations}\n\n"
@@ -58,15 +54,18 @@ class GenerativeAgentMemory(BaseMemory):
             "Provide each question on a new line."
         )
         # get last important memories to get reflections on them
-        observations = self.memory_retriever.get_relevant_documents_for_reflection(memory_content, conversation)
-        observation_str = "\n".join(
-            [self._format_memory_detail(o) for o in observations]
-        )
-        result = self.chain(prompt).run(observations=observation_str)
-        return observations, self._parse_list(result)
+        observationsDocuments = self.memory_retriever.get_relevant_documents_for_reflection(memory_content, conversation)
+        if len(observationsDocuments) > 0:
+            observation_str = "\n".join(
+                [self._format_memory_detail(o) for o in observationsDocuments]
+            )
+            result = self.chain(prompt).run(observations=observation_str)
+            return observationsDocuments, self._parse_list(result)
+        else:
+            return [], []
 
     def _get_insights_on_topics(
-        self, observations: List[str], topic: List[str], **kwargs: Any,
+        self, topics: List[str], observationDocuments: List[Document], **kwargs: Any,
     ) -> List[str]:
         """Generate 'insights' on a topic of reflection, based on pertinent memories."""
         prompt = PromptTemplate.from_template(
@@ -81,15 +80,14 @@ class GenerativeAgentMemory(BaseMemory):
             "Questions: {topics}\n\n"
             "(example format: insight (because of 1, 3))\n"
         )
-
         related_statements = "\n".join(
             [
                 self._format_memory_detail(observation, prefix=f"{i+1}. ")
-                for i, observation in enumerate(observations)
+                for i, observation in enumerate(observationDocuments)
             ]
         )
         result = self.chain(prompt).run(
-            topic=topic, related_statements=related_statements
+            topics=topics, related_statements=related_statements
         )
         return self._parse_list(result)
 
@@ -98,14 +96,17 @@ class GenerativeAgentMemory(BaseMemory):
         if self.verbose:
             logger.info("AiDA is reflecting")
         new_insights = []
-        observations, topics = self._get_topics_of_reflection(memory_content, conversation)
-        insights = self._get_insights_on_topics(topics, observations, conversation=conversation, now=now)
-        qa = {"aida_reflections": topics, "aida_insights": insights}
-        self.add_memory(json.dumps(qa), conversation, now=now)
-        new_insights.extend(insights)
-        return new_insights
+        observationDocuments, topics = self._get_topics_of_reflection(memory_content, conversation)
+        if len(observationDocuments) > 0 and len(topics) > 0:
+            insights = self._get_insights_on_topics(topics, observationDocuments, conversation=conversation, now=now)
+            if len(insights) > 0:
+                qa = {"my_reflections": topics, "my_insights": insights}
+                self.add_memory(json.dumps(qa), conversation, now=now)
+                new_insights.extend(insights)
+                return new_insights
+        return []
 
-    def _score_memory_importance(self, memory_content: str) -> float:
+    def _score_memory_importance(self, memory_content: str) -> int:
         """Score the absolute importance of the given memory."""
         prompt = PromptTemplate.from_template(
             "On the scale of 1 to 10, where 1 is purely mundane"
@@ -121,9 +122,9 @@ class GenerativeAgentMemory(BaseMemory):
             logger.info(f"Importance score: {score}")
         match = re.search(r"^\D*(\d+)", score)
         if match:
-            return (float(match.group(1)) / 10) * self.importance_weight
+            return int(match.group(1))
         else:
-            return 0.0
+            return 0
 
     def _score_memories_importance(self, memory_list: str) -> List[float]:
         """Score the absolute importance of the given memory."""
@@ -174,15 +175,9 @@ class GenerativeAgentMemory(BaseMemory):
                 max_importance_doc = doc
         
         result = self.memory_retriever.vectorstore.add_documents(documents)
-        
-        if (
-            not self.reflecting
-            and max_importance >= 9
-        ):
+        if ( max_importance >= 9):
             # reflect on the most important memory with like memories that were also important
-            self.reflecting = True
             self.pause_to_reflect(max_importance_doc.page_content, conversation, now=now)
-            self.reflecting = False
         return result
 
     def add_memory(
@@ -201,15 +196,9 @@ class GenerativeAgentMemory(BaseMemory):
             metadata=metadata,
         )
         result = self.memory_retriever.vectorstore.add_documents([document])
-
-        if (
-            not self.reflecting
-            and importance_score >= 9
-        ):
+        if (importance_score >= 9):
             # reflect on the most important memory with like memories that were also important
-            self.reflecting = True
             self.pause_to_reflect(memory_content, conversation, now=now)
-            self.reflecting = False
         return result
 
     def fetch_memories(
@@ -276,7 +265,7 @@ class GenerativeAgentMemory(BaseMemory):
         now = outputs.get(self.now_key)
         conversation = outputs.get(self.payload_conversation_key)
         if user:
-            qa = {"user": user, "aida": aida}
+            qa = {"user": user, "me": aida}
             self.add_memory(json.dumps(qa), conversation, now=now)
 
     def clear(self) -> None:
