@@ -45,7 +45,6 @@ queryplan_manager = QueryPlanManager()
 async def shutdown_event():
     print("Application shutdown")
     functions_manager1.stop()
-    agent_manager.stop()
     web_manager.stop()
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
@@ -75,10 +74,10 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_memory_1/')
-async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
+async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user {user_id}')
-    elapsed_time = agent_manager.push_memory(user_id, query, llm_response)
+    logging.info(f'Writing memory for user {user_id}, conversation {conversation_id}')
+    elapsed_time = agent_manager.push_memory(user_id, conversation_id, query, llm_response)
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_html/')
@@ -102,13 +101,6 @@ async def loadHTML(html_doc: str = Form(...), source_url: str = Form(...), user_
                  elapsed_time)  # log the elapsed time
 
     return {'success': 'success', 'elapsed_time': elapsed_time}
-
-@app.post('/push_html_1/')
-async def loadHTML(function_input: HTMLInput):
-    """Endpoint to load HTML content."""
-    logging.info('Loading HTML')
-    elapsed_time = web_manager.push_html(function_input)
-    return {'elapsed_time': elapsed_time}
 
 @app.post('/delete_html/')
 async def deleteHTML(hash: str = Form(...)):
@@ -134,10 +126,17 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
     return {'memories': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/pull_memory_1/')
-async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), context: str = Form(...), num_chunks: int = Form(...), num_neighbors: int= Form(...),similarity_threshold: float = Form(...)):
+async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to pull relevant memories for a specific user."""
-    logging.info(f'Pulling relevant memories for user {user_id}')
-    memories, elapsed_time = agent_manager.pull_memory(user_id, query, context=context)
+    logging.info(f'Pulling relevant memories for user {user_id}, conversation {conversation_id}')
+    memories, elapsed_time = agent_manager.pull_memory(user_id, conversation_id, query)
+    return {'response': memories, 'elapsed_time': elapsed_time}
+
+@app.post('/get_latest_memories/')
+async def pullLatestMemoriesForUser(user_id: str = Form(...), token_count: int = Form(None)):
+    """Endpoint to pull latest memories for a specific user based on token_count."""
+    logging.info(f'Pulling latest memories for user {user_id}')
+    memories, elapsed_time = agent_manager.get_latest_memories(user_id, token_count)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
@@ -153,10 +152,10 @@ async def semanticSearchHTML(query: str = Form(...), user_id: str = Form(...), c
     return {'results': results, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html_1/')
-async def semanticSearchHTML(query: str = Form(...), hash: str = Form(...)):
+async def semanticSearchHTML(function_input: HTMLInput):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Semantic search HTML')
-    results, elapsed_time = web_manager.pull_html(hash, query)
+    results, elapsed_time = web_manager.search_html(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/get_functions/')

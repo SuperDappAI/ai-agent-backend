@@ -31,7 +31,7 @@ class FunctionsManager1:
 
         self.dirpath = Path("./storage_functions")
         self.index = None
-        self.dirty = False
+        self.max_length_allowed = 512
         self.query_engine = None
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=10, top_n=3, 
@@ -70,6 +70,10 @@ class FunctionsManager1:
         result = []
         for item in data:
             page_content = {'name': item['name'], 'category': category, 'description': str(item['description'])}
+            lenData = len(str(page_content))
+            if lenData > self.max_length_allowed:
+                print(f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
+                continue
             result.append(page_content)
         return result
 
@@ -78,9 +82,9 @@ class FunctionsManager1:
         start = time.time()
         self.lock.writer_acquire()
         try:
-            if self.dirty is True:
+            if self.lock.dirty is True:
                 self.index.storage_context.persist(persist_dir=self.dirpath)
-                self.dirty = False
+                self.lock.dirty = False
         finally:
             self.lock.writer_release()
             end = time.time()
@@ -110,7 +114,7 @@ class FunctionsManager1:
         try:
             if self.query_engine is not None:
                 for action_item in function_input.action_items:
-                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}. Return response (as name+category in JSON) only if you are 100% sure of the result otherwise return 'nothing'."
+                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                     self.reranker.query_str = query
                     response.append(self.query_engine.query(query))
         except:
@@ -166,14 +170,13 @@ class FunctionsManager1:
                     transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
 
-            
             documents = [Document(text=json.dumps(t)) for t in all_docs]
             self.index = VectorStoreIndex.from_documents(documents)
             self.query_engine = self.index.as_query_engine(
                 similarity_top_k=10,
                 node_postprocessors=[self.reranker]
             )
-            self.dirty = True
+            self.lock.dirty = True
             tokens = self.count_tokens(functions)
         finally:
             self.lock.writer_release()

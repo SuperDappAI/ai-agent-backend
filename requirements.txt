@@ -3,7 +3,6 @@ langchain_experimental
 openai
 pandas
 gitpython
-#chromadb
 lark
 #deeplake
 tiktoken
@@ -26,4 +25,5 @@ gunicorn
 beautifulsoup4
 llama-index
 schedule
-faiss-cpu
+qdrant-client
+dill

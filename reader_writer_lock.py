@@ -5,6 +5,7 @@ class ReaderWriterLock:
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()
         self._reader_count = 0
+        self.dirty = False
 
     def reader_acquire(self):
         with self._read_lock:

@@ -3,19 +3,17 @@ import shutil
 from dotenv import load_dotenv
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
-import schedule
-import threading
 import os
-import json
-import faiss
-import math
-import datetime
-from langchain.chat_models import ChatOpenAI
-from langchain.docstore import InMemoryDocstore
+from datetime import datetime
+from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers import TimeWeightedVectorStoreRetriever
-from langchain.vectorstores import FAISS
-from langchain_experimental.generative_agents import GenerativeAgent, GenerativeAgentMemory
+from generative_memory import GenerativeAgentMemory
+from langchain.vectorstores import Qdrant
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as rest
+from qdrant_client.http.models import PayloadSchemaType
+
 class AgentManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -23,74 +21,43 @@ class AgentManager:
 
         self.dirpath = "./storage_memory"
         self.embeddings = OpenAIEmbeddings()
-        self.agent = {}
+        self.memory = {}
         self.locks = {} 
-        self.LLM = ChatOpenAI()
-
-        # Save function scheduled to run every 30 to 60 seconds
-        schedule.every(30).to(60).seconds.do(self.save)
-        
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            schedule.run_pending()
-            time.sleep(1)
-
-    def stop(self):
-        """Stops the scheduler thread."""
-        self.save()
-        self.stop_event.set()
-        self.scheduler_thread.join()
+        self.payload_conversation_index_key = "metadata.conversation"
+        self.LLM = OpenAI()
 
     def get_user_lock(self, user_id):
         return self.locks.setdefault(user_id, ReaderWriterLock())
 
-    def relevance_score_fn(score: float) -> float:
-        """Return a similarity score on a scale [0, 1]."""
-        # This will differ depending on a few things:
-        # - the distance / similarity metric used by the VectorStore
-        # - the scale of your embeddings (OpenAI's are unit norm. Many others are not!)
-        # This function converts the euclidean norm of normalized embeddings
-        # (0 is most similar, sqrt(2) most dissimilar)
-        # to a similarity function (0 to 1)
-        return 1.0 - score / math.sqrt(2)
-
-    def create_new_memory_retriever(self, vectorstore):
+    def create_new_memory_retriever(self, user_id, path):
         """Create a new vector store retriever unique to the agent."""
-        # Define your embedding model
-        if vectorstore is None:
-            # Initialize the vectorstore as empty
-            embedding_size = 1536
-            index = faiss.IndexFlatL2(embedding_size)
-            vectorstore = FAISS(
-                self.embeddings.embed_query,
-                index,
-                InMemoryDocstore({}),
-                {},
-                relevance_score_fn=self.relevance_score_fn,
+        collection_name = user_id
+        client = QdrantClient(path=path)
+        # create collection if it doesn't exist (if it exists it will fall into finally)
+        try:
+            client.create_collection(
+                on_disk_payload=True,
+                collection_name=collection_name,
+                vectors_config=rest.VectorParams(
+                    size = 1536,
+                    distance = rest.Distance.COSINE,
+                ),
             )
-        
-        return TimeWeightedVectorStoreRetriever(
-            vectorstore=vectorstore, other_score_keys=["importance"], k=15
-        )
-    def create_agent(self, faiss_vectorstore, user_id):
-        memory = GenerativeAgentMemory(
+            client.create_payload_index(collection_name, self.payload_conversation_index_key, field_schema=PayloadSchemaType.KEYWORD)
+        except:
+            print("AgentManager: couldn't create collection? It probably already exists, and loaded from disk...")
+        finally:
+            print(f"AgentManager: Creating memory store with collection {collection_name}")
+            vectorstore = Qdrant(client, collection_name, self.embeddings)
+            return TimeWeightedVectorStoreRetriever(
+                vectorstore=vectorstore, decay_rate=0.001, search_kwargs={"score_threshold":0.72}, other_score_keys=["importance"], k=15
+            )
+
+    def create_memory(self, user_id, path):
+        return GenerativeAgentMemory(
             llm=self.LLM,
-            memory_retriever=self.create_new_memory_retriever(faiss_vectorstore),
-            verbose=False,
-        )
-        return GenerativeAgent(
-            name="AiDA",
-            age=25,
-            traits="helpful, courteous, curious",
-            status=f"Personal assistant to {user_id}",
-            llm=self.LLM,
-            memory=memory,
+            memory_retriever=self.create_new_memory_retriever(user_id, path),
+            verbose=False
         )
 
     def load(self, user_id):
@@ -98,71 +65,64 @@ class AgentManager:
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
-            print("AgentManager: Loading from disk")
             start = time.time()
-            if self.dirpath.exists() and self.dirpath.is_dir():
-                self.agent[user_id] = self.create_agent(FAISS.load_local(self.dirpath,self.embeddings,user_id), user_id)
-                self.agent[user_id].dirty = True
-            else:
-                self.agent[user_id] = self.create_agent(None, user_id)
+            userpath = Path(f"{self.dirpath}/{user_id}")
+            self.memory[user_id] = self.create_memory(user_id, userpath)
             end = time.time()
             print(f"AgentManager: Load operation took {end - start} seconds")
         finally:
             lock.writer_release()
 
-    def save(self):
-        """Persist current index data to the filesystem."""
-        for user_id, idx in self.agent.items():
-            lock = self.get_user_lock(user_id)
-            lock.writer_acquire()
-            try:
-                start = time.time()
-                if idx.dirty:
-                    idx.memory.vectorstore.save_local(self.dirpath, user_id)
-                    idx.dirty = False
-                end = time.time()
-                print(f"AgentManager: Save operation for user {user_id} took {end - start} seconds")
-            finally:
-                lock.writer_release()
 
-    def push_memory(self, user_id, query, llm_response):
+
+    def push_memory(self, user_id, conversation_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
         start = time.time()
-        if user_id not in self.agent:
+        if user_id not in self.memory:
             self.load(user_id)
         lock = self.get_user_lock(user_id)
         lock.writer_acquire()
         try:
-            self.agent[user_id].save_context(
-                {},
+            self.memory[user_id].save_context(
                 {
-                    self.agent[user_id].add_memory_key: f"{user_id} asked "
-                    f"{query} and got answer: {llm_response}",
-                    self.agent[user_id].now_key: datetime.now(),
+                    self.memory[user_id].add_memory_user_key: query,
+                    self.memory[user_id].add_memory_aida_key: llm_response,
+                    self.memory[user_id].now_key: datetime.now(),
+                    self.memory[user_id].payload_conversation_key: conversation_id,
                 },
             )
-            self.agent[user_id].dirty = True
-      
+            lock.dirty = True
+        except Exception as e:
+            print(f"AgentManager: push_memory exception {e}") 
         finally:
             lock.writer_release()
             end = time.time()
             print(f"AgentManager: push_memory operation took {end - start} seconds")
-            return {end - start}
+            return end - start
 
-    def pull_memory(self, user_id, query):
+    def pull_memory(self, user_id, convo_id, query):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
+        if user_id not in self.memory:
+            self.load(user_id)
         lock = self.get_user_lock(user_id)
         lock.reader_acquire()
         response = None
         try:
-            if user_id in self.ensemble_retriever:
-                response = self.ensemble_retriever[user_id].get_relevant_documents(query)
+            if user_id in self.memory:
+                response = self.memory[user_id].load_memory_variables(
+                {
+                    self.memory[user_id].queries_key: [query],
+                    self.memory[user_id].payload_conversation_key: convo_id,
+                }
+            )
+        except Exception as e:
+            print(f"AgentManager: pull_memory exception {e}")
         finally:
             lock.reader_release()
             end = time.time()
             print(f"AgentManager: pull_memory operation took {end - start} seconds")
-            return response, {end - start}
+            return response, end - start
 
     def delete_memory(self, user_id):
         """Delete all memories for a specific user."""
@@ -173,8 +133,8 @@ class AgentManager:
             userpath = Path(f"{self.dirpath}/{user_id}")
             if userpath.exists() and userpath.is_dir():
                 shutil.rmtree(userpath)
-            self.agent.pop(user_id, None)
+            self.memory.pop(user_id, None)
         finally:
             lock.writer_release()
             end = time.time()
-            return {end - start}
+            return end - start
