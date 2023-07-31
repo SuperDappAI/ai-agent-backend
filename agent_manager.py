@@ -4,17 +4,14 @@ from dotenv import load_dotenv
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
 import os
-import schedule
-import threading
 from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers import TimeWeightedVectorStoreRetriever
-from langchain_experimental.generative_agents import GenerativeAgentMemory
+from generative_memory import GenerativeAgentMemory
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
-from typing import Any, List
 from qdrant_client.http.models import PayloadSchemaType
 
 class AgentManager:
@@ -78,7 +75,7 @@ class AgentManager:
 
 
 
-    def push_memory(self, user_id, query, llm_response):
+    def push_memory(self, user_id, conversation_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
         start = time.time()
         if user_id not in self.memory:
@@ -88,10 +85,10 @@ class AgentManager:
         try:
             self.memory[user_id].save_context(
                 {
-                    self.memory[user_id].add_user_key: query,
-                    self.memory[user_id].add_aida_key: llm_response,
+                    self.memory[user_id].add_memory_user_key: query,
+                    self.memory[user_id].add_memory_aida_key: llm_response,
                     self.memory[user_id].now_key: datetime.now(),
-                    self.memory[user_id].payload_conversation_key: user_id,
+                    self.memory[user_id].payload_conversation_key: conversation_id,
                 },
             )
             lock.dirty = True
@@ -116,7 +113,6 @@ class AgentManager:
                 response = self.memory[user_id].load_memory_variables(
                 {
                     self.memory[user_id].queries_key: [query],
-                    self.memory[user_id].now_key: datetime.now(),
                     self.memory[user_id].payload_conversation_key: convo_id,
                 }
             )

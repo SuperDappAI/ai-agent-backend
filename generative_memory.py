@@ -176,8 +176,7 @@ class GenerativeAgentMemory(BaseMemory):
         result = self.memory_retriever.vectorstore.add_documents(documents)
         
         if (
-            self.reflection_threshold is not None
-            and not self.reflecting
+            not self.reflecting
             and max_importance >= 9
         ):
             # reflect on the most important memory with like memories that were also important
@@ -204,8 +203,7 @@ class GenerativeAgentMemory(BaseMemory):
         result = self.memory_retriever.vectorstore.add_documents([document])
 
         if (
-            self.reflection_threshold is not None
-            and not self.reflecting
+            not self.reflecting
             and importance_score >= 9
         ):
             # reflect on the most important memory with like memories that were also important
@@ -218,13 +216,17 @@ class GenerativeAgentMemory(BaseMemory):
         self, topic: str, **kwargs: Any
     ) -> List[Document]:
         """Fetch related memories."""
-        current_time = kwargs.get("current_time", datetime.datetime.now())
+        current_time = kwargs.get("current_time", None)
         conversation = kwargs.get(self.payload_conversation_key)
         if current_time is not None:
             with mock_now(current_time):
-                return self.memory_retriever.get_relevant_documents(topic, conversation)
+                return self.memory_retriever.get_relevant_documents(topic)
         else:
-            return self.memory_retriever.get_relevant_documents(topic, conversation)
+            oldargs = self.memory_retriever.search_kwargs.copy()
+            self.memory_retriever.search_kwargs.update({"filter": {"conversation": conversation}})
+            docs = self.memory_retriever.get_relevant_documents(topic)
+            self.memory_retriever.search_kwargs = oldargs
+            return docs
 
     def format_memories_detail(self, relevant_memories: List[Document]) -> str:
         content = []
@@ -252,9 +254,10 @@ class GenerativeAgentMemory(BaseMemory):
         queries = inputs.get(self.queries_key)
         now = inputs.get(self.now_key)
         conversation = inputs.get(self.payload_conversation_key)
+        kwargs = {self.payload_conversation_key: conversation, "current_time": now}
         if queries is not None:
             relevant_memories = [
-                mem for query in queries for mem in self.fetch_memories(query, conversation=conversation, current_time=now)
+                mem for query in queries for mem in self.fetch_memories(query, **kwargs)
             ]
             return {
                 self.relevant_memories_key: self.format_memories_detail(

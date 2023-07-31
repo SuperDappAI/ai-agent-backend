@@ -74,10 +74,10 @@ async def writeMemoryForUser(message: str = Form(...), llm_response: str = Form(
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_memory_1/')
-async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...)):
+async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user {user_id}')
-    elapsed_time = agent_manager.push_memory(user_id, query, llm_response)
+    logging.info(f'Writing memory for user {user_id}, conversation {conversation_id}')
+    elapsed_time = agent_manager.push_memory(user_id, conversation_id, query, llm_response)
     return {'elapsed_time': elapsed_time}
 
 @app.post('/push_html/')
