@@ -126,7 +126,7 @@ class GenerativeAgentMemory(BaseMemory):
         else:
             return 0
 
-    def _score_memories_importance(self, memory_list: str) -> List[float]:
+    def _score_memories_importance(self, memory_list: str) -> List[int]:
         """Score the absolute importance of the given memory."""
         prompt = PromptTemplate.from_template(
             "On the scale of 1 to 10, where 1 is purely mundane"
@@ -144,8 +144,8 @@ class GenerativeAgentMemory(BaseMemory):
         if self.verbose:
             logger.info(f"Importance scores: {scores}")
 
-        # Split into list of strings and convert to floats
-        scores_list = [float(x) for x in scores.split(";")]
+        # Split into list of strings and convert to ints
+        scores_list = [int(x) for x in scores.split(";")]
 
         return scores_list
 

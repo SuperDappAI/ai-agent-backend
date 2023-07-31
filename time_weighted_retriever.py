@@ -69,7 +69,7 @@ class TimeWeightedVectorStoreRetriever(BaseRetriever):
         """Return documents that are relevant to the query."""
         current_time = datetime.now()
         oldargs = self.search_kwargs.copy()
-        self.search_kwargs.update({"filter": {"importance": 10}, "k": 10})
+        self.search_kwargs.update({"filter": {"importance_score": 10}, "k": 10})
         docs_and_scores = self.get_salient_docs(query)
         self.search_kwargs = oldargs
         rescored_docs = [
