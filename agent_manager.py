@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.retrievers import TimeWeightedVectorStoreRetriever
+from time_weighted_retriever import TimeWeightedVectorStoreRetriever
 from generative_memory import GenerativeAgentMemory
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
