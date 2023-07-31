@@ -1,13 +1,11 @@
 import datetime
-from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pydantic import Field
 
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain.schema import BaseRetriever, Document
 from langchain.vectorstores.base import VectorStore
-
 
 def _get_hours_passed(time: datetime.datetime, ref_time: datetime.datetime) -> float:
     """Get the hours passed between two datetime objects."""
@@ -24,24 +22,14 @@ class TimeWeightedVectorStoreRetriever(BaseRetriever):
     search_kwargs: dict = Field(default_factory=lambda: dict(k=100))
     """Keyword arguments to pass to the vectorstore similarity search."""
 
-    # TODO: abstract as a queue
-    memory_stream: List[Document] = Field(default_factory=list)
-    """The memory_stream of documents to search through."""
-
     decay_rate: float = Field(default=0.01)
     """The exponential decay factor used as (1.0-decay_rate)**(hrs_passed)."""
 
-    k: int = 4
-    """The maximum number of documents to retrieve in a given call."""
-
+    conversation_bonus: float = Field(default=0.1)
+    """Bonus given to semantic scoring (percentage) if we are searching across conversations and it is in the conversation that is doing reflection."""
+    
     other_score_keys: List[str] = []
     """Other keys in the metadata to factor into the score, e.g. 'importance'."""
-
-    default_salience: Optional[float] = None
-    """The salience to assign memories not retrieved from the vector store.
-
-    None assigns no salience to documents not fetched from the vector store.
-    """
 
     class Config:
         """Configuration for this pydantic object."""
@@ -53,6 +41,7 @@ class TimeWeightedVectorStoreRetriever(BaseRetriever):
         document: Document,
         vector_relevance: Optional[float],
         current_time: datetime.datetime,
+        conversation: str = None
     ) -> float:
         """Return the combined score for a document."""
         hours_passed = _get_hours_passed(
@@ -65,6 +54,9 @@ class TimeWeightedVectorStoreRetriever(BaseRetriever):
                 score += document.metadata[key]
         if vector_relevance is not None:
             score += vector_relevance
+        if conversation is not None:
+            if conversation is document.metadata["conversation"]:
+                score += self.conversation_bonus
         return score
 
     def get_salient_docs(self, query: str) -> Dict[int, Tuple[Document, float]]:
@@ -73,65 +65,46 @@ class TimeWeightedVectorStoreRetriever(BaseRetriever):
         docs_and_scores = self.vectorstore.similarity_search_with_relevance_scores(
             query, **self.search_kwargs
         )
-        results = {}
-        for fetched_doc, relevance in docs_and_scores:
-            if "buffer_idx" in fetched_doc.metadata:
-                buffer_idx = fetched_doc.metadata["buffer_idx"]
-                doc = self.memory_stream[buffer_idx]
-                results[buffer_idx] = (doc, relevance)
-        return results
-
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+        return docs_and_scores
+    
+    def get_relevant_documents_for_reflection(
+        self, query: str, conversation: str
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
         current_time = datetime.datetime.now()
-        docs_and_scores = {
-            doc.metadata["buffer_idx"]: (doc, self.default_salience)
-            for doc in self.memory_stream[-self.k :]
-        }
-        # If a doc is considered salient, update the salience score
-        docs_and_scores.update(self.get_salient_docs(query))
+        oldargs = self.search_kwargs
+        self.search_kwargs["filter"] = {"importance": 9, "importance": 10}
+        self.search_kwargs["k"] = 10
+        docs_and_scores = self.get_salient_docs(query)
+        self.search_kwargs = oldargs
+        rescored_docs = [
+            (doc, self._get_combined_score(doc, relevance, current_time, conversation))
+            for doc, relevance in docs_and_scores.values()
+        ]
+        rescored_docs.sort(key=lambda x: x[1], reverse=True)
+        # only look at the top 3 results out of 10
+        if len(rescored_docs) > 3:
+            rescored_docs = rescored_docs[-3:]
+        # Ensure frequently accessed memories aren't forgotten
+        for doc, _ in rescored_docs:
+            doc.metadata["last_accessed_at"] = current_time
+        return rescored_docs
+    
+    def _get_relevant_documents(
+        self, query: str, conversation: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        """Return documents that are relevant to the query."""
+        current_time = datetime.datetime.now()
+        oldargs = self.search_kwargs
+        self.search_kwargs["filter"] = {"conversation": conversation}
+        docs_and_scores = self.get_salient_docs(query)
+        self.search_kwargs = oldargs
         rescored_docs = [
             (doc, self._get_combined_score(doc, relevance, current_time))
             for doc, relevance in docs_and_scores.values()
         ]
         rescored_docs.sort(key=lambda x: x[1], reverse=True)
-        result = []
         # Ensure frequently accessed memories aren't forgotten
-        for doc, _ in rescored_docs[: self.k]:
-            # TODO: Update vector store doc once `update` method is exposed.
-            buffered_doc = self.memory_stream[doc.metadata["buffer_idx"]]
-            buffered_doc.metadata["last_accessed_at"] = current_time
-            result.append(buffered_doc)
-        return result
-
-    def add_documents(self, documents: List[Document], **kwargs: Any) -> List[str]:
-        """Add documents to vectorstore."""
-        current_time = kwargs.pop("current_time", datetime.datetime.now())
-        # Avoid mutating input documents
-        dup_docs = [deepcopy(d) for d in documents]
-        for i, doc in enumerate(dup_docs):
-            if "last_accessed_at" not in doc.metadata:
-                doc.metadata["last_accessed_at"] = current_time
-            if "created_at" not in doc.metadata:
-                doc.metadata["created_at"] = current_time
-            doc.metadata["buffer_idx"] = len(self.memory_stream) + i
-        self.memory_stream.extend(dup_docs)
-        return self.vectorstore.add_documents(dup_docs, **kwargs)
-
-    async def aadd_documents(
-        self, documents: List[Document], **kwargs: Any
-    ) -> List[str]:
-        """Add documents to vectorstore."""
-        current_time = kwargs.pop("current_time", datetime.datetime.now())
-        # Avoid mutating input documents
-        dup_docs = [deepcopy(d) for d in documents]
-        for i, doc in enumerate(dup_docs):
-            if "last_accessed_at" not in doc.metadata:
-                doc.metadata["last_accessed_at"] = current_time
-            if "created_at" not in doc.metadata:
-                doc.metadata["created_at"] = current_time
-            doc.metadata["buffer_idx"] = len(self.memory_stream) + i
-        self.memory_stream.extend(dup_docs)
-        return await self.vectorstore.aadd_documents(dup_docs, **kwargs)
+        for doc, _ in rescored_docs:
+            doc.metadata["last_accessed_at"] = current_time
+        return rescored_docs

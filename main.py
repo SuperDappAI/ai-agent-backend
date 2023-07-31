@@ -45,7 +45,6 @@ queryplan_manager = QueryPlanManager()
 async def shutdown_event():
     print("Application shutdown")
     functions_manager1.stop()
-    agent_manager.stop()
     web_manager.stop()
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
@@ -127,10 +126,10 @@ async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = For
     return {'memories': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/pull_memory_1/')
-async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...)):
+async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to pull relevant memories for a specific user."""
-    logging.info(f'Pulling relevant memories for user {user_id}')
-    memories, elapsed_time = agent_manager.pull_memory(user_id, query)
+    logging.info(f'Pulling relevant memories for user {user_id}, conversation {conversation_id}')
+    memories, elapsed_time = agent_manager.pull_memory(user_id, conversation_id, query)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/get_latest_memories/')
