@@ -5,7 +5,10 @@ from llama_index import ServiceContext, Document, VectorStoreIndex, StorageConte
 from llama_index.langchain_helpers.text_splitter import SentenceSplitter
 # from llama_index.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
-from llmreranker import LLMRerank
+from llama_index.indices.postprocessor import LLMRerank
+from llama_index.retrievers import VectorIndexRetriever
+from llama_index.response_synthesizers import TreeSummarize
+from llama_index.indices.query.schema import QueryBundle
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
 from typing import List
@@ -29,10 +32,12 @@ class WebManager:
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
         self.dirpath = "./storage_web"
-        self.index = {}
-        self.query_engine = {}
+        self.retriever = {}
         self.locks = {}  # Dictionary to store locks for each hash
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
+            llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
+        ))
+        self.summarizer = TreeSummarize(verbose=True, service_context=ServiceContext.from_defaults(
             llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
         ))
         schedule.every(300).to(600).seconds.do(self.save)
@@ -57,7 +62,19 @@ class WebManager:
     def get_hash_lock(self, hash_key):
         return self.locks.setdefault(hash_key, ReaderWriterLock())
 
-
+    async def get_retrieved_nodes(self, retriever, query_str: str):
+        query_bundle = QueryBundle(query_str)
+        retrieved_nodes = retriever.retrieve(query_bundle)
+        # rerank and summarize if we need to select only up to top_n results
+        if len(retrieved_nodes) > self.reranker._top_n:
+            retrieved_nodes = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
+            text_list = []
+            for node_with_score in retrieved_nodes:
+                # Extract the text from the TextNode
+                text_list.append(node_with_score.node.text)
+            retrieved_nodes = await self.summarizer.aget_response(query_str, text_list)
+        return retrieved_nodes
+    
     def load(self, hash_key):
         """Load existing index data from the filesystem for a specific hash."""
         start = time.time()
@@ -68,11 +85,9 @@ class WebManager:
             if hashpath.exists() and hashpath.is_dir():
                 print("WebManager: Loading from disk")
                 storage_context = StorageContext.from_defaults(persist_dir=hashpath)
-                self.index[hash_key] = load_index_from_storage(storage_context)
-                self.query_engine[hash_key] = self.index[hash_key].as_query_engine(
-                    similarity_top_k=10,
-                    node_postprocessors=[self.reranker],
-                    response_mode="tree_summarize"
+                self.retriever[hash_key] = VectorIndexRetriever(
+                    index=load_index_from_storage(storage_context),
+                    similarity_top_k=10
                 )
         finally:
             lock.writer_release()
@@ -82,43 +97,40 @@ class WebManager:
     def save(self):
         """Persist current index data to the filesystem."""
         start = time.time()
-        for hash_key, idx in self.index.items():
+        for hash_key, idx in self.retriever.items():
             lock = self.get_hash_lock(hash_key)
             lock.writer_acquire()
             try:
                 if lock.dirty:
                     filepath = f"{self.dirpath}/{hash_key}"
-                    idx.storage_context.persist(persist_dir=filepath)
+                    idx._index.storage_context.persist(persist_dir=filepath)
                     lock.dirty = False
             finally:
                 lock.writer_release()
         end = time.time()
         print(f"WebManager: Save operation took {end - start} seconds")
 
-    def search_html(self, function_input: HTMLInput):
+    async def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
         start = time.time()
-        if function_input.hash not in self.query_engine:
+        if function_input.hash not in self.retriever:
             self.load(function_input.hash)
         lock = self.get_hash_lock(function_input.hash)
         lock.reader_acquire()
         response = None
         try:
-            if function_input.hash not in self.query_engine:
+            if function_input.hash not in self.retriever:
                 documents = []
                 for item in function_input.action_items:
                     text_splitter = SentenceSplitter()
                     chunks = text_splitter.split_text(text=item.html_doc)
                     documents.extend([Document(text=chunk, metadata={'url': item.source_url}) for chunk in chunks])
-                self.index[function_input.hash] = VectorStoreIndex.from_documents(documents)
                 lock.dirty = True
-                self.query_engine[function_input.hash] = self.index[function_input.hash].as_query_engine(
-                    similarity_top_k=10,
-                    node_postprocessors=[self.reranker],
-                    response_mode="tree_summarize"
+                self.retriever[function_input.hash] = VectorIndexRetriever(
+                    index=VectorStoreIndex.from_documents(documents),
+                    similarity_top_k=10
                 )
-            self.reranker.query_str = function_input.query
-            response = self.query_engine[function_input.hash].query(function_input.query)
+            response = await self.get_retrieved_nodes(self.retriever[function_input.hash], function_input.query)
         except Exception as e:
             print(f"WebManager: search_html exception {e}")
         finally:
@@ -136,8 +148,7 @@ class WebManager:
             hashpath = Path(f"{self.dirpath}/{hash_key}")
             if hashpath.exists() and hashpath.is_dir():
                 shutil.rmtree(hashpath)
-            self.index.pop(hash_key, None)
-            self.query_engine.pop(hash_key, None)
+            self.retriever.pop(hash_key, None)
         finally:
             lock.writer_release()
             end = time.time()
