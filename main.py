@@ -247,7 +247,7 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
 #     logging.info('Cleared user memory for user %s', user_id)
 #     return memory_manager.clear_user_memory()
 
-@app.post('/clear_user_memory/')
+@app.post('/clear_conversation/')
 async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to clear memory for a specific user/conversation."""
     logging.info(f'Clearing user memory for user {user_id} and conversation {conversation_id}')

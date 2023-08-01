@@ -108,12 +108,22 @@ class AgentManager:
         """Delete all memories for a specific conversation with a user."""
         start = time.time()
         try:
-            filter = {self.payload_conversation_index_key: conversation_id}
-            qdrant_filter = self.memory[user_id].vectorstore._qdrant_filter_from_dict(filter)
-            self.memory[user_id].vectorstore._build_condition(self.payload_conversation_index_key, conversation_id)
-            self.memory[user_id].client.clear_payload(collection_name=user_id, points=qdrant_filter, wait = False)
-            self.memory[user_id].client.delete_vectors(collection_name=user_id, points=qdrant_filter, wait = False)
+            if user_id not in self.memory:
+                self.load(user_id)
+            filter = {"conversation": conversation_id}
+            qdrant_filter = self.memory[user_id].memory_retriever.vectorstore._qdrant_filter_from_dict(filter)
+            self.memory[user_id].memory_retriever.client.delete(collection_name=user_id, points_selector=qdrant_filter, wait = True)
+        except Exception as e:
+            print(f"AgentManager: clear_conversation exception {e}")
         finally:
             end = time.time()
-            print(f"AgentManager: delete_memory operation took {end - start} seconds")
+            print(f"AgentManager: clear_conversation operation took {end - start} seconds")
             return "success", end - start
+    
+    def summarize_old_conversation(self, user_id, conversation_id):
+        now = datetime.now()
+        old_memories = now - (datetime.month)
+        # get old memories
+        #points=Filter(must=[FieldCondition(key={self.payload_lastaccess_index_key}, range=Range(lte={old_memories}))]
+        # if we have 10 or more memories we tree summarize the old conversation
+        # delete the old messages and add the new memory as a summarized memory
