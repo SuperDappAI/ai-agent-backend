@@ -26,17 +26,18 @@ class HTMLInput(BaseModel):
     query: str
 
 class WebManager:
+    scheduler = schedule.Scheduler()
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
         self.dirpath = "./storage_web"
         self.retriever = {}
-        self.locks = {}  # Dictionary to store locks for each hash
+        self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
             llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
         ))
-        schedule.every(300).to(600).seconds.do(self.save)
+        self.scheduler.every(3600).seconds.do(self.prune_cache)
 
         # Create new thread for schedule
         self.stop_event = threading.Event()
@@ -46,17 +47,21 @@ class WebManager:
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
         while not self.stop_event.is_set():
-            schedule.run_pending()
+            self.scheduler.run_pending()
             time.sleep(1)
 
     def stop(self):
         """Stops the scheduler thread."""
-        self.save()
         self.stop_event.set()
         self.scheduler_thread.join()
 
-    def get_hash_lock(self, hash_key):
-        return self.locks.setdefault(hash_key, ReaderWriterLock())
+    def extract_text_and_source_url(self, retrieved_nodes):
+        result = []
+        for node_with_score in retrieved_nodes:
+            text = node_with_score.node.text
+            source_url = node_with_score.node.metadata.get('source_url')
+            result.append({'text': text, 'source_url': source_url})
+        return result
 
     async def get_retrieved_nodes(self, retriever, query_str: str):
         query_bundle = QueryBundle(query_str)
@@ -70,78 +75,96 @@ class WebManager:
     def load(self, hash_key):
         """Load existing index data from the filesystem for a specific hash."""
         start = time.time()
-        lock = self.get_hash_lock(hash_key)
-        lock.writer_acquire()
-        try:
-            hashpath = Path(f"{self.dirpath}/{hash_key}")
-            if hashpath.exists() and hashpath.is_dir():
-                print("WebManager: Loading from disk")
-                storage_context = StorageContext.from_defaults(persist_dir=hashpath)
-                self.retriever[hash_key] = VectorIndexRetriever(
-                    index=load_index_from_storage(storage_context),
-                    similarity_top_k=10
-                )
-        finally:
-            lock.writer_release()
-            end = time.time()
-            print(f"WebManager: Load operation took {end - start} seconds")
+        hashpath = Path(f"{self.dirpath}/{hash_key}")
+        if hashpath.exists() and hashpath.is_dir():
+            print("WebManager: Loading from disk")
+            storage_context = StorageContext.from_defaults(persist_dir=hashpath)
+            self.retriever = VectorIndexRetriever(
+                index=load_index_from_storage(storage_context),
+                similarity_top_k=10
+            )
+        end = time.time()
+        print(f"WebManager: Load operation took {end - start} seconds")
 
-    def save(self):
+    def save(self, retriever, hash_key):
         """Persist current index data to the filesystem."""
         start = time.time()
-        for hash_key, idx in self.retriever.items():
-            lock = self.get_hash_lock(hash_key)
-            lock.writer_acquire()
-            try:
-                if lock.dirty:
-                    filepath = f"{self.dirpath}/{hash_key}"
-                    idx._index.storage_context.persist(persist_dir=filepath)
-                    lock.dirty = False
-            finally:
-                lock.writer_release()
+        filepath = Path(f"{self.dirpath}/{hash_key}")
+        if not filepath.exists() or not filepath.is_dir():
+            retriever._index.storage_context.persist(persist_dir=filepath)
         end = time.time()
         print(f"WebManager: Save operation took {end - start} seconds")
-
-    async def search_html(self, function_input: HTMLInput):
-        """Fetch HTML data based on a query for a specific hash."""
-        start = time.time()
-        if function_input.hash not in self.retriever:
-            self.load(function_input.hash)
-        lock = self.get_hash_lock(function_input.hash)
-        lock.reader_acquire()
-        response = None
-        try:
-            if function_input.hash not in self.retriever:
-                documents = []
-                for item in function_input.action_items:
-                    text_splitter = SentenceSplitter()
-                    chunks = text_splitter.split_text(text=item.html_doc)
-                    documents.extend([Document(text=chunk, metadata={'source_url': item.source_url}) for chunk in chunks])
-                lock.dirty = True
-                self.retriever[function_input.hash] = VectorIndexRetriever(
-                    index=VectorStoreIndex.from_documents(documents),
-                    similarity_top_k=10
-                )
-            response = await self.get_retrieved_nodes(self.retriever[function_input.hash], function_input.query)
-        except Exception as e:
-            print(f"WebManager: search_html exception {e}")
-        finally:
-            lock.reader_release()
-            end = time.time()
-            print(f"WebManager: search_html operation took {end - start} seconds")
-            return response, {end - start}
 
     def delete_html(self, hash_key):
         """Delete all memories for a specific hash."""
         start = time.time()
-        lock = self.get_hash_lock(hash_key)
-        lock.writer_acquire()
+        hashpath = Path(f"{self.dirpath}/{hash_key}")
+        if hashpath.exists() and hashpath.is_dir():
+            shutil.rmtree(hashpath)
+        end = time.time()
+        print(f"WebManager: Save operation took {end - start} seconds")
+        return end - start
+        
+    async def search_html(self, function_input: HTMLInput):
+        """Fetch HTML data based on a query for a specific hash."""
+        start = time.time()
+        self.lock.reader_acquire()
+        self.load(function_input.hash)
+        response = None
         try:
-            hashpath = Path(f"{self.dirpath}/{hash_key}")
-            if hashpath.exists() and hashpath.is_dir():
-                shutil.rmtree(hashpath)
-            self.retriever.pop(hash_key, None)
+            documents = []
+            for item in function_input.action_items:
+                text_splitter = SentenceSplitter()
+                chunks = text_splitter.split_text(text=item.html_doc)
+                documents.extend([Document(text=chunk, metadata={'source_url': item.source_url}) for chunk in chunks])
+            retriever = VectorIndexRetriever(
+                index=VectorStoreIndex.from_documents(documents),
+                similarity_top_k=10
+            )
+            nodes = await self.get_retrieved_nodes(retriever, function_input.query)
+            response = self.extract_text_and_source_url(nodes)
+            self.save(retriever, function_input.hash)
+        except Exception as e:
+            print(f"WebManager: search_html exception {e}")
         finally:
-            lock.writer_release()
+            self.lock.reader_release()
             end = time.time()
-            return {end - start}
+            print(f"WebManager: search_html operation took {end - start} seconds")
+            return response, end - start
+
+    def delete_html(self, hash_key):
+        """Delete all memories for a specific hash."""
+        start = time.time()
+        hashpath = Path(f"{self.dirpath}/{hash_key}")
+        if hashpath.exists() and hashpath.is_dir():
+            shutil.rmtree(hashpath)
+
+        end = time.time()
+        return end - start
+            
+    def prune_cache(self):
+        """Prune cache that are older than an hour."""
+        self.lock.writer_acquire()
+        current_time = time.time()
+        try:
+            # Iterating through all directories in the dirpath
+            for directory in os.scandir(self.dirpath):
+                if directory.is_dir():
+                    # Get the directory's last modified time
+                    dir_time = directory.stat().st_mtime
+
+                    # Check if the directory is older than an hour
+                    if current_time - dir_time > 3600:
+                        self.delete_html(directory.name)
+        finally:
+            end = time.time()
+            self.lock.writer_release()
+            print(f"WebManager: prune_cache operation took {end - current_time} seconds")
+
+    def does_hash_exist(self, hash_key):
+        """Does the hash of the web content exist in our cache?."""
+        start = time.time()
+        hashpath = Path(f"{self.dirpath}/{hash_key}")
+        exists = hashpath.exists() and hashpath.is_dir()
+        end = time.time()
+        return exists, end - start

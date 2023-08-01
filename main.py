@@ -158,6 +158,13 @@ async def semanticSearchHTML(function_input: HTMLInput):
     results, elapsed_time = await web_manager.search_html(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
+@app.post('/is_html_search_cached/')
+async def isHTMLSearchCached(hash_key: str):
+    """Endpoint to conduct a semantic search in HTML content."""
+    logging.info('Checking if HTML results are cached')
+    result, elapsed_time = web_manager.does_hash_exist(hash_key)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 # @app.post('/get_functions/')
 # async def getFunctions(function_input: FunctionInput):
 #     action_items = function_input.action_items

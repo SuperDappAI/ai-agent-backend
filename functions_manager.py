@@ -27,6 +27,7 @@ class FunctionInput(BaseModel):
     similarity_threshold: float = Field(..., example=0.8)
 
 class FunctionsManager1:
+    scheduler = schedule.Scheduler()
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
@@ -41,7 +42,7 @@ class FunctionsManager1:
                 llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
             ))
         # Save function scheduled to run every 5 to 10 minutes
-        schedule.every(300).to(600).seconds.do(self.save)
+        self.scheduler.every(300).to(600).seconds.do(self.save)
         
         # Create new thread for schedule
         self.stop_event = threading.Event()
@@ -51,7 +52,7 @@ class FunctionsManager1:
     def run_continuously(self):
         """Keep checking and running pending tasks every second."""
         while not self.stop_event.is_set():
-            schedule.run_pending()
+            self.scheduler.run_pending()
             time.sleep(1)
 
     def stop(self):
