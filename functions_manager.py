@@ -40,13 +40,6 @@ class FunctionsManager1:
             service_context=ServiceContext.from_defaults(
                 llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
             ))
-        # Try to load index data from the filesystem only if not running tests
-        if 'unittest' not in sys.modules.keys():
-            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-            with open('./utils/functions.json', 'r') as f:
-                functions_json = json.load(f)
-                self.push_functions(functions_json)
-
         # Save function scheduled to run every 5 to 10 minutes
         schedule.every(300).to(600).seconds.do(self.save)
         
@@ -111,6 +104,8 @@ class FunctionsManager1:
     def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
+        if self.retriever is None:
+            self.load()
         self.lock.reader_acquire()
         response = []
         try:
@@ -118,6 +113,7 @@ class FunctionsManager1:
                 for action_item in function_input.action_items:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                     response.append(self.get_retrieved_nodes(query))
+        except:
             return []
         finally:
             self.lock.reader_release()
@@ -143,7 +139,6 @@ class FunctionsManager1:
             if self.dirpath.exists() and self.dirpath.is_dir():
                 # rebuild storage context
                 storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
-
                 # load index
                 self.index = load_index_from_storage(storage_context)
                 self.retriever = VectorIndexRetriever(
@@ -151,6 +146,14 @@ class FunctionsManager1:
                     similarity_top_k=10
                 )
                 result = True
+            else:
+                # Try to load index data from the filesystem only if not running tests
+                if 'unittest' not in sys.modules.keys():
+                    # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+                    with open('./utils/functions.json', 'r') as f:
+                        functions_json = json.load(f)
+                        self.push_functions(functions_json)
+                        result = True
         finally:
             self.lock.writer_release()
             end = time.time()
