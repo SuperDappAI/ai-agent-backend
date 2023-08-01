@@ -65,14 +65,15 @@ class WebManager:
     async def get_retrieved_nodes(self, retriever, query_str: str):
         query_bundle = QueryBundle(query_str)
         retrieved_nodes = retriever.retrieve(query_bundle)
+        retrieved_nodes[:] = [node for node in retrieved_nodes if node.score >= 0.6]
         # rerank and summarize if we need to select only up to top_n results
         if len(retrieved_nodes) > self.reranker._top_n:
-            retrieved_nodes = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
+            retrieved_nodes[:] = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
             text_list = []
             for node_with_score in retrieved_nodes:
                 # Extract the text from the TextNode
                 text_list.append(node_with_score.node.text)
-            retrieved_nodes = await self.summarizer.aget_response(query_str, text_list)
+            retrieved_nodes[:] = await self.summarizer.aget_response(query_str, text_list)
         return retrieved_nodes
     
     def load(self, hash_key):
