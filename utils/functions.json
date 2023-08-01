@@ -223,7 +223,7 @@
 						"description": "Defines the next page token. It is used for retrieving the next page results."
 					}
 				},
-				"required": ["store"]
+				"required": ["q", "store"]
 			}
 		},
 		{
