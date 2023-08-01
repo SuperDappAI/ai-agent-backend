@@ -155,7 +155,7 @@ async def pullLatestMemoriesForUser(user_id: str = Form(...), token_count: int =
 async def semanticSearchHTML(function_input: HTMLInput):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Semantic search HTML')
-    results, elapsed_time = web_manager.search_html(function_input)
+    results, elapsed_time = await web_manager.search_html(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
 # @app.post('/get_functions/')

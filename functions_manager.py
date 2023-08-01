@@ -2,7 +2,7 @@ import time
 from dotenv import load_dotenv
 from llama_index import ServiceContext, VectorStoreIndex, Document, StorageContext, load_index_from_storage
 from llama_index.llms import OpenAI
-from llmreranker import LLMRerank
+from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 import sys
 import os
@@ -13,6 +13,8 @@ from typing import List
 from pathlib import Path
 import json
 from pydantic import BaseModel, Field
+from llama_index.retrievers import VectorIndexRetriever
+from llama_index.indices.query.schema import QueryBundle
 
 class ActionItem(BaseModel):
     action: str
@@ -32,7 +34,7 @@ class FunctionsManager1:
         self.dirpath = Path("./storage_functions")
         self.index = None
         self.max_length_allowed = 512
-        self.query_engine = None
+        self.retriever = None
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=10, top_n=3, 
             service_context=ServiceContext.from_defaults(
@@ -112,17 +114,24 @@ class FunctionsManager1:
         self.lock.reader_acquire()
         response = []
         try:
-            if self.query_engine is not None:
+            if self.retriever is not None:
                 for action_item in function_input.action_items:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                    self.reranker.query_str = query
-                    response.append(self.query_engine.query(query))
-        except:
+                    response.append(self.get_retrieved_nodes(query))
             return []
         finally:
             self.lock.reader_release()
             end = time.time()
             return response, end-start
+
+    def get_retrieved_nodes(self, query_str: str):
+        query_bundle = QueryBundle(query_str)
+        retrieved_nodes = self.retriever.retrieve(query_bundle)
+        retrieved_nodes[:] = [node for node in retrieved_nodes if node.score >= 0.6]
+        # rerank if we need to up to the top_n
+        if len(retrieved_nodes) > self.reranker._top_n:
+            retrieved_nodes[:] = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
+        return retrieved_nodes
 
     def load(self):
         """Load existing index data from the filesystem."""
@@ -137,11 +146,10 @@ class FunctionsManager1:
 
                 # load index
                 self.index = load_index_from_storage(storage_context)
-                self.query_engine = self.index.as_query_engine(
-                    similarity_top_k=10,
-                    node_postprocessors=[self.reranker]
+                self.retriever = VectorIndexRetriever(
+                    index=self.index,
+                    similarity_top_k=10
                 )
-                
                 result = True
         finally:
             self.lock.writer_release()
@@ -172,9 +180,9 @@ class FunctionsManager1:
 
             documents = [Document(text=json.dumps(t)) for t in all_docs]
             self.index = VectorStoreIndex.from_documents(documents)
-            self.query_engine = self.index.as_query_engine(
-                similarity_top_k=10,
-                node_postprocessors=[self.reranker]
+            self.retriever = VectorIndexRetriever(
+                index=self.index,
+                similarity_top_k=10
             )
             self.lock.dirty = True
             tokens = self.count_tokens(functions)
