@@ -101,6 +101,15 @@ class FunctionsManager1:
                     tokens.append({func['name']: len(encoding.encode(function_string))})
         return tokens
 
+    def extract_name_and_category(self, nodes_with_scores):
+        result = []
+        for node_with_score in nodes_with_scores:
+            text = json.loads(node_with_score.node.text)  # Parse the string into a Python dict
+            name = text.get('name')
+            category = text.get('category')
+            result.append({'name': name, 'category': category})
+        return result
+
     def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
@@ -112,9 +121,8 @@ class FunctionsManager1:
             if self.retriever is not None:
                 for action_item in function_input.action_items:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                    response.append(self.get_retrieved_nodes(query))
-        except:
-            return []
+                    parsed_response = self.extract_name_and_category(self.get_retrieved_nodes(query))
+                    response.append(parsed_response)
         finally:
             self.lock.reader_release()
             end = time.time()

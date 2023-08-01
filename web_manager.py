@@ -7,7 +7,6 @@ from llama_index.langchain_helpers.text_splitter import SentenceSplitter
 from langchain.chat_models import ChatOpenAI
 from llama_index.indices.postprocessor import LLMRerank
 from llama_index.retrievers import VectorIndexRetriever
-from llama_index.response_synthesizers import TreeSummarize
 from llama_index.indices.query.schema import QueryBundle
 from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
@@ -37,9 +36,6 @@ class WebManager:
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
             llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
         ))
-        self.summarizer = TreeSummarize(verbose=True, service_context=ServiceContext.from_defaults(
-            llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
-        ))
         schedule.every(300).to(600).seconds.do(self.save)
 
         # Create new thread for schedule
@@ -66,14 +62,9 @@ class WebManager:
         query_bundle = QueryBundle(query_str)
         retrieved_nodes = retriever.retrieve(query_bundle)
         retrieved_nodes[:] = [node for node in retrieved_nodes if node.score >= 0.6]
-        # rerank and summarize if we need to select only up to top_n results
+        # rerank if we need to select only up to top_n results
         if len(retrieved_nodes) > self.reranker._top_n:
             retrieved_nodes[:] = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
-            text_list = []
-            for node_with_score in retrieved_nodes:
-                # Extract the text from the TextNode
-                text_list.append(node_with_score.node.text)
-            retrieved_nodes[:] = await self.summarizer.aget_response(query_str, text_list)
         return retrieved_nodes
     
     def load(self, hash_key):
@@ -125,7 +116,7 @@ class WebManager:
                 for item in function_input.action_items:
                     text_splitter = SentenceSplitter()
                     chunks = text_splitter.split_text(text=item.html_doc)
-                    documents.extend([Document(text=chunk, metadata={'url': item.source_url}) for chunk in chunks])
+                    documents.extend([Document(text=chunk, metadata={'source_url': item.source_url}) for chunk in chunks])
                 lock.dirty = True
                 self.retriever[function_input.hash] = VectorIndexRetriever(
                     index=VectorStoreIndex.from_documents(documents),
