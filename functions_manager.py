@@ -113,8 +113,6 @@ class FunctionsManager1:
                 for action_item in function_input.action_items:
                     query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                     response.append(self.get_retrieved_nodes(query))
-        except:
-            return []
         finally:
             self.lock.reader_release()
             end = time.time()
