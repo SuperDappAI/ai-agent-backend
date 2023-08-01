@@ -248,11 +248,11 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
 #     return memory_manager.clear_user_memory()
 
 @app.post('/clear_user_memory/')
-async def clearUserMemory(user_id: str = Form(...)):
-    """Endpoint to clear memory for a specific user."""
-    logging.info(f'Clearing user memory for user {user_id}')
-    elapsed_time = agent_manager.delete_memory(user_id)
-    return {'elapsed_time': elapsed_time}
+async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(...)):
+    """Endpoint to clear memory for a specific user/conversation."""
+    logging.info(f'Clearing user memory for user {user_id} and conversation {conversation_id}')
+    response, elapsed_time = agent_manager.clear_conversation(user_id, conversation_id)
+    return {'response': response, 'elapsed_time': elapsed_time}
 
 
 @app.get('/test_callback/')

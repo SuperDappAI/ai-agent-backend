@@ -5,6 +5,7 @@ from pydantic import Field
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain.schema import BaseRetriever, Document
 from langchain.vectorstores.base import VectorStore
+from qdrant_client import QdrantClient
 
 def _get_hours_passed(time: datetime, ref_time: datetime) -> float:
     """Get the hours passed between two datetime objects."""
@@ -14,6 +15,8 @@ def _get_hours_passed(time: datetime, ref_time: datetime) -> float:
 class TimeWeightedVectorStoreRetriever(BaseRetriever):
     """Retriever that combines embedding similarity with recency in retrieving values."""
 
+    client: QdrantClient
+    
     vectorstore: VectorStore
     """The vectorstore to store documents and determine salience."""
 

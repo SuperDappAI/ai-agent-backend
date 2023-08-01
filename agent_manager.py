@@ -1,7 +1,5 @@
 import time
-import shutil
 from dotenv import load_dotenv
-from reader_writer_lock import ReaderWriterLock
 from pathlib import Path
 import os
 from datetime import datetime
@@ -22,12 +20,8 @@ class AgentManager:
         self.dirpath = "./storage_memory"
         self.embeddings = OpenAIEmbeddings()
         self.memory = {}
-        self.locks = {} 
         self.payload_conversation_index_key = "metadata.conversation"
         self.LLM = OpenAI()
-
-    def get_user_lock(self, user_id):
-        return self.locks.setdefault(user_id, ReaderWriterLock())
 
     def create_new_memory_retriever(self, user_id, path):
         """Create a new vector store retriever unique to the agent."""
@@ -50,7 +44,7 @@ class AgentManager:
             print(f"AgentManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
             return TimeWeightedVectorStoreRetriever(
-                vectorstore=vectorstore, decay_rate=0.001, search_kwargs={"score_threshold":0.72}, other_score_keys=["importance"], k=15
+                client=client, vectorstore=vectorstore, decay_rate=0.001, search_kwargs={"score_threshold":0.72}, other_score_keys=["importance"], k=15
             )
 
     def create_memory(self, user_id, path):
@@ -62,26 +56,17 @@ class AgentManager:
 
     def load(self, user_id):
         """Load existing index data from the filesystem for a specific user."""
-        lock = self.get_user_lock(user_id)
-        lock.writer_acquire()
-        try:
-            start = time.time()
-            userpath = Path(f"{self.dirpath}/{user_id}")
-            self.memory[user_id] = self.create_memory(user_id, userpath)
-            end = time.time()
-            print(f"AgentManager: Load operation took {end - start} seconds")
-        finally:
-            lock.writer_release()
-
-
+        start = time.time()
+        userpath = Path(f"{self.dirpath}/{user_id}")
+        self.memory[user_id] = self.create_memory(user_id, userpath)
+        end = time.time()
+        print(f"AgentManager: Load operation took {end - start} seconds")
 
     def push_memory(self, user_id, conversation_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
         start = time.time()
         if user_id not in self.memory:
             self.load(user_id)
-        lock = self.get_user_lock(user_id)
-        lock.writer_acquire()
         try:
             self.memory[user_id].save_context(
                 {
@@ -91,11 +76,9 @@ class AgentManager:
                     self.memory[user_id].payload_conversation_key: conversation_id,
                 },
             )
-            lock.dirty = True
         except Exception as e:
             print(f"AgentManager: push_memory exception {e}") 
         finally:
-            lock.writer_release()
             end = time.time()
             print(f"AgentManager: push_memory operation took {end - start} seconds")
             return end - start
@@ -105,8 +88,6 @@ class AgentManager:
         start = time.time()
         if user_id not in self.memory:
             self.load(user_id)
-        lock = self.get_user_lock(user_id)
-        lock.reader_acquire()
         response = None
         try:
             if user_id in self.memory:
@@ -119,22 +100,20 @@ class AgentManager:
         except Exception as e:
             print(f"AgentManager: pull_memory exception {e}")
         finally:
-            lock.reader_release()
             end = time.time()
             print(f"AgentManager: pull_memory operation took {end - start} seconds")
             return response, end - start
 
-    def delete_memory(self, user_id):
-        """Delete all memories for a specific user."""
+    def clear_conversation(self, user_id, conversation_id):
+        """Delete all memories for a specific conversation with a user."""
         start = time.time()
-        lock = self.get_user_lock(user_id)
-        lock.writer_acquire()
         try:
-            userpath = Path(f"{self.dirpath}/{user_id}")
-            if userpath.exists() and userpath.is_dir():
-                shutil.rmtree(userpath)
-            self.memory.pop(user_id, None)
+            filter = {self.payload_conversation_index_key: conversation_id}
+            qdrant_filter = self.memory[user_id].vectorstore._qdrant_filter_from_dict(filter)
+            self.memory[user_id].vectorstore._build_condition(self.payload_conversation_index_key, conversation_id)
+            self.memory[user_id].client.clear_payload(collection_name=user_id, points=qdrant_filter, wait = False)
+            self.memory[user_id].client.delete_vectors(collection_name=user_id, points=qdrant_filter, wait = False)
         finally:
-            lock.writer_release()
             end = time.time()
-            return end - start
+            print(f"AgentManager: delete_memory operation took {end - start} seconds")
+            return "success", end - start
