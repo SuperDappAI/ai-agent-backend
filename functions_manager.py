@@ -39,7 +39,7 @@ class FunctionsManager1:
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=10, top_n=3, 
             service_context=ServiceContext.from_defaults(
-                llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
+                llm=OpenAI(temperature=0, model="gpt-3.5-turbo-0613"),
             ))
         # Save function scheduled to run every 5 to 10 minutes
         self.scheduler.every(300).to(600).seconds.do(self.save)
@@ -93,7 +93,7 @@ class FunctionsManager1:
                         'data_processing', 
                         'sensory_perception']
 
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-0613")
         tokens = [] 
         for func_type in function_types:
             if func_type in functions:

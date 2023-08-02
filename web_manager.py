@@ -35,7 +35,7 @@ class WebManager:
         self.retriever = {}
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
-            llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo"),
+            llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo-0613"),
         ))
         self.scheduler.every(3600).seconds.do(self.prune_cache)
 
