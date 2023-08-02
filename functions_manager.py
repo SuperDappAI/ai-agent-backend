@@ -162,7 +162,7 @@ class FunctionsManager1:
                     with open('./utils/functions.json', 'r') as f:
                         print("FunctionsManager: Loading from functions.json")
                         functions_json = json.load(f)
-                        self.push_functions(functions_json, lock = False)
+                        self.push_functions(functions_json, lockWrite = False)
                         result = True
         finally:
             self.lock.writer_release()
@@ -170,10 +170,10 @@ class FunctionsManager1:
             print(f"FunctionsManager: Load took {end - start} seconds")
             return result
 
-    def push_functions(self, functions, lock = True):
+    def push_functions(self, functions, lockWrite = True):
         """Update the current index with new functions."""
         start = time.time()
-        if lock:
+        if lockWrite:
             self.lock.writer_acquire()
         tokens = None
         try:
@@ -201,7 +201,7 @@ class FunctionsManager1:
             self.lock.dirty = True
             tokens = self.count_tokens(functions)
         finally:
-            if lock:
+            if lockWrite:
                 self.lock.writer_release()
             end = time.time()
             print(f"FunctionsManager: push_functions took {end - start} seconds")
