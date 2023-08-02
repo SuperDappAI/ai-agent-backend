@@ -68,6 +68,7 @@ class WebManager:
         retrieved_nodes[:] = [node for node in retrieved_nodes if node.score >= 0.6]
         # rerank if we need to select only up to top_n results
         if len(retrieved_nodes) > self.reranker._top_n:
+            print(f"WebManager: Reranking {len(retrieved_nodes)} results down to {self.reranker._top_n}")
             retrieved_nodes[:] = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
         return retrieved_nodes
     
