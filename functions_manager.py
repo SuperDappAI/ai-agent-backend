@@ -141,11 +141,11 @@ class FunctionsManager1:
     def load(self):
         """Load existing index data from the filesystem."""
         start = time.time()
-        self.lock.writer_acquire()
         result = False
         try:
-            print("FunctionsManager: Loading from disk")
             if self.dirpath.exists() and self.dirpath.is_dir():
+                print("FunctionsManager: Loading from disk")
+                self.lock.writer_acquire()
                 # rebuild storage context
                 storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
                 # load index
@@ -160,6 +160,8 @@ class FunctionsManager1:
                 if 'unittest' not in sys.modules.keys():
                     # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
                     with open('./utils/functions.json', 'r') as f:
+                        print("FunctionsManager: Loading from functions.json")
+                        self.lock.writer_acquire()
                         functions_json = json.load(f)
                         self.push_functions(functions_json)
                         result = True
