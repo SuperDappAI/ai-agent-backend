@@ -68,7 +68,7 @@ def test_getFunctions():
     payload = json.dumps(payload)
 
     # Call your endpoint with the test client and the defined payload
-    response = client.post('/get_functions/', data=payload)
+    response = client.post('/get_functions/', content=payload)
 
     # Assert that the response status code is 200 (OK)
     assert response.status_code == 200
