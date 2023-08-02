@@ -32,7 +32,6 @@ class WebManager:
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
         self.dirpath = "./storage_web"
-        self.retriever = {}
         self.lock = ReaderWriterLock()
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
             llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo-0613"),
@@ -76,15 +75,17 @@ class WebManager:
         """Load existing index data from the filesystem for a specific hash."""
         start = time.time()
         hashpath = Path(f"{self.dirpath}/{hash_key}")
+        retriever = None
         if hashpath.exists() and hashpath.is_dir():
             print("WebManager: Loading from disk")
             storage_context = StorageContext.from_defaults(persist_dir=hashpath)
-            self.retriever = VectorIndexRetriever(
+            retriever = VectorIndexRetriever(
                 index=load_index_from_storage(storage_context),
                 similarity_top_k=10
             )
         end = time.time()
         print(f"WebManager: Load operation took {end - start} seconds")
+        return retriever
 
     def save(self, retriever, hash_key):
         """Persist current index data to the filesystem."""
@@ -109,18 +110,21 @@ class WebManager:
         """Fetch HTML data based on a query for a specific hash."""
         start = time.time()
         self.lock.reader_acquire()
-        self.load(function_input.hash)
+        retriever = self.load(function_input.hash)
         response = None
         try:
             documents = []
-            for item in function_input.action_items:
-                text_splitter = SentenceSplitter()
-                chunks = text_splitter.split_text(text=item.html_doc)
-                documents.extend([Document(text=chunk, metadata={'source_url': item.source_url}) for chunk in chunks])
-            retriever = VectorIndexRetriever(
-                index=VectorStoreIndex.from_documents(documents),
-                similarity_top_k=10
-            )
+            if retriever is None:
+                for item in function_input.action_items:
+                    text_splitter = SentenceSplitter()
+                    chunks = text_splitter.split_text(text=item.html_doc)
+                    documents.extend([Document(text=chunk, metadata={'source_url': item.source_url}) for chunk in chunks])
+                retriever = VectorIndexRetriever(
+                    index=VectorStoreIndex.from_documents(documents),
+                    similarity_top_k=10
+                )
+                end = time.time()
+                print(f"WebManager: Loaded from documents operation took {end - start} seconds")
             nodes = await self.get_retrieved_nodes(retriever, function_input.query)
             response = self.extract_text_and_source_url(nodes)
             self.save(retriever, function_input.hash)
