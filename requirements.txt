@@ -25,3 +25,4 @@ schedule
 qdrant-client
 nltk
 pytest
+pytest-asyncio
