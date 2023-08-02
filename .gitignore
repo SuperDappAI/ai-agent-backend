@@ -168,3 +168,5 @@ examples.json
 graph_store.json
 index_store.json
 vector_store.json
+
+myenv
