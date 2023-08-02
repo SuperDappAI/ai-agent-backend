@@ -162,7 +162,7 @@ class FunctionsManager1:
                     with open('./utils/functions.json', 'r') as f:
                         print("FunctionsManager: Loading from functions.json")
                         functions_json = json.load(f)
-                        self.push_functions(functions_json, False)
+                        self.push_functions(functions_json, lock = False)
                         result = True
         finally:
             self.lock.writer_release()
