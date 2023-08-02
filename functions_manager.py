@@ -142,10 +142,10 @@ class FunctionsManager1:
         """Load existing index data from the filesystem."""
         start = time.time()
         result = False
+        self.lock.writer_acquire()
         try:
             if self.dirpath.exists() and self.dirpath.is_dir():
                 print("FunctionsManager: Loading from disk")
-                self.lock.writer_acquire()
                 # rebuild storage context
                 storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
                 # load index
@@ -161,9 +161,8 @@ class FunctionsManager1:
                     # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
                     with open('./utils/functions.json', 'r') as f:
                         print("FunctionsManager: Loading from functions.json")
-                        self.lock.writer_acquire()
                         functions_json = json.load(f)
-                        self.push_functions(functions_json)
+                        self.push_functions(functions_json, False)
                         result = True
         finally:
             self.lock.writer_release()
@@ -171,10 +170,11 @@ class FunctionsManager1:
             print(f"FunctionsManager: Load took {end - start} seconds")
             return result
 
-    def push_functions(self, functions):
+    def push_functions(self, functions, lock = True):
         """Update the current index with new functions."""
         start = time.time()
-        self.lock.writer_acquire()
+        if lock:
+            self.lock.writer_acquire()
         tokens = None
         try:
             print("FunctionsManager: adding functions to index...")
@@ -201,7 +201,8 @@ class FunctionsManager1:
             self.lock.dirty = True
             tokens = self.count_tokens(functions)
         finally:
-            self.lock.writer_release()
+            if lock:
+                self.lock.writer_release()
             end = time.time()
             print(f"FunctionsManager: push_functions took {end - start} seconds")
             return tokens, end-start
