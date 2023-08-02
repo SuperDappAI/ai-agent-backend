@@ -22,3 +22,5 @@ jobs:
 
     - name: Run pytest
       run: pytest tests/test_main.py # This step runs pytest on your tests directory
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
