@@ -159,16 +159,18 @@ class WebManager:
     def prune_cache(self):
         """Prune cache that are older than an hour."""
         current_time = time.time()
-        # Iterating through all directories in the dirpath
-        for directory in os.scandir(self.dirpath):
-            if directory.is_dir():
-                # Get the directory's last modified time
-                dir_time = directory.stat().st_mtime
-                # Check if the directory is older than an hour
-                if current_time - dir_time > 3600:
-                    self.delete_html(directory.name)
-        end = time.time()
-        print(f"WebManager: prune_cache operation took {end - current_time} seconds")
+        path = Path(self.dirpath)
+        if path.exists() and path.is_dir():
+            # Iterating through all directories in the dirpath
+            for directory in os.scandir(self.dirpath):
+                if directory.is_dir():
+                    # Get the directory's last modified time
+                    dir_time = directory.stat().st_mtime
+                    # Check if the directory is older than an hour
+                    if current_time - dir_time > 3600:
+                        self.delete_html(directory.name)
+            end = time.time()
+            print(f"WebManager: prune_cache operation took {end - current_time} seconds")
 
     def does_hash_exist(self, hash_key):
         """Does the hash of the web content exist in our cache?."""
