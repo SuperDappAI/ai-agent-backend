@@ -1,26 +1,29 @@
 name: Run pytest on new commits
 
-on: [push]
+on:
+  push:
+    branches:
+      - dev-disabled
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository content
-      uses: actions/checkout@v2 # This step checks out a copy of your repository
+      - name: Checkout repository content
+        uses: actions/checkout@v2 # This step checks out a copy of your repository
 
-    - name: Set up Python
-      uses: actions/setup-python@v2 # This step sets up a Python environment
-      with:
-        python-version: 3.11 # You can specify the Python version you want here
+      - name: Set up Python
+        uses: actions/setup-python@v2 # This step sets up a Python environment
+        with:
+          python-version: 3.11 # You can specify the Python version you want here
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Run pytest
-      run: pytest --asyncio-mode auto tests/test_main.py # This step runs pytest on your tests directory
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Run pytest
+        run: pytest --asyncio-mode auto tests/test_main.py # This step runs pytest on your tests directory
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
