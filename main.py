@@ -39,7 +39,7 @@ queryplan_manager = QueryPlanManager()
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    print("Application shutdown")
+    logging.info("Application shutdown")
     functions_manager1.stop()
     web_manager.stop()
 

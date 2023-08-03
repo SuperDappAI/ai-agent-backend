@@ -1,4 +1,5 @@
 import time
+import logging
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -11,6 +12,7 @@ from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
+
 
 class AgentManager:
     def __init__(self):
@@ -33,18 +35,21 @@ class AgentManager:
                 on_disk_payload=True,
                 collection_name=collection_name,
                 vectors_config=rest.VectorParams(
-                    size = 1536,
-                    distance = rest.Distance.COSINE,
+                    size=1536,
+                    distance=rest.Distance.COSINE,
                 ),
             )
-            client.create_payload_index(collection_name, self.payload_conversation_index_key, field_schema=PayloadSchemaType.KEYWORD)
+            client.create_payload_index(
+                collection_name, self.payload_conversation_index_key, field_schema=PayloadSchemaType.KEYWORD)
         except:
-            print("AgentManager: couldn't create collection? It probably already exists, and loaded from disk...")
+            logging.info(
+                "AgentManager: couldn't create collection? It probably already exists, and loaded from disk...")
         finally:
-            print(f"AgentManager: Creating memory store with collection {collection_name}")
+            logging.info(
+                f"AgentManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
             return TimeWeightedVectorStoreRetriever(
-                client=client, vectorstore=vectorstore, decay_rate=0.001, search_kwargs={"score_threshold":0.72}, other_score_keys=["importance"], k=15
+                client=client, vectorstore=vectorstore, decay_rate=0.001, search_kwargs={"score_threshold": 0.72}, other_score_keys=["importance"], k=15
             )
 
     def create_memory(self, user_id, path):
@@ -60,7 +65,8 @@ class AgentManager:
         userpath = Path(f"{self.dirpath}/{user_id}")
         self.memory[user_id] = self.create_memory(user_id, userpath)
         end = time.time()
-        print(f"AgentManager: Load operation took {end - start} seconds")
+        logging.info(
+            f"AgentManager: Load operation took {end - start} seconds")
 
     def push_memory(self, user_id, conversation_id, query, llm_response):
         """Add new memory to the current index for a specific user."""
@@ -77,10 +83,11 @@ class AgentManager:
                 },
             )
         except Exception as e:
-            print(f"AgentManager: push_memory exception {e}") 
+            logging.info(f"AgentManager: push_memory exception {e}")
         finally:
             end = time.time()
-            print(f"AgentManager: push_memory operation took {end - start} seconds")
+            logging.info(
+                f"AgentManager: push_memory operation took {end - start} seconds")
             return end - start
 
     def pull_memory(self, user_id, convo_id, query):
@@ -92,16 +99,17 @@ class AgentManager:
         try:
             if user_id in self.memory:
                 response = self.memory[user_id].load_memory_variables(
-                {
-                    self.memory[user_id].queries_key: [query],
-                    self.memory[user_id].payload_conversation_key: convo_id,
-                }
-            )
+                    {
+                        self.memory[user_id].queries_key: [query],
+                        self.memory[user_id].payload_conversation_key: convo_id,
+                    }
+                )
         except Exception as e:
-            print(f"AgentManager: pull_memory exception {e}")
+            logging.info(f"AgentManager: pull_memory exception {e}")
         finally:
             end = time.time()
-            print(f"AgentManager: pull_memory operation took {end - start} seconds")
+            logging.info(
+                f"AgentManager: pull_memory operation took {end - start} seconds")
             return response, end - start
 
     def clear_conversation(self, user_id, conversation_id):
@@ -111,19 +119,22 @@ class AgentManager:
             if user_id not in self.memory:
                 self.load(user_id)
             filter = {"conversation": conversation_id}
-            qdrant_filter = self.memory[user_id].memory_retriever.vectorstore._qdrant_filter_from_dict(filter)
-            self.memory[user_id].memory_retriever.client.delete(collection_name=user_id, points_selector=qdrant_filter, wait = True)
+            qdrant_filter = self.memory[user_id].memory_retriever.vectorstore._qdrant_filter_from_dict(
+                filter)
+            self.memory[user_id].memory_retriever.client.delete(
+                collection_name=user_id, points_selector=qdrant_filter, wait=True)
         except Exception as e:
-            print(f"AgentManager: clear_conversation exception {e}")
+            logging.info(f"AgentManager: clear_conversation exception {e}")
         finally:
             end = time.time()
-            print(f"AgentManager: clear_conversation operation took {end - start} seconds")
+            logging.info(
+                f"AgentManager: clear_conversation operation took {end - start} seconds")
             return "success", end - start
-    
+
     def summarize_old_conversation(self, user_id, conversation_id):
         now = datetime.now()
         old_memories = now - (datetime.month)
         # get old memories
-        #points=Filter(must=[FieldCondition(key={self.payload_lastaccess_index_key}, range=Range(lte={old_memories}))]
+        # points=Filter(must=[FieldCondition(key={self.payload_lastaccess_index_key}, range=Range(lte={old_memories}))]
         # if we have 10 or more memories we tree summarize the old conversation
         # delete the old messages and add the new memory as a summarized memory

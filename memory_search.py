@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import logging
 import pinecone
 from langchain.vectorstores import Pinecone
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -44,10 +45,10 @@ class MemoryManager:
     def split_and_push_webpage(self, docs):
         start_time = time.time()
         splitter = TokenTextSplitter(chunk_size=4096, chunk_overlap=0)
-        print(f'time for split {time.time() - start_time}')
+        logging.info(f'time for split {time.time() - start_time}')
         docs_split = splitter.split_documents(docs)
         self.pinecone_db.add_documents(docs_split)
-        print(f'time for push {time.time() - start_time}')
+        logging.info(f'time for push {time.time() - start_time}')
         time_count = time.time() - start_time
         return f"success, save_context call took {time_count:.4f} seconds"
 
@@ -79,7 +80,7 @@ class MemoryManager:
             docs_with_metadata.append(Document.construct(
                 page_content=texts[0], metadata={'role': 'user', 'index': index}))
             docs_with_metadata.append(Document.construct(
-                page_content=texts[1], metadata={'role': 'assistant','index': index}))
+                page_content=texts[1], metadata={'role': 'assistant', 'index': index}))
             index += 1
 
         docs_split = token_text_splitter.split_documents(
@@ -87,24 +88,25 @@ class MemoryManager:
 
         inner_index = 0
         for doc in docs_split:
-            doc.metadata['inner_index'] = inner_index 
+            doc.metadata['inner_index'] = inner_index
             inner_index += 1
 
         docs_filtered = embeddings_filter.compress_documents(
             docs_split, context)
-        
+
         if docs_filtered[0].page_content == "":
             docs_filtered = docs_split[0:num_chunks]
             docs_formatted = []
         else:
             docs_formatted = []
             for i, doc in enumerate(docs_filtered):
-                matching_docs = [d for d in docs_split if (d.metadata['index'] == doc.metadata['index'])]
+                matching_docs = [d for d in docs_split if (
+                    d.metadata['index'] == doc.metadata['index'])]
                 if i - num_neighbors < 0:
                     previous_docs = matching_docs[0:i-1]
                 elif i - num_neighbors >= 0:
                     previous_docs = matching_docs[i - num_neighbors:i-1]
-                if i + num_neighbors >= len(matching_docs): 
+                if i + num_neighbors >= len(matching_docs):
                     subsequent_docs = matching_docs[i+1:]
                 elif i + num_neighbors < len(matching_docs):
                     subsequent_docs = matching_docs[i+1:i+num_neighbors+1]
@@ -150,14 +152,14 @@ class MemoryManager:
         start_time = time.time()
 
         retriever = self.pinecone_db.as_retriever(search_type="similarity_score_threshold", search_kwargs={
-                                                "k": num_results, "score_threshold": similarity_threshold})
+            "k": num_results, "score_threshold": similarity_threshold})
 
         async def get_docs(q):
             action = q.action
             intent = q.intent
             category = q.category
-        
-            print(action, intent, category)
+
+            logging.info(action, intent, category)
             func_docs = await retriever.aget_relevant_documents(f'Action: {action}. Intent: {intent}. Category: {category}')
             if not func_docs:
                 return [
@@ -169,7 +171,8 @@ class MemoryManager:
                 ]
             else:
                 return [
-                    {"name": doc.metadata["name"], "category": doc.metadata["category"]}
+                    {"name": doc.metadata["name"],
+                        "category": doc.metadata["category"]}
                     for doc in func_docs
                 ]
 
@@ -178,11 +181,11 @@ class MemoryManager:
         result = [item for sublist in results for item in sublist]
 
         # Removing duplicates by converting list of dictionaries to dictionary and back to list
-        result = [dict(t) for t in set(tuple(i.items()) for i in [item for sublist in results for item in sublist])]
+        result = [dict(t) for t in set(tuple(i.items())
+                                       for i in [item for sublist in results for item in sublist])]
 
         time_count = time.time() - start_time
-        print(time_count)
-
+        logging.info(time_count)
 
         return result, f"success, retrieve call took {time_count:.4f} seconds"
 
