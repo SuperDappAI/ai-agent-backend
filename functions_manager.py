@@ -15,6 +15,7 @@ import json
 from pydantic import BaseModel, Field
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.indices.query.schema import QueryBundle
+import logging
 
 
 class ActionItem(BaseModel):
@@ -62,7 +63,7 @@ class FunctionsManager1:
                 item['description'])}
             lenData = len(str(page_content))
             if lenData > self.max_length_allowed:
-                print(
+                logging.info(
                     f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
                 continue
             result.append(page_content)
@@ -75,12 +76,14 @@ class FunctionsManager1:
             try:
                 os.makedirs(self.dirpath)
             except PermissionError:
-                print(f"No Permission to create directory {self.dirpath}")
-                return False 
+                logging.info(
+                    f"No Permission to create directory {self.dirpath}")
+                return False
 
         self.index.storage_context.persist(persist_dir=self.dirpath)
         end = time.time()
-        print(f"FunctionsManager: Save operation took {end - start} seconds")
+        logging.info(
+            f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
@@ -121,6 +124,7 @@ class FunctionsManager1:
                     self.get_retrieved_nodes(query))
                 response.append(parsed_response)
         except Exception as e:
+            logging.info('Exception Error: ' + str(e))
             print('functions_manager.py: Error on line {}'.format(
                 sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
@@ -145,7 +149,7 @@ class FunctionsManager1:
         result = False
         try:
             if self.dirpath.exists() and self.dirpath.is_dir():
-                print("FunctionsManager: Loading from disk")
+                logging.info("FunctionsManager: Loading from disk")
                 # rebuild storage context
                 storage_context = StorageContext.from_defaults(
                     persist_dir=self.dirpath)
@@ -161,16 +165,18 @@ class FunctionsManager1:
                 if 'unittest' not in sys.modules.keys():
                     # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
                     with open('./utils/functions.json', 'r') as f:
-                        print("FunctionsManager: Loading from functions.json")
+                        logging.info(
+                            "FunctionsManager: Loading from functions.json")
                         functions_json = json.load(f)
                         self.push_functions(functions_json)
                         result = True
         except Exception as e:
+            logging.info('Exception Error: ' + str(e))
             print('functions_manager.py: Error on line {}'.format(
                 sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             end = time.time()
-            print(f"FunctionsManager: Load took {end - start} seconds")
+            logging.info(f"FunctionsManager: Load took {end - start} seconds")
             return result
 
     def push_functions(self, functions):
@@ -179,7 +185,7 @@ class FunctionsManager1:
         self.lock.writer_acquire()
         tokens = None
         try:
-            print("FunctionsManager: adding functions to index...")
+            logging.info("FunctionsManager: adding functions to index...")
 
             function_types = ['information_retrieval',
                               'communication',
@@ -204,11 +210,12 @@ class FunctionsManager1:
             tokens = self.count_tokens(functions)
             self.save()
         except Exception as e:
+            logging.info('Exception Error: ' + str(e))
             print('functions_manager.py: Error on line {}'.format(
                 sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             self.lock.writer_release()
             end = time.time()
-            print(
+            logging.info(
                 f"FunctionsManager: push_functions took {end - start} seconds")
             return tokens, end-start

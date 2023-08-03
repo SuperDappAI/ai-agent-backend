@@ -1,4 +1,5 @@
 import time
+import logging
 import shutil
 from dotenv import load_dotenv
 from llama_index import ServiceContext, Document, VectorStoreIndex, StorageContext, load_index_from_storage
@@ -16,17 +17,22 @@ import schedule
 import threading
 import os
 
+
 class HTMLItem(BaseModel):
     source_url: str
     html_doc: str
 
+
 class HTMLInput(BaseModel):
-    action_items: List[HTMLItem] = Field(..., example=[{"source_url": "http://example.com", "html_doc": "text1"}])
+    action_items: List[HTMLItem] = Field(..., example=[
+                                         {"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
     query: str
 
+
 class WebManager:
     scheduler = schedule.Scheduler()
+
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
@@ -69,27 +75,31 @@ class WebManager:
     async def get_retrieved_nodes(self, retriever, query_str: str):
         query_bundle = QueryBundle(query_str)
         retrieved_nodes = retriever.retrieve(query_bundle)
-        retrieved_nodes[:] = [node for node in retrieved_nodes if node.score >= 0.6]
+        retrieved_nodes[:] = [
+            node for node in retrieved_nodes if node.score >= 0.6]
         # rerank if we need to select only up to top_n results
         if len(retrieved_nodes) > self.reranker._top_n:
-            print(f"WebManager: Reranking {len(retrieved_nodes)} results down to {self.reranker._top_n}")
-            retrieved_nodes[:] = self.reranker.postprocess_nodes(retrieved_nodes, query_bundle)
+            logging.info(
+                f"WebManager: Reranking {len(retrieved_nodes)} results down to {self.reranker._top_n}")
+            retrieved_nodes[:] = self.reranker.postprocess_nodes(
+                retrieved_nodes, query_bundle)
         return retrieved_nodes
-    
+
     def load(self, hash_key):
         """Load existing index data from the filesystem for a specific hash."""
         start = time.time()
         hashpath = Path(f"{self.dirpath}/{hash_key}")
         retriever = None
         if hashpath.exists() and hashpath.is_dir():
-            print("WebManager: Loading from disk")
-            storage_context = StorageContext.from_defaults(persist_dir=hashpath)
+            logging.info("WebManager: Loading from disk")
+            storage_context = StorageContext.from_defaults(
+                persist_dir=hashpath)
             retriever = VectorIndexRetriever(
                 index=load_index_from_storage(storage_context),
                 similarity_top_k=10
             )
         end = time.time()
-        print(f"WebManager: Load operation took {end - start} seconds")
+        logging.info(f"WebManager: Load operation took {end - start} seconds")
         return retriever
 
     def save(self, retriever, hash_key):
@@ -99,7 +109,7 @@ class WebManager:
         if not filepath.exists() or not filepath.is_dir():
             retriever._index.storage_context.persist(persist_dir=filepath)
         end = time.time()
-        print(f"WebManager: Save operation took {end - start} seconds")
+        logging.info(f"WebManager: Save operation took {end - start} seconds")
 
     def delete_html(self, hash_key):
         """Delete all memories for a specific hash."""
@@ -108,9 +118,9 @@ class WebManager:
         if hashpath.exists() and hashpath.is_dir():
             shutil.rmtree(hashpath)
         end = time.time()
-        print(f"WebManager: Save operation took {end - start} seconds")
+        logging.info(f"WebManager: Save operation took {end - start} seconds")
         return end - start
-        
+
     async def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
         start = time.time()
@@ -124,22 +134,25 @@ class WebManager:
                 for item in function_input.action_items:
                     text_splitter = SentenceSplitter()
                     chunks = text_splitter.split_text(text=item.html_doc)
-                    documents.extend([Document(text=chunk, metadata={'source_url': item.source_url}) for chunk in chunks])
+                    documents.extend([Document(text=chunk, metadata={
+                                     'source_url': item.source_url}) for chunk in chunks])
                 retriever = VectorIndexRetriever(
                     index=VectorStoreIndex.from_documents(documents),
                     similarity_top_k=10
                 )
                 end = time.time()
-                print(f"WebManager: Loaded from documents operation took {end - start} seconds")
+                logging.info(
+                    f"WebManager: Loaded from documents operation took {end - start} seconds")
             nodes = await self.get_retrieved_nodes(retriever, function_input.query)
             response = self.extract_text_and_source_url(nodes)
             self.save(retriever, function_input.hash)
         except Exception as e:
-            print(f"WebManager: search_html exception {e}")
+            logging.info(f"WebManager: search_html exception {e}")
         finally:
             web_lock.writer_release()
             end = time.time()
-            print(f"WebManager: search_html operation took {end - start} seconds")
+            logging.info(
+                f"WebManager: search_html operation took {end - start} seconds")
             return response, end - start
 
     def delete_html(self, hash_key):
@@ -155,7 +168,7 @@ class WebManager:
             web_lock.writer_release()
             end = time.time()
             return end - start
-            
+
     def prune_cache(self):
         """Prune cache that are older than an hour."""
         current_time = time.time()
@@ -170,7 +183,8 @@ class WebManager:
                     if current_time - dir_time > 3600:
                         self.delete_html(directory.name)
             end = time.time()
-            print(f"WebManager: prune_cache operation took {end - current_time} seconds")
+            logging.info(
+                f"WebManager: prune_cache operation took {end - current_time} seconds")
 
     def does_hash_exist(self, hash_key):
         """Does the hash of the web content exist in our cache?."""
