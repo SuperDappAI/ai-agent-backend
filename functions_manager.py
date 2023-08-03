@@ -41,19 +41,7 @@ class FunctionsManager1:
             service_context=ServiceContext.from_defaults(
                 llm=OpenAI(temperature=0, model="gpt-3.5-turbo-0613"),
             ))
-        # Save function scheduled to run every 5 to 10 minutes
-        self.scheduler.every(300).to(600).seconds.do(self.save)
-        
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            self.scheduler.run_pending()
-            time.sleep(1)
+        self.load()
 
     def stop(self):
         """Stops the scheduler thread."""
@@ -76,15 +64,9 @@ class FunctionsManager1:
     def save(self):
         """Persist current index data to the filesystem."""
         start = time.time()
-        self.lock.writer_acquire()
-        try:
-            if self.lock.dirty is True:
-                self.index.storage_context.persist(persist_dir=self.dirpath)
-                self.lock.dirty = False
-        finally:
-            self.lock.writer_release()
-            end = time.time()
-            print(f"FunctionsManager: Save operation took {end - start} seconds")
+        self.index.storage_context.persist(persist_dir=self.dirpath)
+        end = time.time()
+        print(f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
@@ -114,16 +96,13 @@ class FunctionsManager1:
     def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
-        if self.retriever is None:
-            self.load()
         self.lock.reader_acquire()
         response = []
         try:
-            if self.retriever is not None:
-                for action_item in function_input.action_items:
-                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                    parsed_response = self.extract_name_and_category(self.get_retrieved_nodes(query))
-                    response.append(parsed_response)
+            for action_item in function_input.action_items:
+                query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+                parsed_response = self.extract_name_and_category(self.get_retrieved_nodes(query))
+                response.append(parsed_response)
         finally:
             self.lock.reader_release()
             end = time.time()
@@ -142,7 +121,6 @@ class FunctionsManager1:
         """Load existing index data from the filesystem."""
         start = time.time()
         result = False
-        self.lock.writer_acquire()
         try:
             if self.dirpath.exists() and self.dirpath.is_dir():
                 print("FunctionsManager: Loading from disk")
@@ -162,19 +140,17 @@ class FunctionsManager1:
                     with open('./utils/functions.json', 'r') as f:
                         print("FunctionsManager: Loading from functions.json")
                         functions_json = json.load(f)
-                        self.push_functions(functions_json, lockWrite = False)
+                        self.push_functions(functions_json)
                         result = True
         finally:
-            self.lock.writer_release()
             end = time.time()
             print(f"FunctionsManager: Load took {end - start} seconds")
             return result
 
-    def push_functions(self, functions, lockWrite = True):
+    def push_functions(self, functions):
         """Update the current index with new functions."""
         start = time.time()
-        if lockWrite:
-            self.lock.writer_acquire()
+        self.lock.writer_acquire()
         tokens = None
         try:
             print("FunctionsManager: adding functions to index...")
@@ -198,11 +174,10 @@ class FunctionsManager1:
                 index=self.index,
                 similarity_top_k=10
             )
-            self.lock.dirty = True
             tokens = self.count_tokens(functions)
+            self.save()
         finally:
-            if lockWrite:
-                self.lock.writer_release()
+            self.lock.writer_release()
             end = time.time()
             print(f"FunctionsManager: push_functions took {end - start} seconds")
             return tokens, end-start

@@ -32,7 +32,7 @@ class WebManager:
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
 
         self.dirpath = "./storage_web"
-        self.lock = ReaderWriterLock()
+        self.web_locks = {}
         self.reranker = LLMRerank(choice_batch_size=5, top_n=3, service_context=ServiceContext.from_defaults(
             llm=ChatOpenAI(temperature=0, model="gpt-3.5-turbo-0613"),
         ))
@@ -48,6 +48,10 @@ class WebManager:
         while not self.stop_event.is_set():
             self.scheduler.run_pending()
             time.sleep(1)
+
+    def get_lock(self, hash_key):
+        # Return an existing lock for this user_id or create a new one
+        return self.web_locks.setdefault(hash_key, ReaderWriterLock())
 
     def stop(self):
         """Stops the scheduler thread."""
@@ -110,7 +114,8 @@ class WebManager:
     async def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
         start = time.time()
-        self.lock.reader_acquire()
+        web_lock = self.get_lock(function_input.hash)
+        web_lock.writer_acquire()
         retriever = self.load(function_input.hash)
         response = None
         try:
@@ -132,7 +137,7 @@ class WebManager:
         except Exception as e:
             print(f"WebManager: search_html exception {e}")
         finally:
-            self.lock.reader_release()
+            web_lock.writer_release()
             end = time.time()
             print(f"WebManager: search_html operation took {end - start} seconds")
             return response, end - start
@@ -140,31 +145,30 @@ class WebManager:
     def delete_html(self, hash_key):
         """Delete all memories for a specific hash."""
         start = time.time()
-        hashpath = Path(f"{self.dirpath}/{hash_key}")
-        if hashpath.exists() and hashpath.is_dir():
-            shutil.rmtree(hashpath)
-
-        end = time.time()
-        return end - start
+        web_lock = self.get_lock(hash_key)
+        web_lock.writer_acquire()
+        try:
+            hashpath = Path(f"{self.dirpath}/{hash_key}")
+            if hashpath.exists() and hashpath.is_dir():
+                shutil.rmtree(hashpath)
+        finally:
+            web_lock.writer_release()
+            end = time.time()
+            return end - start
             
     def prune_cache(self):
         """Prune cache that are older than an hour."""
-        self.lock.writer_acquire()
         current_time = time.time()
-        try:
-            # Iterating through all directories in the dirpath
-            for directory in os.scandir(self.dirpath):
-                if directory.is_dir():
-                    # Get the directory's last modified time
-                    dir_time = directory.stat().st_mtime
-
-                    # Check if the directory is older than an hour
-                    if current_time - dir_time > 3600:
-                        self.delete_html(directory.name)
-        finally:
-            end = time.time()
-            self.lock.writer_release()
-            print(f"WebManager: prune_cache operation took {end - current_time} seconds")
+        # Iterating through all directories in the dirpath
+        for directory in os.scandir(self.dirpath):
+            if directory.is_dir():
+                # Get the directory's last modified time
+                dir_time = directory.stat().st_mtime
+                # Check if the directory is older than an hour
+                if current_time - dir_time > 3600:
+                    self.delete_html(directory.name)
+        end = time.time()
+        print(f"WebManager: prune_cache operation took {end - current_time} seconds")
 
     def does_hash_exist(self, hash_key):
         """Does the hash of the web content exist in our cache?."""
