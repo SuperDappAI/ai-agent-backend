@@ -115,7 +115,8 @@ class FunctionsManager1:
                     self.get_retrieved_nodes(query))
                 response.append(parsed_response)
         except Exception as e:
-            print("Error Exception: " + str(e))
+            print('functions_manager.py: Error on line {}'.format(
+                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             self.lock.reader_release()
             end = time.time()
@@ -159,7 +160,8 @@ class FunctionsManager1:
                         self.push_functions(functions_json)
                         result = True
         except Exception as e:
-            print("Error Exception: " + str(e))
+            print('functions_manager.py: Error on line {}'.format(
+                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             end = time.time()
             print(f"FunctionsManager: Load took {end - start} seconds")
@@ -196,7 +198,8 @@ class FunctionsManager1:
             tokens = self.count_tokens(functions)
             self.save()
         except Exception as e:
-            print("Error Exception: " + str(e))
+            print('functions_manager.py: Error on line {}'.format(
+                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             self.lock.writer_release()
             end = time.time()
