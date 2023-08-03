@@ -3,16 +3,12 @@ langchain_experimental
 openai
 pandas
 gitpython
-#chromadb
 lark
-#deeplake
 tiktoken
 fastapi
 python-multipart
 uvicorn
 pyowm
-#duckduckgo-search
-#google-search-results
 python-dotenv
 #transformers
 #huggingface_hub
@@ -26,4 +22,7 @@ gunicorn
 beautifulsoup4
 llama-index
 schedule
-faiss-cpu
+qdrant-client
+nltk
+pytest
+pytest-asyncio

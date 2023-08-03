@@ -2,7 +2,7 @@ import time
 from dotenv import load_dotenv
 from llama_index import ServiceContext, VectorStoreIndex, Document, StorageContext, load_index_from_storage
 from llama_index.llms import OpenAI
-from llmreranker import LLMRerank
+from llama_index.indices.postprocessor import LLMRerank
 from reader_writer_lock import ReaderWriterLock
 import sys
 import os
@@ -13,93 +13,101 @@ from typing import List
 from pathlib import Path
 import json
 from pydantic import BaseModel, Field
+from llama_index.retrievers import VectorIndexRetriever
+from llama_index.indices.query.schema import QueryBundle
+
 
 class ActionItem(BaseModel):
     action: str
     intent: str
     category: str
 
+
 class FunctionInput(BaseModel):
-    action_items: List[ActionItem] = Field(..., example=[{"action": "action_example", "intent": "intent_example", "category": "category_example"}])
+    action_items: List[ActionItem] = Field(..., example=[
+                                           {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
     num_results: int = Field(..., example=5)
     similarity_threshold: float = Field(..., example=0.8)
 
+
 class FunctionsManager1:
+    scheduler = schedule.Scheduler()
+
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
-
         self.dirpath = Path("./storage_functions")
         self.index = None
-        self.query_engine = None
+        self.max_length_allowed = 512
+        self.retriever = None
         self.lock = ReaderWriterLock()
-        self.reranker = LLMRerank(choice_batch_size=10, top_n=3, 
-            service_context=ServiceContext.from_defaults(
-                llm=OpenAI(temperature=0, model="gpt-3.5-turbo"),
-            ))
-        # Try to load index data from the filesystem only if not running tests
-        if 'unittest' not in sys.modules.keys():
-            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-            with open('./utils/functions.json', 'r') as f:
-                functions_json = json.load(f)
-                self.push_functions(functions_json)
-
-        # Save function scheduled to run every 5 to 10 minutes
-        schedule.every(300).to(600).seconds.do(self.save)
-        
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            schedule.run_pending()
-            time.sleep(1)
+        self.reranker = LLMRerank(choice_batch_size=10, top_n=3,
+                                  service_context=ServiceContext.from_defaults(
+                                      llm=OpenAI(temperature=0,
+                                                 model="gpt-3.5-turbo-0613"),
+                                  ))
+        self.load()
 
     def stop(self):
         """Stops the scheduler thread."""
         self.save()
-        self.stop_event.set()
-        self.scheduler_thread.join()
+        # self.stop_event.set()
+        # self.scheduler_thread.join()
 
     def transform(self, data, category):
         """Transforms function data for a specific category."""
         result = []
         for item in data:
-            page_content = {'name': item['name'], 'category': category, 'description': str(item['description'])}
+            page_content = {'name': item['name'], 'category': category, 'description': str(
+                item['description'])}
+            lenData = len(str(page_content))
+            if lenData > self.max_length_allowed:
+                print(
+                    f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
+                continue
             result.append(page_content)
         return result
 
     def save(self):
         """Persist current index data to the filesystem."""
         start = time.time()
-        self.lock.writer_acquire()
-        try:
-            if self.lock.dirty is True:
-                self.index.storage_context.persist(persist_dir=self.dirpath)
-                self.lock.dirty = False
-        finally:
-            self.lock.writer_release()
-            end = time.time()
-            print(f"FunctionsManager: Save operation took {end - start} seconds")
+        if not os.path.exists(self.dirpath):
+            try:
+                os.makedirs(self.dirpath)
+            except PermissionError:
+                print(f"No Permission to create directory {self.dirpath}")
+                return False 
+
+        self.index.storage_context.persist(persist_dir=self.dirpath)
+        end = time.time()
+        print(f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
-        function_types = ['information_retrieval', 
-                        'communication', 
-                        'data_processing', 
-                        'sensory_perception']
+        function_types = ['information_retrieval',
+                          'communication',
+                          'data_processing',
+                          'sensory_perception']
 
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-        tokens = [] 
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-0613")
+        tokens = []
         for func_type in function_types:
             if func_type in functions:
                 for func in functions[func_type]:
                     function_string = json.dumps(func)
-                    tokens.append({func['name']: len(encoding.encode(function_string))})
+                    tokens.append(
+                        {func['name']: len(encoding.encode(function_string))})
         return tokens
+
+    def extract_name_and_category(self, nodes_with_scores):
+        result = []
+        for node_with_score in nodes_with_scores:
+            # Parse the string into a Python dict
+            text = json.loads(node_with_score.node.text)
+            name = text.get('name')
+            category = text.get('category')
+            result.append({'name': name, 'category': category})
+        return result
 
     def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
@@ -107,39 +115,60 @@ class FunctionsManager1:
         self.lock.reader_acquire()
         response = []
         try:
-            if self.query_engine is not None:
-                for action_item in function_input.action_items:
-                    query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                    self.reranker.query_str = query
-                    response.append(self.query_engine.query(query))
-        except:
-            return []
+            for action_item in function_input.action_items:
+                query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+                parsed_response = self.extract_name_and_category(
+                    self.get_retrieved_nodes(query))
+                response.append(parsed_response)
+        except Exception as e:
+            print('functions_manager.py: Error on line {}'.format(
+                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             self.lock.reader_release()
             end = time.time()
             return response, end-start
 
+    def get_retrieved_nodes(self, query_str: str):
+        query_bundle = QueryBundle(query_str)
+        retrieved_nodes = self.retriever.retrieve(query_bundle)
+        retrieved_nodes[:] = [
+            node for node in retrieved_nodes if node.score >= 0.6]
+        # rerank if we need to up to the top_n
+        if len(retrieved_nodes) > self.reranker._top_n:
+            retrieved_nodes[:] = self.reranker.postprocess_nodes(
+                retrieved_nodes, query_bundle)
+        return retrieved_nodes
+
     def load(self):
         """Load existing index data from the filesystem."""
         start = time.time()
-        self.lock.writer_acquire()
         result = False
         try:
-            print("FunctionsManager: Loading from disk")
             if self.dirpath.exists() and self.dirpath.is_dir():
+                print("FunctionsManager: Loading from disk")
                 # rebuild storage context
-                storage_context = StorageContext.from_defaults(persist_dir=self.dirpath)
-
+                storage_context = StorageContext.from_defaults(
+                    persist_dir=self.dirpath)
                 # load index
                 self.index = load_index_from_storage(storage_context)
-                self.query_engine = self.index.as_query_engine(
-                    similarity_top_k=10,
-                    node_postprocessors=[self.reranker]
+                self.retriever = VectorIndexRetriever(
+                    index=self.index,
+                    similarity_top_k=10
                 )
-                
                 result = True
+            else:
+                # Try to load index data from the filesystem only if not running tests
+                if 'unittest' not in sys.modules.keys():
+                    # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+                    with open('./utils/functions.json', 'r') as f:
+                        print("FunctionsManager: Loading from functions.json")
+                        functions_json = json.load(f)
+                        self.push_functions(functions_json)
+                        result = True
+        except Exception as e:
+            print('functions_manager.py: Error on line {}'.format(
+                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
-            self.lock.writer_release()
             end = time.time()
             print(f"FunctionsManager: Load took {end - start} seconds")
             return result
@@ -152,30 +181,34 @@ class FunctionsManager1:
         try:
             print("FunctionsManager: adding functions to index...")
 
-            function_types = ['information_retrieval', 
-                            'communication', 
-                            'data_processing', 
-                            'sensory_perception']
+            function_types = ['information_retrieval',
+                              'communication',
+                              'data_processing',
+                              'sensory_perception']
 
             all_docs = []
 
             # Transform and concatenate function types
             for func_type in function_types:
                 if func_type in functions:
-                    transformed_functions = self.transform(functions[func_type], func_type.replace('_', ' ').title())
+                    transformed_functions = self.transform(
+                        functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
 
-            
             documents = [Document(text=json.dumps(t)) for t in all_docs]
             self.index = VectorStoreIndex.from_documents(documents)
-            self.query_engine = self.index.as_query_engine(
-                similarity_top_k=10,
-                node_postprocessors=[self.reranker]
+            self.retriever = VectorIndexRetriever(
+                index=self.index,
+                similarity_top_k=10
             )
-            self.lock.dirty = True
             tokens = self.count_tokens(functions)
+            self.save()
+        except Exception as e:
+            print('functions_manager.py: Error on line {}'.format(
+                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
         finally:
             self.lock.writer_release()
             end = time.time()
-            print(f"FunctionsManager: push_functions took {end - start} seconds")
+            print(
+                f"FunctionsManager: push_functions took {end - start} seconds")
             return tokens, end-start
