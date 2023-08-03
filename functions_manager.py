@@ -36,7 +36,6 @@ class FunctionsManager1:
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
-
         self.dirpath = Path("./storage_functions")
         self.index = None
         self.max_length_allowed = 512
@@ -52,8 +51,8 @@ class FunctionsManager1:
     def stop(self):
         """Stops the scheduler thread."""
         self.save()
-        self.stop_event.set()
-        self.scheduler_thread.join()
+        # self.stop_event.set()
+        # self.scheduler_thread.join()
 
     def transform(self, data, category):
         """Transforms function data for a specific category."""
@@ -72,6 +71,13 @@ class FunctionsManager1:
     def save(self):
         """Persist current index data to the filesystem."""
         start = time.time()
+        if not os.path.exists(self.dirpath):
+            try:
+                os.makedirs(self.dirpath)
+            except PermissionError:
+                print(f"No Permission to create directory {self.dirpath}")
+                return False 
+
         self.index.storage_context.persist(persist_dir=self.dirpath)
         end = time.time()
         print(f"FunctionsManager: Save operation took {end - start} seconds")
