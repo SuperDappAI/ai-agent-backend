@@ -18,6 +18,8 @@ origins = [
     "http://localhost:5173",
     "http://localhost:8000",
     "https://python-api.chatdapp.dev",
+    "https://api.superdapp.test",
+    "https://api.chatdapp.dev",
 ]
 
 app = FastAPI()
@@ -34,12 +36,13 @@ agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     print("Application shutdown")
     functions_manager1.stop()
     web_manager.stop()
-    
+
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
@@ -54,12 +57,16 @@ async def writeQueryPlan(query: str = Form(...)):
                  elapsed_time)  # log the elapsed time
     return {'response': response, 'elapsed_time': elapsed_time}
 
+
 @app.post('/push_memory/')
 async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user {user_id}, conversation {conversation_id}')
-    elapsed_time = agent_manager.push_memory(user_id, conversation_id, query, llm_response)
+    logging.info(
+        f'Writing memory for user {user_id}, conversation {conversation_id}')
+    elapsed_time = agent_manager.push_memory(
+        user_id, conversation_id, query, llm_response)
     return {'elapsed_time': elapsed_time}
+
 
 @app.post('/delete_html/')
 async def deleteHTML(hash: str = Form(...)):
@@ -68,19 +75,25 @@ async def deleteHTML(hash: str = Form(...)):
     elapsed_time = web_manager.delete_html(hash)
     return {'elapsed_time': elapsed_time}
 
+
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to pull relevant memories for a specific user."""
-    logging.info(f'Pulling relevant memories for user {user_id}, conversation {conversation_id}')
-    memories, elapsed_time = agent_manager.pull_memory(user_id, conversation_id, query)
+    logging.info(
+        f'Pulling relevant memories for user {user_id}, conversation {conversation_id}')
+    memories, elapsed_time = agent_manager.pull_memory(
+        user_id, conversation_id, query)
     return {'response': memories, 'elapsed_time': elapsed_time}
+
 
 @app.post('/get_latest_memories/')
 async def pullLatestMemoriesForUser(user_id: str = Form(...), token_count: int = Form(None)):
     """Endpoint to pull latest memories for a specific user based on token_count."""
     logging.info(f'Pulling latest memories for user {user_id}')
-    memories, elapsed_time = agent_manager.get_latest_memories(user_id, token_count)
+    memories, elapsed_time = agent_manager.get_latest_memories(
+        user_id, token_count)
     return {'response': memories, 'elapsed_time': elapsed_time}
+
 
 @app.post('/semantic_search_html/')
 async def semanticSearchHTML(function_input: HTMLInput):
@@ -89,12 +102,14 @@ async def semanticSearchHTML(function_input: HTMLInput):
     results, elapsed_time = await web_manager.search_html(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
+
 @app.post('/is_html_search_cached/')
 async def isHTMLSearchCached(hash_key: str):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Checking if HTML results are cached')
     result, elapsed_time = web_manager.does_hash_exist(hash_key)
     return {'response': result, 'elapsed_time': elapsed_time}
+
 
 @app.post('/get_functions/')
 async def getFunctions(function_input: FunctionInput):
@@ -114,18 +129,21 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
         functionsJson = json.load(f)
 
     if functionsJson is None or functionsJson['information_retrieval'] is None:
-        return {'Reverted': True} 
+        return {'Reverted': True}
 
     result, elapsed_time = functions_manager1.push_functions(functionsJson)
     logging.info('Overwrote functions')
 
     return {'response': result, 'elapsed_time': elapsed_time}
 
+
 @app.post('/clear_conversation/')
 async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to clear memory for a specific user/conversation."""
-    logging.info(f'Clearing user memory for user {user_id} and conversation {conversation_id}')
-    response, elapsed_time = agent_manager.clear_conversation(user_id, conversation_id)
+    logging.info(
+        f'Clearing user memory for user {user_id} and conversation {conversation_id}')
+    response, elapsed_time = agent_manager.clear_conversation(
+        user_id, conversation_id)
     return {'response': response, 'elapsed_time': elapsed_time}
 
 
