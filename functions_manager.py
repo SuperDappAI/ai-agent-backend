@@ -21,6 +21,7 @@ from langchain.schema import Document
 from datetime import datetime, timedelta
 import logging
 
+
 class ActionItem(BaseModel):
     action: str
     intent: str
@@ -76,15 +77,17 @@ class FunctionsManager1:
                 on_disk_payload=True,
                 collection_name=collection_name,
                 vectors_config=rest.VectorParams(
-                    size = 1536,
-                    distance = rest.Distance.COSINE,
+                    size=1536,
+                    distance=rest.Distance.COSINE,
                 ),
             )
             was_created = True
-        except:
-            logging.info("FunctionsManager: loaded from disk...")
+        except Exception as e:
+            logging.warn(
+                f"FunctionsManager: create_new_functions_retriever exception {e}")
         finally:
-            logging.info(f"FunctionsManager: Creating memory store with collection {collection_name}")
+            logging.info(
+                f"FunctionsManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
@@ -93,8 +96,7 @@ class FunctionsManager1:
                 )
             )
             return was_created, compression_retriever
-            
-            
+
     def transform(self, data, category):
         """Transforms function data for a specific category."""
         now = datetime.now().timestamp()
@@ -159,38 +161,45 @@ class FunctionsManager1:
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                docs = self.get_retrieved_nodes(query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
+                docs = self.get_retrieved_nodes(
+                    query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
                 for doc in docs:
                     doc.metadata["last_accessed_at"] = nowStamp
                 if len(docs) > 0:
                     parsed_response = self.extract_name_and_category(docs)
                     response.append(parsed_response)
-                    asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(docs, wait=False))
+                    asyncio.create_task(
+                        self.retriever.base_retriever.vectorstore.aadd_documents(docs, wait=False))
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}")
         finally:
             end = time.time()
-            logging.info(f"FunctionsManager: pull_functions operation took {end - start} seconds")
+            logging.info(
+                f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
     def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
-        kwargs = {"extra_index": category, "score_threshold": score, "k": num_semantic_results}
+        kwargs = {"extra_index": category,
+                  "score_threshold": score, "k": num_semantic_results}
         return self.retriever.get_relevant_documents(query_str, **kwargs)
 
     async def load(self):
         """Load existing index data from the filesystem for a specific user."""
         start = time.time()
         was_created, self.retriever = self.create_new_functions_retriever()
+        logging.info(
+            f"FunctionsManager: load create_new_functions_retriever was_created? {was_created}")
         if was_created:
-            if 'unittest' not in sys.modules.keys():
-                # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-                with open('./utils/functions.json', 'r') as f:
-                    print("FunctionsManager: Loading from functions.json")
-                    functions_json = json.load(f)
-                    await self.push_functions(functions_json)
+            logging.info(
+                f"FunctionsManager: unittest not in sys.modules.keys()")
+            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+            with open('./utils/functions.json', 'r') as f:
+                print("FunctionsManager: Loading from functions.json")
+                functions_json = json.load(f)
+                await self.push_functions(functions_json)
         end = time.time()
-        logging.info(f"FunctionsManager: Load operation took {end - start} seconds")
-
+        logging.info(
+            f"FunctionsManager: Load operation took {end - start} seconds")
 
     async def push_functions(self, functions):
         """Update the current index with new functions."""
@@ -212,7 +221,7 @@ class FunctionsManager1:
                     transformed_functions = self.transform(
                         functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
-            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait = True)
+            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait=True)
             tokens = self.count_tokens(functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: push_functions exception {e}")
