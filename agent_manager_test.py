@@ -9,7 +9,7 @@ class TestAgentManager(unittest.TestCase):
     
     @patch('agent_manager.GenerativeAgentMemory', autospec=True)
     @patch('agent_manager.OpenAIEmbeddings', autospec=True)
-    @patch('agent_manager.TimeWeightedVectorStoreRetriever', autospec=True)
+    @patch('agent_manager.QDrantVectorStoreRetriever', autospec=True)
     @patch('agent_manager.QdrantClient', autospec=True)
     def test_create_memory(self, mock_qdrant_client, mock_retriever, mock_embeddings, mock_memory):
         user_id = 'user1'

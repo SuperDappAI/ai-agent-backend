@@ -1,16 +1,16 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from langchain.schema import Document
-from time_weighted_retriever import TimeWeightedVectorStoreRetriever
+from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.vectorstores import VectorStore
 from datetime import datetime, timedelta
 
-class TestTimeWeightedVectorStoreRetriever(unittest.TestCase):
+class TestQDrantVectorStoreRetriever(unittest.TestCase):
     def setUp(self):
         self.vector_store = MagicMock(spec=VectorStore)
-        self.retriever = TimeWeightedVectorStoreRetriever(vectorstore=self.vector_store)
-        self.doc1 = Document(page_content='Hello, world!', metadata={'last_accessed_at': datetime.now() - timedelta(hours=2), 'importance': 5})
-        self.doc2 = Document(page_content='Goodbye, world!', metadata={'last_accessed_at': datetime.now() - timedelta(hours=1), 'importance': 3})
+        self.retriever = QDrantVectorStoreRetriever(vectorstore=self.vector_store)
+        self.doc1 = Document(page_content='Hello, world!', metadata={'last_accessed_at': datetime.now() - timedelta(hours=2), 'importance_score': 5})
+        self.doc2 = Document(page_content='Goodbye, world!', metadata={'last_accessed_at': datetime.now() - timedelta(hours=1), 'importance_score': 3})
 
     def test_get_combined_score(self):
         vector_relevance = 0.5

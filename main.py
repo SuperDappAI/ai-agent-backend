@@ -3,10 +3,11 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form
 import json
-from agent_manager import AgentManager
+from agent_manager import AgentManager, MemoryInput, MemoryOutput
 from web_manager import WebManager, HTMLInput
 from functions_manager import FunctionsManager1, FunctionInput
 from queryplan_manager import QueryPlanManager
+
 # Load environment variables
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -29,7 +30,7 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True, level=logging.INFO)
 
 
-functions_manager1 = FunctionsManager1()
+functions_manager1 = None
 agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
@@ -37,8 +38,10 @@ queryplan_manager = QueryPlanManager()
 @app.on_event("shutdown")
 async def shutdown_event():
     print("Application shutdown")
-    functions_manager1.stop()
+    agent_manager.stop()
     web_manager.stop()
+    if functions_manager1 is not None:
+        functions_manager1.stop()
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
@@ -55,10 +58,10 @@ async def writeQueryPlan(query: str = Form(...)):
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/push_memory/')
-async def writeMemoryForUser(query: str = Form(...), llm_response: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
+async def writeMemoryForUser(memory_output: MemoryOutput):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user {user_id}, conversation {conversation_id}')
-    elapsed_time = agent_manager.push_memory(user_id, conversation_id, query, llm_response)
+    logging.info(f'Writing memory for user (importance: {memory_output.importance}) for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
+    elapsed_time = await agent_manager.push_memory(memory_output)
     return {'elapsed_time': elapsed_time}
 
 @app.post('/delete_html/')
@@ -69,17 +72,10 @@ async def deleteHTML(hash: str = Form(...)):
     return {'elapsed_time': elapsed_time}
 
 @app.post('/pull_memory/')
-async def pullRelevantMemoriesForUser(query: str = Form(...), user_id: str = Form(...), conversation_id: str = Form(...)):
+async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     """Endpoint to pull relevant memories for a specific user."""
-    logging.info(f'Pulling relevant memories for user {user_id}, conversation {conversation_id}')
-    memories, elapsed_time = agent_manager.pull_memory(user_id, conversation_id, query)
-    return {'response': memories, 'elapsed_time': elapsed_time}
-
-@app.post('/get_latest_memories/')
-async def pullLatestMemoriesForUser(user_id: str = Form(...), token_count: int = Form(None)):
-    """Endpoint to pull latest memories for a specific user based on token_count."""
-    logging.info(f'Pulling latest memories for user {user_id}')
-    memories, elapsed_time = agent_manager.get_latest_memories(user_id, token_count)
+    logging.info(f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
+    memories, elapsed_time = agent_manager.pull_memory(memory_input)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
@@ -99,14 +95,21 @@ async def isHTMLSearchCached(hash_key: str):
 @app.post('/get_functions/')
 async def getFunctions(function_input: FunctionInput):
     """Endpoint to get functions based on provided input."""
+    global functions_manager1  # Declare functions_manager1 as global
+    if functions_manager1 is None:
+        functions_manager1 = FunctionsManager1()
+        await functions_manager1.load()
     logging.info(f'Processing Action Item: {function_input.action_items}')
-    result, elapsed_time = functions_manager1.pull_functions(function_input)
+    result, elapsed_time = await functions_manager1.pull_functions(function_input)
     return {'response': result, 'elapsed_time': elapsed_time}
-
 
 @app.post('/overwrite_functions/')
 async def overwriteFunctions(functionsJson: str = Form(...)):
     """Endpoint to overwrite functions."""
+    global functions_manager1  # Declare functions_manager1 as global
+    if functions_manager1 is None:
+        functions_manager1 = FunctionsManager1()
+        await functions_manager1.load()
     logging.info('Overwriting functions')
     with open('utils/functions.json', 'w') as f:
         f.write(functionsJson)
@@ -116,7 +119,7 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
     if functionsJson is None or functionsJson['information_retrieval'] is None:
         return {'Reverted': True} 
 
-    result, elapsed_time = functions_manager1.push_functions(functionsJson)
+    result, elapsed_time = await functions_manager1.push_functions(functionsJson)
     logging.info('Overwrote functions')
 
     return {'response': result, 'elapsed_time': elapsed_time}
@@ -127,7 +130,6 @@ async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(
     logging.info(f'Clearing user memory for user {user_id} and conversation {conversation_id}')
     response, elapsed_time = agent_manager.clear_conversation(user_id, conversation_id)
     return {'response': response, 'elapsed_time': elapsed_time}
-
 
 @app.get('/test_callback/')
 async def test_callback():

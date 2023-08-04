@@ -1,9 +1,10 @@
+git+https://github.com/cohere-ai/cohere-python.git#egg=cohere
 langchain
-langchain_experimental
 openai
 pandas
 gitpython
 lark
+cython
 tiktoken
 fastapi
 python-multipart
@@ -13,16 +14,12 @@ python-dotenv
 #transformers
 #huggingface_hub
 # pinecone-client[grpc]
-pinecone-client
 # torch
 termcolor
 #tenacity
 #sse-starlette
 gunicorn
-beautifulsoup4
 llama-index
 schedule
 qdrant-client
-nltk
-pytest
-pytest-asyncio
+apscheduler

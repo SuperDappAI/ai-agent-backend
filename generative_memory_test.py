@@ -3,7 +3,7 @@ import datetime
 import json
 from langchain.schema import Document
 from generative_memory import GenerativeAgentMemory
-from time_weighted_retriever import TimeWeightedVectorStoreRetriever
+from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.schema.language_model import BaseLanguageModel
 
 from typing import Any, List, Optional, Type, Iterable, Sequence
@@ -39,12 +39,12 @@ class MockVectorStore(VectorStore):
         return cls()  # return an instance of the mock class, adjust as needed
 
 
-class MockTimeWeightedVectorStoreRetriever(TimeWeightedVectorStoreRetriever):
+class MockQDrantVectorStoreRetriever(QDrantVectorStoreRetriever):
     def get_relevant_documents(self, topic):
-        return [Document(page_content="relevant document", metadata={"created_at": datetime.datetime.now(), "importance_score": 7})]
+        return [Document(page_content="relevant document", metadata={"created_at": datetime.datetime.now().timestamp(), "importance_score": 7})]
 
     def get_relevant_documents_for_reflection(self, memory_content, conversation):
-        return [Document(page_content="relevant document for reflection", metadata={"created_at": datetime.datetime.now(), "importance_score": 9})]
+        return [Document(page_content="relevant document for reflection", metadata={"created_at": datetime.datetime.now().timestamp(), "importance_score": 9})]
 
     def add_documents(self, documents):
         return ["document added"]
@@ -131,7 +131,7 @@ class TestGenerativeAgentMemory(unittest.TestCase):
         MockLanguageModel_instance = MockLanguageModel()
         self.memory = GenerativeAgentMemory(
             llm=MockLanguageModel_instance, 
-            memory_retriever=MockTimeWeightedVectorStoreRetriever(vectorstore=mock_vectorstore)
+            memory_retriever=MockQDrantVectorStoreRetriever(vectorstore=mock_vectorstore)
     )
 
     def test_add_memory(self):
