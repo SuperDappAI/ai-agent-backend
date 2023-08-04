@@ -161,19 +161,20 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
-        current_time = datetime.now()
+        current_time = datetime.now().timestamp()
         extra_index = kwargs.pop("extra_index", None)
         docs_and_scores = self.get_salient_docs(query, **kwargs)
         rescored_docs = [
             (doc, self._get_combined_score(doc, relevance, extra_index))
             for doc, relevance in docs_and_scores
         ]
-        rescored_docs.sort(key=lambda x: x[1], reverse=True)
         # Ensure frequently accessed memories aren't forgotten
         for doc, _ in rescored_docs:
-            doc.metadata["last_accessed_at"] = current_time.timestamp()
+            doc.metadata["last_accessed_at"] = current_time
+         # Sort by score and extract just the documents
+        sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
-        return [doc for doc, _ in rescored_docs]
+        return sorted_docs
 
     def clear_using_extra_index(self, extra_index) -> None:
         """Clear memory contents."""
