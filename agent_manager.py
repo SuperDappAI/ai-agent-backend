@@ -105,7 +105,7 @@ class AgentManager:
     def create_new_memory_retriever(self):
         """Create a new vector store retriever unique to the agent."""
         collection_name = "aida_memory"
-        client = QdrantClient(location="https://5a136df6-42b6-4ff0-a1ac-a7a34101b901.eu-central-1-0.aws.cloud.qdrant.io:6333", port=6333, api_key=self.QDRANT_API_KEY)
+        client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         # create collection if it doesn't exist (if it exists it will fall into finally)
         try:
             client.create_collection(
