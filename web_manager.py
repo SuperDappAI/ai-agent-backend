@@ -133,20 +133,17 @@ class WebManager:
         nowStamp = datetime.now().timestamp()
         try:
             documents = []
-            updateLastAccess = False
-            if self.retriever.base_retriever.does_key_exist("metadata.hash_key", function_input.hash) is False:
-                for item in function_input.action_items:
-                    text_splitter = SentenceSplitter()
-                    chunks = text_splitter.split_text(text=item.html_doc)
-                    documents.extend([Document(page_content=chunk, metadata={"hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
+            for item in function_input.action_items:
+                text_splitter = SentenceSplitter()
+                chunks = text_splitter.split_text(text=item.html_doc)
+                documents.extend([Document(page_content=chunk, metadata={"hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
+            if len(documents) > 0:
                 await self.retriever.base_retriever.vectorstore.aadd_documents(documents)
                 end = time.time()
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
-            else:
-                updateLastAccess = True
             nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
-            if updateLastAccess:
+            if len(documents) > 0:
                 for doc, _ in documents:
                     doc.metadata["last_accessed_at"] = nowStamp
                 asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, wait = False))
@@ -163,3 +160,6 @@ class WebManager:
         current_time = datetime.now()
         one_hour_ago = current_time - timedelta(hours=1)
         self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+
+    def does_hash_exist(self, hash):
+        return self.retriever.base_retriever.does_key_exist("metadata.hash_key", hash)
