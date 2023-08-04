@@ -56,7 +56,7 @@ class AgentManager:
 
     async def save_and_reflect(self, id, memory_output: MemoryOutput):
         if len(id) > 0 and memory_output.importance >= 9:
-            print(f"memory importance {memory_output.importance}, queuing to reflect")
+            logging.info(f"memory importance {memory_output.importance}, queuing to reflect")
             asyncio.create_task(self.pause_to_reflect(id[0], memory_output))
 
     async def save_context_and_call_reflect(self, memory_output: MemoryOutput):

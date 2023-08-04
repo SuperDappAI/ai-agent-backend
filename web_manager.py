@@ -70,9 +70,9 @@ class WebManager:
             )
             client.create_payload_index(self.collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
         except:
-            print("FunctionsManager: loaded from disk...")
+            logging.info("FunctionsManager: loaded from disk...")
         finally:
-            print(f"FunctionsManager: Creating memory store with collection {self.collection_name}")
+            logging.info(f"FunctionsManager: Creating memory store with collection {self.collection_name}")
             vectorstore = Qdrant(client, self.collection_name, self.embeddings)
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
@@ -124,7 +124,7 @@ class WebManager:
         start = time.time()
         self.retriever = self.create_new_web_retriever()
         end = time.time()
-        print(f"WebManager: Load operation took {end - start} seconds")
+        logging.info(f"WebManager: Load operation took {end - start} seconds")
 
     async def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
@@ -141,7 +141,7 @@ class WebManager:
                     documents.extend([Document(page_content=chunk, metadata={"hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
                 await self.retriever.base_retriever.vectorstore.aadd_documents(documents)
                 end = time.time()
-                print(f"WebManager: Loaded from documents operation took {end - start} seconds")
+                logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
             else:
                 updateLastAccess = True
             nodes = self.get_retrieved_nodes(function_input)

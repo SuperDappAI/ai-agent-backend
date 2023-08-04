@@ -111,8 +111,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         filter = self._qdrant_filter_from_dict(filter_dict)
         kwargs.update({"filter": filter})
         docs_and_scores = self.get_salient_docs(query, **kwargs)
-        print(f"get_relevant_documents_for_reflection docs_and_scores {docs_and_scores} filter_dict {filter_dict}")
-
+    
         rescored_docs = [
             (doc, self._get_combined_score(doc, relevance, conversation))
             for doc, relevance in docs_and_scores

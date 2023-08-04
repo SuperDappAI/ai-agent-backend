@@ -82,9 +82,9 @@ class FunctionsManager1:
             )
             was_created = True
         except:
-            print("FunctionsManager: loaded from disk...")
+            logging.info("FunctionsManager: loaded from disk...")
         finally:
-            print(f"FunctionsManager: Creating memory store with collection {collection_name}")
+            logging.info(f"FunctionsManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
@@ -189,7 +189,7 @@ class FunctionsManager1:
                     functions_json = json.load(f)
                     await self.push_functions(functions_json)
         end = time.time()
-        print(f"FunctionsManager: Load operation took {end - start} seconds")
+        logging.info(f"FunctionsManager: Load operation took {end - start} seconds")
 
 
     async def push_functions(self, functions):
