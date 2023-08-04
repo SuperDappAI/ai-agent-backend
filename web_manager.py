@@ -144,7 +144,7 @@ class WebManager:
             nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
             if len(documents) > 0:
-                for doc, _ in documents:
+                for doc in documents:
                     doc.metadata["last_accessed_at"] = nowStamp
                 asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, wait = False))
         except Exception as e:
