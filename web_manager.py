@@ -116,7 +116,7 @@ class WebManager:
             }
         }
         filter = self.retriever.base_retriever._qdrant_filter_from_dict(filter_dict)
-        result = self.retriever.base_retriever.get_relevant_documents(function_input.query, filter=filter, score_threshold=function_input.similarity_threshold, k=function_input.num_semantic_results)
+        result = self.retriever.get_relevant_documents(function_input.query, filter=filter, score_threshold=function_input.similarity_threshold, k=function_input.num_semantic_results)
         return result
 
     def load(self):
