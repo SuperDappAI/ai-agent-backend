@@ -199,7 +199,6 @@ class GenerativeAgentMemory(BaseMemory):
         return {}
 
     async def save_context(self, outputs: Dict[str, Any]) -> List[str]:
-        print("save_context")
         """Save the context of this model run to memory."""
         query = outputs.get("query")
         aida = outputs.get("llm_response")
