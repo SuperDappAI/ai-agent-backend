@@ -162,7 +162,7 @@ class WebManager:
         self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
 
     def does_hash_exist(self, hash):
-        start = datetime.now()
+        start = time.time()
         try:
             result = self.retriever.base_retriever.does_key_exist("metadata.hash_key", hash)
         except Exception as e:
