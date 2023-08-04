@@ -58,7 +58,6 @@ class WebManager:
     def create_new_web_retriever(self):
         """Create a new vector store retriever unique to the agent."""
         client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
-        was_created = False
         # create collection if it doesn't exist (if it exists it will fall into finally)
         try:
             client.create_collection(
@@ -69,7 +68,6 @@ class WebManager:
                     distance = rest.Distance.COSINE,
                 ),
             )
-            was_created = True
             client.create_payload_index(self.collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
         except:
             print("FunctionsManager: loaded from disk...")
@@ -82,7 +80,7 @@ class WebManager:
                     collection_name=self.collection_name, client=client, vectorstore=vectorstore,
                 )
             )
-            return was_created, compression_retriever
+            return compression_retriever
             
 
     def run_continuously(self):
@@ -98,10 +96,15 @@ class WebManager:
 
     def extract_text_and_source_url(self, retrieved_nodes):
         result = []
-        for node_with_score in retrieved_nodes:
-            text = node_with_score.node.text
-            source_url = node_with_score.node.metadata.get('source_url')
-            result.append({'text': text, 'source_url': source_url})
+        seen = set()
+        for document in retrieved_nodes:
+            text = document.page_content
+            source_url = document.metadata.get('source_url')
+            # Create a tuple of text and source_url to check for duplicates
+            key = (text, source_url)
+            if key not in seen:
+                result.append({'text': text, 'source_url': source_url})
+                seen.add(key)
         return result
 
     def get_retrieved_nodes(self, function_input: HTMLInput):
@@ -131,24 +134,24 @@ class WebManager:
         try:
             documents = []
             updateLastAccess = False
-            if not self.retriever.base_retriever.does_key_exist("metadata.hash_key", function_input.hash):
+            if self.retriever.base_retriever.does_key_exist("metadata.hash_key", function_input.hash) is False:
                 for item in function_input.action_items:
                     text_splitter = SentenceSplitter()
                     chunks = text_splitter.split_text(text=item.html_doc)
                     documents.extend([Document(page_content=chunk, metadata={"hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
-                asyncio.create_task(self.retriever.vectorstore.aadd_documents(documents, wait = False))
+                await self.retriever.base_retriever.vectorstore.aadd_documents(documents)
                 end = time.time()
                 print(f"WebManager: Loaded from documents operation took {end - start} seconds")
             else:
                 updateLastAccess = True
-            nodes = self.get_retrieved_nodes(self.retriever, function_input)
+            nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
             if updateLastAccess:
                 for doc, _ in documents:
                     doc.metadata["last_accessed_at"] = nowStamp
                 asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, wait = False))
         except Exception as e:
-            logging.info(f"WebManager: search_html exception {e}")
+            logging.warn(f"WebManager: search_html exception {e}")
         finally:
             end = time.time()
             logging.info(

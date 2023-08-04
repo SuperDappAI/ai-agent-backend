@@ -197,9 +197,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 },
             }
         }
-        filter = self.base_retriever._qdrant_filter_from_dict(filter_dict)
-        results = self.base_retriever.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
-        return results
+        filter = self._qdrant_filter_from_dict(filter_dict)
+        results = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+        return results is not None and len(results[0]) > 0
 
     def prune_from(self, fromTime: float):
         """Prune points that are older than fromTime timestamp."""

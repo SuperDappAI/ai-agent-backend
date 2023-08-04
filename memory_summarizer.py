@@ -3,6 +3,7 @@ from document_summarizer import FlexibleDocumentSummarizer
 from langchain.llms import OpenAI
 from llama_index.indices.service_context import ServiceContext
 import asyncio
+import logging
 
 class MemorySummarizer:
     def __init__(self, agent_manager):
@@ -23,7 +24,7 @@ class MemorySummarizer:
                     break
                 self.flexible_document_summarizer.update_documents(documents)
             except Exception as e:
-                print(f"MemorySummarizer: exception {e}")
+                logging.warn(f"MemorySummarizer: exception {e}")
                 break
         # send to qdrant
         if documents:

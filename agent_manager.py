@@ -81,11 +81,10 @@ class AgentManager:
             time.sleep(1) # Sleep for short periods and check again
         start = time.time()
         try:
-            print(f"AgentManager: _pause_to_reflect")
             asyncio.create_task(self.memory.pause_to_reflect(id_to_skip, memory_output.user_id, memory_output.query, memory_output.conversation_id, now=datetime.now()))
         finally:
             end = time.time()
-            print(f"AgentManager: _pause_to_reflect operation took {end - start} seconds")
+            logging.info(f"AgentManager: _pause_to_reflect operation took {end - start} seconds")
             
     async def push_memory(self, memory_output: MemoryOutput):
         """Add new memory to the current index for a specific user."""
@@ -94,10 +93,10 @@ class AgentManager:
             # This will start executing the function but not await its completion
             asyncio.create_task(self.save_context_and_call_reflect(memory_output))
         except Exception as e:
-            print(f"AgentManager: push_memory exception {e}") 
+            logging.warn(f"AgentManager: push_memory exception {e}") 
         finally:
             end = time.time()
-            print(f"AgentManager: push_memory operation took {end - start} seconds")
+            logging.info(f"AgentManager: push_memory operation took {end - start} seconds")
             return end - start
 
     def create_new_memory_retriever(self):

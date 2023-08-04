@@ -167,10 +167,10 @@ class FunctionsManager1:
                     response.append(parsed_response)
                     asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(docs, wait=False))
         except Exception as e:
-            print(f"FunctionsManager: pull_functions exception {e}")
+            logging.warn(f"FunctionsManager: pull_functions exception {e}")
         finally:
             end = time.time()
-            print(f"FunctionsManager: pull_functions operation took {end - start} seconds")
+            logging.info(f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
     def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
@@ -215,7 +215,7 @@ class FunctionsManager1:
             await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait = True)
             tokens = self.count_tokens(functions)
         except Exception as e:
-            print(f"FunctionsManager: push_functions exception {e}")
+            logging.warn(f"FunctionsManager: push_functions exception {e}")
         finally:
             end = time.time()
             logging.info(
