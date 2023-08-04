@@ -137,8 +137,7 @@ async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(
     """Endpoint to clear memory for a specific user/conversation."""
     logging.info(
         f'Clearing user memory for user {user_id} and conversation {conversation_id}')
-    response, elapsed_time = agent_manager.clear_conversation(
-        user_id, conversation_id)
+    response, elapsed_time = agent_manager.clear_conversation(conversation_id)
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.get('/test_callback/')
