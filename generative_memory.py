@@ -139,7 +139,6 @@ class GenerativeAgentMemory(BaseMemory):
             page_content=memory_content, 
             metadata=metadata,
         )
-        print(f"add_memory doc {document}")
         return await self.memory_retriever.vectorstore.aadd_documents([document], wait = False)
 
     def fetch_memories(
