@@ -32,6 +32,9 @@ class MemoryOutput(BaseModel):
     conversation_id: str
     importance: int
 
+class ClearMemory(BaseModel):
+    user_id: str
+    conversation_id: str
 
 class AgentManager:
     def __init__(self):
@@ -163,11 +166,11 @@ class AgentManager:
                 f"AgentManager: pull_memory operation took {end - start} seconds")
             return response, end - start
 
-    def clear_conversation(self, conversation_id):
+    def clear_conversation(self, clear_memory: ClearMemory):
         """Delete all memories for a specific conversation with a user."""
         start = time.time()
         try:
-            self.memory.clear(conversation_id)
+            self.memory.clear(clear_memory.conversation_id)
         except Exception as e:
             logging.info(f"AgentManager: clear_conversation exception {e}")
         finally:

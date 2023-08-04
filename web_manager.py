@@ -24,6 +24,11 @@ class HTMLItem(BaseModel):
     source_url: str
     html_doc: str
 
+class CacheHTML(BaseModel):
+    hash: str
+
+class FunctionOverwrite(BaseModel):
+    value: str
 
 class HTMLInput(BaseModel):
     action_items: List[HTMLItem] = Field(..., example=[
@@ -161,10 +166,10 @@ class WebManager:
         one_hour_ago = current_time - timedelta(hours=1)
         self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
 
-    def does_hash_exist(self, hash):
+    def does_hash_exist(self, cache_html: CacheHTML):
         start = time.time()
         try:
-            result = self.retriever.base_retriever.does_key_exist("metadata.hash_key", hash)
+            result = self.retriever.base_retriever.does_key_exist("metadata.hash_key", cache_html.hash)
         except Exception as e:
             logging.warn(f"WebManager: does_hash_exist exception {e}")
         finally:

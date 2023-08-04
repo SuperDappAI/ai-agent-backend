@@ -3,8 +3,8 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form
 import json
-from agent_manager import AgentManager, MemoryInput, MemoryOutput
-from web_manager import WebManager, HTMLInput
+from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
+from web_manager import WebManager, HTMLInput, CacheHTML, FunctionOverwrite
 from functions_manager import FunctionsManager1, FunctionInput
 from queryplan_manager import QueryPlanManager
 
@@ -66,15 +66,6 @@ async def writeMemoryForUser(memory_output: MemoryOutput):
     elapsed_time = await agent_manager.push_memory(memory_output)
     return {'elapsed_time': elapsed_time}
 
-
-@app.post('/delete_html/')
-async def deleteHTML(hash: str = Form(...)):
-    """Endpoint to delete HTML content."""
-    logging.info('Deleting HTML')
-    elapsed_time = web_manager.delete_html(hash)
-    return {'elapsed_time': elapsed_time}
-
-
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     """Endpoint to pull relevant memories for a specific user."""
@@ -92,10 +83,10 @@ async def semanticSearchHTML(function_input: HTMLInput):
 
 
 @app.post('/is_html_search_cached/')
-async def isHTMLSearchCached(hash_key: str):
+async def isHTMLSearchCached(cache_html: CacheHTML):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Checking if HTML results are cached')
-    result, elapsed_time = web_manager.does_hash_exist(hash_key)
+    result, elapsed_time = web_manager.does_hash_exist(cache_html)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 
@@ -111,7 +102,7 @@ async def getFunctions(function_input: FunctionInput):
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/overwrite_functions/')
-async def overwriteFunctions(functionsJson: str = Form(...)):
+async def overwriteFunctions(function_overwrite: FunctionOverwrite):
     """Endpoint to overwrite functions."""
     global functions_manager1  # Declare functions_manager1 as global
     if functions_manager1 is None:
@@ -119,25 +110,24 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
         await functions_manager1.load()
     logging.info('Overwriting functions')
     with open('utils/functions.json', 'w') as f:
-        f.write(functionsJson)
+        f.write(function_overwrite.value)
     with open('utils/functions.json', 'r') as f:
-        functionsJson = json.load(f)
+        function_overwrite.value = json.load(f)
 
-    if functionsJson is None or functionsJson['information_retrieval'] is None:
+    if function_overwrite.value is None or function_overwrite.value['information_retrieval'] is None:
         return {'Reverted': True}
 
-    result, elapsed_time = await functions_manager1.push_functions(functionsJson)
+    result, elapsed_time = await functions_manager1.push_functions(function_overwrite.value)
     logging.info('Overwrote functions')
 
     return {'response': result, 'elapsed_time': elapsed_time}
 
-
 @app.post('/clear_conversation/')
-async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(...)):
+async def clearUserMemory(clear_memory: ClearMemory):
     """Endpoint to clear memory for a specific user/conversation."""
     logging.info(
-        f'Clearing user memory for user {user_id} and conversation {conversation_id}')
-    response, elapsed_time = agent_manager.clear_conversation(conversation_id)
+        f'Clearing user memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
+    response, elapsed_time = agent_manager.clear_conversation(clear_memory)
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.get('/test_callback/')

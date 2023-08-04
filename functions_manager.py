@@ -1,6 +1,5 @@
 import time
 from dotenv import load_dotenv
-import sys
 import tiktoken
 import schedule
 from qdrant_client import QdrantClient
