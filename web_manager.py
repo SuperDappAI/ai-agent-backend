@@ -162,4 +162,13 @@ class WebManager:
         self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
 
     def does_hash_exist(self, hash):
-        return self.retriever.base_retriever.does_key_exist("metadata.hash_key", hash)
+        start = datetime.now()
+        try:
+            result = self.retriever.base_retriever.does_key_exist("metadata.hash_key", hash)
+        except Exception as e:
+            logging.warn(f"WebManager: does_hash_exist exception {e}")
+        finally:
+            end = time.time()
+        logging.info(
+            f"WebManager: does_hash_exist operation took {end - start} seconds")
+        return result, end - start
