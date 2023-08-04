@@ -18,7 +18,7 @@ from langchain.schema import Document
 from datetime import datetime, timedelta
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
-
+import logging
 
 class HTMLItem(BaseModel):
     source_url: str

@@ -19,6 +19,8 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
+import logging
+
 class ActionItem(BaseModel):
     action: str
     intent: str
