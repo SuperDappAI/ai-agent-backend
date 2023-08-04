@@ -35,6 +35,7 @@ agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     print("Application shutdown")
@@ -57,12 +58,14 @@ async def writeQueryPlan(query: str = Form(...)):
                  elapsed_time)  # log the elapsed time
     return {'response': response, 'elapsed_time': elapsed_time}
 
+
 @app.post('/push_memory/')
 async def writeMemoryForUser(memory_output: MemoryOutput):
     """Endpoint to push memory for a specific user."""
     logging.info(f'Writing memory for user (importance: {memory_output.importance}) for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
     elapsed_time = await agent_manager.push_memory(memory_output)
     return {'elapsed_time': elapsed_time}
+
 
 @app.post('/delete_html/')
 async def deleteHTML(hash: str = Form(...)):
@@ -71,12 +74,14 @@ async def deleteHTML(hash: str = Form(...)):
     elapsed_time = web_manager.delete_html(hash)
     return {'elapsed_time': elapsed_time}
 
+
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     """Endpoint to pull relevant memories for a specific user."""
     logging.info(f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
     memories, elapsed_time = agent_manager.pull_memory(memory_input)
     return {'response': memories, 'elapsed_time': elapsed_time}
+
 
 @app.post('/semantic_search_html/')
 async def semanticSearchHTML(function_input: HTMLInput):
@@ -85,12 +90,14 @@ async def semanticSearchHTML(function_input: HTMLInput):
     results, elapsed_time = await web_manager.search_html(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
+
 @app.post('/is_html_search_cached/')
 async def isHTMLSearchCached(hash_key: str):
     """Endpoint to conduct a semantic search in HTML content."""
     logging.info('Checking if HTML results are cached')
     result, elapsed_time = web_manager.does_hash_exist(hash_key)
     return {'response': result, 'elapsed_time': elapsed_time}
+
 
 @app.post('/get_functions/')
 async def getFunctions(function_input: FunctionInput):
@@ -117,18 +124,21 @@ async def overwriteFunctions(functionsJson: str = Form(...)):
         functionsJson = json.load(f)
 
     if functionsJson is None or functionsJson['information_retrieval'] is None:
-        return {'Reverted': True} 
+        return {'Reverted': True}
 
     result, elapsed_time = await functions_manager1.push_functions(functionsJson)
     logging.info('Overwrote functions')
 
     return {'response': result, 'elapsed_time': elapsed_time}
 
+
 @app.post('/clear_conversation/')
 async def clearUserMemory(user_id: str = Form(...), conversation_id: str = Form(...)):
     """Endpoint to clear memory for a specific user/conversation."""
-    logging.info(f'Clearing user memory for user {user_id} and conversation {conversation_id}')
-    response, elapsed_time = agent_manager.clear_conversation(user_id, conversation_id)
+    logging.info(
+        f'Clearing user memory for user {user_id} and conversation {conversation_id}')
+    response, elapsed_time = agent_manager.clear_conversation(
+        user_id, conversation_id)
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.get('/test_callback/')

@@ -102,7 +102,7 @@ class FunctionsManager1:
                 item['description'])}
             lenData = len(str(page_content))
             if lenData > self.max_length_allowed:
-                print(
+                logging.info(
                     f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
                 continue
             metadata = {
@@ -195,7 +195,7 @@ class FunctionsManager1:
         start = time.time()
         tokens = None
         try:
-            print("FunctionsManager: adding functions to index...")
+            logging.info("FunctionsManager: adding functions to index...")
 
             function_types = ['information_retrieval',
                               'communication',
@@ -216,7 +216,7 @@ class FunctionsManager1:
             print(f"FunctionsManager: push_functions exception {e}")
         finally:
             end = time.time()
-            print(
+            logging.info(
                 f"FunctionsManager: push_functions took {end - start} seconds")
             return tokens, end-start
 

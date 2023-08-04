@@ -19,19 +19,24 @@ from datetime import datetime, timedelta
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 
+
 class HTMLItem(BaseModel):
     source_url: str
     html_doc: str
 
+
 class HTMLInput(BaseModel):
-    action_items: List[HTMLItem] = Field(..., example=[{"source_url": "http://example.com", "html_doc": "text1"}])
+    action_items: List[HTMLItem] = Field(..., example=[
+                                         {"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
     query: str
     num_semantic_results: int = Field(..., example=10)
     similarity_threshold: float = Field(..., example=0.72)
 
+
 class WebManager:
     scheduler = schedule.Scheduler()
+
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")
@@ -143,10 +148,11 @@ class WebManager:
                     doc.metadata["last_accessed_at"] = nowStamp
                 asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, wait = False))
         except Exception as e:
-            print(f"WebManager: search_html exception {e}")
+            logging.info(f"WebManager: search_html exception {e}")
         finally:
             end = time.time()
-            print(f"WebManager: search_html operation took {end - start} seconds")
+            logging.info(
+                f"WebManager: search_html operation took {end - start} seconds")
             return response, end - start
 
     def prune_web(self):

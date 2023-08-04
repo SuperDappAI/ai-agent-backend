@@ -1,4 +1,5 @@
 import time
+import logging
 from dotenv import load_dotenv
 import os
 import random
@@ -30,6 +31,7 @@ class MemoryOutput(BaseModel):
     llm_response: str
     conversation_id: str
     importance: int
+
 
 class AgentManager:
     def __init__(self):
@@ -108,8 +110,8 @@ class AgentManager:
                 on_disk_payload=True,
                 collection_name=collection_name,
                 vectors_config=rest.VectorParams(
-                    size = 1536,
-                    distance = rest.Distance.COSINE,
+                    size=1536,
+                    distance=rest.Distance.COSINE,
                 ),
             )
             # only used in reflection which isn't time critical so keep the index out for now unless reflection is very slow
@@ -121,7 +123,8 @@ class AgentManager:
         except:
             print("AgentManager: loaded from disk...")
         finally:
-            print(f"AgentManager: Creating memory store with collection {collection_name}")
+            logging.info(
+                f"AgentManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
             return QDrantVectorStoreRetriever(
                 collection_name=collection_name, client=client, vectorstore=vectorstore
@@ -139,7 +142,8 @@ class AgentManager:
         start = time.time()
         self.memory = self.create_memory()
         end = time.time()
-        print(f"AgentManager: Load operation took {end - start} seconds")
+        logging.info(
+            f"AgentManager: Load operation took {end - start} seconds")
 
     def pull_memory(self, memory_input: MemoryInput):
         """Fetch memory based on a query for a specific user."""
@@ -153,10 +157,11 @@ class AgentManager:
                 k=memory_input.num_semantic_results,
             )
         except Exception as e:
-            print(f"AgentManager: pull_memory exception {e}")
+            logging.info(f"AgentManager: pull_memory exception {e}")
         finally:
             end = time.time()
-            print(f"AgentManager: pull_memory operation took {end - start} seconds")
+            logging.info(
+                f"AgentManager: pull_memory operation took {end - start} seconds")
             return response, end - start
 
     def clear_conversation(self, conversation_id):
@@ -165,9 +170,10 @@ class AgentManager:
         try:
             self.memory.clear(conversation_id)
         except Exception as e:
-            print(f"AgentManager: clear_conversation exception {e}")
+            logging.info(f"AgentManager: clear_conversation exception {e}")
         finally:
             end = time.time()
-            print(f"AgentManager: clear_conversation operation took {end - start} seconds")
+            logging.info(
+                f"AgentManager: clear_conversation operation took {end - start} seconds")
             return "success", end - start
     
