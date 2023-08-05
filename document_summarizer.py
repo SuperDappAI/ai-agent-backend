@@ -36,7 +36,7 @@ class FlexibleDocumentSummarizer:
 
     def _calculate_flexibility_score(self, current_time: datetime, document: Document) -> int:
         t = self._get_days_passed(current_time, datetime.fromtimestamp(document.metadata["last_accessed_at"]))
-        e = int(document.metadata["summarized"])
+        e = int(document.metadata["summarizations"])
         I = float(document.metadata.get('importance_score', 0.0)) / 10.0
         importance_score = self._power_law_forgetting(t, I, self._decay_rate, e)
         return ceil(importance_score * 10)

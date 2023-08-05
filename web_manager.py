@@ -143,13 +143,17 @@ class WebManager:
                 chunks = text_splitter.split_text(text=item.html_doc)
                 documents.extend([Document(page_content=chunk, metadata={"hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
-                await self.retriever.base_retriever.vectorstore.aadd_documents(documents)
+                ids = [doc.metadata["id"] for doc in documents]
+                await self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
                 end = time.time()
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
             nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
-            if len(documents) > 0:
-                asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, wait = False))
+            if len(function_input.action_items) == 0 and len(nodes) > 0:
+                ids = [doc.metadata["id"] for doc in nodes]
+                for doc in documents:
+                    doc.metadata.pop('relevance_score', None)
+                asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
         except Exception as e:
             logging.warn(f"WebManager: search_html exception {e}")
         finally:

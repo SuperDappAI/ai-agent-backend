@@ -26,9 +26,12 @@ class MemorySummarizer:
             except Exception as e:
                 logging.warn(f"MemorySummarizer: exception {e}")
                 break
-        # send to qdrant
+        # upsert entire document set to qdrant against existing IDs (stored in metadata)
         if documents:
-            asyncio.create_task(self.agent_manager.memory.memory_retriever.vectorstore.aadd_documents(documents, wait = False))
+            ids = [doc.metadata["id"] for doc in documents]
+            for doc in documents:
+                doc.metadata.pop('relevance_score', None)
+            asyncio.create_task(self.agent_manager.memory.memory_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
 
     def start(self):
         self.scheduler.start()

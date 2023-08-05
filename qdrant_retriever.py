@@ -1,6 +1,5 @@
 # Importing necessary libraries and modules
 from datetime import datetime
-from typing import Any, List, Optional, Tuple
 from pydantic import Field
 from enum import Enum
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
@@ -9,6 +8,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from datetime import timedelta
 from langchain.vectorstores import Qdrant
+from typing import (
+    Any,
+    List,
+    Optional,
+    Tuple,
+)
 
 class MemoryType(Enum):
     CONSCIOUS_MEMORY = 0
@@ -162,11 +167,11 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 result, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
             )
 
-            # Increment the summarized count
-            if 'summarized' in document.metadata:
-                document.metadata['summarized'] += 1
+            # Increment the summarizations count
+            if 'summarizations' in document.metadata:
+                document.metadata['summarizations'] += 1
             else:
-                document.metadata['summarized'] = 1
+                document.metadata['summarizations'] = 1
 
             docs.append(document)
 

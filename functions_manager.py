@@ -8,6 +8,8 @@ import json
 import asyncio
 import threading
 import os
+import uuid
+import logging
 from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
@@ -18,7 +20,6 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
-import logging
 
 
 class ActionItem(BaseModel):
@@ -109,6 +110,7 @@ class FunctionsManager1:
                     f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
                 continue
             metadata = {
+                "id":  uuid.uuid4().hex,
                 "extra_index": category,
                 "last_accessed_at": now,
             }
@@ -159,13 +161,15 @@ class FunctionsManager1:
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                docs = self.get_retrieved_nodes(
+                documents = self.get_retrieved_nodes(
                     query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
-                if len(docs) > 0:
-                    parsed_response = self.extract_name_and_category(docs)
+                if len(documents) > 0:
+                    parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
-                    asyncio.create_task(
-                        self.retriever.base_retriever.vectorstore.aadd_documents(docs, wait=False))
+                    ids = [doc.metadata["id"] for doc in documents]
+                    for doc in documents:
+                        doc.metadata.pop('relevance_score', None)
+                    asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}")
         finally:
@@ -176,7 +180,7 @@ class FunctionsManager1:
 
     def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
         kwargs = {"extra_index": category,
-                  "score_threshold": score, "k": num_semantic_results}
+                "score_threshold": score, "k": num_semantic_results}
         return self.retriever.get_relevant_documents(query_str, **kwargs)
 
     async def load(self):
@@ -217,8 +221,8 @@ class FunctionsManager1:
                     transformed_functions = self.transform(
                         functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
-            
-            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait=True)
+            ids = [doc.metadata["id"] for doc in all_docs]
+            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: push_functions exception {e}")

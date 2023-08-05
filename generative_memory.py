@@ -1,15 +1,18 @@
 import logging
 import re
+import json
+import uuid
+import asyncio
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from qdrant_retriever import QDrantVectorStoreRetriever, MemoryType
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
-import json
+
 
 logger = logging.getLogger(__name__)
     
@@ -101,9 +104,11 @@ class GenerativeAgentMemory(BaseMemory):
     ) -> List[str]:
         """Add an observations or memories to the agent's memory."""
         documents = []
+        ids = []
         nowStamp = now.timestamp()
         for i in range(len(qa)):
             metadata = {
+                "id":  uuid.uuid4().hex,
                 "extra_index": conversation_id,
                 "created_at": nowStamp,
                 "importance_score": importance_scores[i],
@@ -117,8 +122,9 @@ class GenerativeAgentMemory(BaseMemory):
                     metadata=metadata
                 )
             documents.append(doc)
+            ids.append(metadata["id"])
         
-        return await self.memory_retriever.vectorstore.aadd_documents(documents, wait = False)
+        return await self.memory_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
     async def add_memory(
         self, memory_content: str, user_id: str, conversation_id: str, importance_score: int, memory_type: MemoryType, now: Optional[datetime] = None
@@ -126,6 +132,7 @@ class GenerativeAgentMemory(BaseMemory):
         """Add an observation or memory to the agent's memory."""
         nowStamp = now.timestamp()
         metadata = {
+            "id":  uuid.uuid4().hex,
             "extra_index": conversation_id,
             "created_at": nowStamp,
             "importance_score": importance_score, 
@@ -138,7 +145,7 @@ class GenerativeAgentMemory(BaseMemory):
             page_content=memory_content, 
             metadata=metadata,
         )
-        return await self.memory_retriever.vectorstore.aadd_documents([document], wait = False)
+        return await self.memory_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
 
     def fetch_memories(
         self, topic: str, **kwargs: Any
@@ -147,7 +154,6 @@ class GenerativeAgentMemory(BaseMemory):
         current_time = kwargs.get("current_time", None)
         conversation_id = kwargs.pop("conversation_id")
         if current_time is not None:
-            print(f"fetch_memories kwargs current_time")
             with mock_now(current_time):
                 return self.memory_retriever.get_relevant_documents(topic)
         else:
@@ -195,6 +201,10 @@ class GenerativeAgentMemory(BaseMemory):
             relevant_memories = [
                 mem for query in queries for mem in self.fetch_memories(query, **kwargs)
             ]
+            ids = [doc.metadata["id"] for doc in relevant_memories]
+            for doc in relevant_memories:
+                doc.metadata.pop('relevance_score', None)
+            asyncio.create_task(self.memory_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
             return {
                 "relevant_memories": self.format_memories_detail(relevant_memories),
                 "relevant_memories_simple": self.format_memories_simple(relevant_memories),
