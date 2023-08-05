@@ -8,7 +8,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from qdrant_retriever import QDrantVectorStoreRetriever, MemoryType
+from qdrant_retriever import MemoryType
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
@@ -21,7 +22,7 @@ class GenerativeAgentMemory(BaseMemory):
 
     llm: BaseLanguageModel
     """The core language model."""
-    memory_retriever: QDrantVectorStoreRetriever
+    memory_retriever: ContextualCompressionRetriever
     """The retriever to fetch related memories."""
     verbose: bool = False
 
@@ -45,7 +46,7 @@ class GenerativeAgentMemory(BaseMemory):
         )
         # get last important memories to get reflections on them
         kwargs = {"score_threshold": 0.6, "k": 11}
-        observationsDocuments = self.memory_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
+        observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
         print(f"_get_topics_of_reflection observationsDocuments {observationsDocuments}")
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(
@@ -124,7 +125,7 @@ class GenerativeAgentMemory(BaseMemory):
             documents.append(doc)
             ids.append(metadata["id"])
         
-        return await self.memory_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
+        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
     async def add_memory(
         self, memory_content: str, user_id: str, conversation_id: str, importance_score: int, memory_type: MemoryType, now: Optional[datetime] = None
@@ -145,7 +146,7 @@ class GenerativeAgentMemory(BaseMemory):
             page_content=memory_content, 
             metadata=metadata,
         )
-        return await self.memory_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
+        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
 
     def fetch_memories(
         self, topic: str, **kwargs: Any
@@ -164,7 +165,7 @@ class GenerativeAgentMemory(BaseMemory):
                     }
                 }
             }
-            filter = self.memory_retriever._qdrant_filter_from_dict(filter_dict)
+            filter = self.memory_retriever.base_retriever._qdrant_filter_from_dict(filter_dict)
             kwargs.update({"filter": filter})
             docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
             return docs
@@ -204,7 +205,7 @@ class GenerativeAgentMemory(BaseMemory):
             ids = [doc.metadata["id"] for doc in relevant_memories]
             for doc in relevant_memories:
                 doc.metadata.pop('relevance_score', None)
-            asyncio.create_task(self.memory_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
+            asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
             return {
                 "relevant_memories": self.format_memories_detail(relevant_memories),
                 "relevant_memories_simple": self.format_memories_simple(relevant_memories),
@@ -226,4 +227,4 @@ class GenerativeAgentMemory(BaseMemory):
 
     def clear(self, conversation_id) -> None:
         """Clear memory contents."""
-        self.memory_retriever.clear_using_extra_index(conversation_id)
+        self.memory_retriever.base_retriever.clear_using_extra_index(conversation_id)

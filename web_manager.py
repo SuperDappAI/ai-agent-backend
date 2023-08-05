@@ -51,7 +51,6 @@ class WebManager:
         self.embeddings = OpenAIEmbeddings()
         
         self.retriever = None
-        self.collection_name = "web"
         self.scheduler.every(3600).seconds.do(self.prune_web)
 
         # Create new thread for schedule
@@ -64,25 +63,26 @@ class WebManager:
         """Create a new vector store retriever unique to the agent."""
         client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         # create collection if it doesn't exist (if it exists it will fall into finally)
+        collection_name = "web"
         try:
             client.create_collection(
                 on_disk_payload=True,
-                collection_name=self.collection_name,
+                collection_name=collection_name,
                 vectors_config=rest.VectorParams(
                     size = 1536,
                     distance = rest.Distance.COSINE,
                 ),
             )
-            client.create_payload_index(self.collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
+            client.create_payload_index(collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
         except:
             logging.info("FunctionsManager: loaded from disk...")
         finally:
-            logging.info(f"FunctionsManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(client, self.collection_name, self.embeddings)
+            logging.info(f"FunctionsManager: Creating memory store with collection {collection_name}")
+            vectorstore = Qdrant(client, collection_name, self.embeddings)
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=self.collection_name, client=client, vectorstore=vectorstore,
+                    collection_name=collection_name, client=client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever

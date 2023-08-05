@@ -11,6 +11,8 @@ from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from generative_memory import GenerativeAgentMemory
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CohereRerank
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
@@ -40,6 +42,7 @@ class AgentManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
         os.getenv("OPENAI_API_KEY")
+        os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.embeddings = OpenAIEmbeddings()
@@ -116,12 +119,15 @@ class AgentManager:
         except:
             print("AgentManager: loaded from disk...")
         finally:
-            logging.info(
-                f"AgentManager: Creating memory store with collection {collection_name}")
+            logging.info(f"AgentManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
-            return QDrantVectorStoreRetriever(
-                collection_name=collection_name, client=client, vectorstore=vectorstore
+            compressor = CohereRerank()
+            compression_retriever = ContextualCompressionRetriever(
+                base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
+                    collection_name=collection_name, client=client, vectorstore=vectorstore,
+                )
             )
+            return compression_retriever
 
     def create_memory(self):
         return GenerativeAgentMemory(
