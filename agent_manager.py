@@ -76,7 +76,7 @@ class AgentManager:
             await asyncio.sleep(1) # Sleep for short periods and check again
         start = time.time()
         try:
-            await self.memory.pause_to_reflect(json.dumps({memory_output.user_id: memory_output.query, "me": memory_output.llm_response}), memory_output.user_id, memory_output.conversation_id, now=datetime.now())
+            await self.memory.pause_to_reflect(json.dumps({"user": memory_output.query, "me": memory_output.llm_response}), memory_output.user_id, memory_output.conversation_id, now=datetime.now())
         finally:
             end = time.time()
             logging.info(f"AgentManager: _pause_to_reflect operation took {end - start} seconds")

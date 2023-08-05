@@ -4,7 +4,7 @@ import json
 import uuid
 import asyncio
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
@@ -170,23 +170,35 @@ class GenerativeAgentMemory(BaseMemory):
             docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
             return docs
 
-    def format_memories_detail(self, relevant_memories: List[Document]) -> str:
-        content = []
-        for mem in relevant_memories:
-            content.append(self._format_memory_detail(mem, prefix="- "))
-        return "\n".join([f"{mem}" for mem in content])
-
     def _format_memory_detail(self, memory: Document, prefix: str = "") -> str:
         memory_type = MemoryType(memory.metadata["memory_type"]).name.replace("_", " ").lower()
         created_time = datetime.fromtimestamp(memory.metadata["created_at"]).strftime("%B %d, %Y, %I:%M %p")
         return f"{prefix}[{created_time}] ({memory_type}) {memory.page_content.strip()}"
 
+    def _time_ago(self, timestamp: float) -> str:
+        """Return a rough string representation of the time passed since a timestamp."""
+        delta = datetime.now() - datetime.fromtimestamp(timestamp)
+        if delta < timedelta(minutes=1):
+            return "just now"
+        elif delta < timedelta(hours=1):
+            return f"{int(delta.total_seconds() / 60)} minutes ago"
+        elif delta < timedelta(days=1):
+            return f"{int(delta.total_seconds() / 3600)} hours ago"
+        else:
+            return f"{int(delta.total_seconds() / 86400)} days ago"
+
     def format_memories_simple(self, relevant_memories: List[Document]) -> str:
+        now = datetime.now().timestamp()
         formatted_memories = []
         for mem in relevant_memories:
             memory_type = MemoryType(mem.metadata["memory_type"]).name.replace("_", " ").lower()
-            formatted_memories.append(f"({memory_type}) {mem.page_content}")
+            summarizations_count = mem.metadata.get("summarizations", 0)
+            importance = mem.metadata.get("importance_score", 1)  # assuming 1 as default importance
+            created_at = mem.metadata.get("created_at", now)
+            created_ago = self._time_ago(created_at)
+            formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}) {mem.page_content}")
         return "; ".join(formatted_memories)
+
     def format_qa_simple(self, qa: List[object]) -> str:
         return "; ".join(mem for mem in qa)
 
@@ -207,8 +219,7 @@ class GenerativeAgentMemory(BaseMemory):
                 doc.metadata.pop('relevance_score', None)
             asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
             return {
-                "relevant_memories": self.format_memories_detail(relevant_memories),
-                "relevant_memories_simple": self.format_memories_simple(relevant_memories),
+                "relevant_memories": self.format_memories_simple(relevant_memories),
             }
         return {}
 
@@ -221,7 +232,7 @@ class GenerativeAgentMemory(BaseMemory):
         conversation_id = outputs.get("conversation_id")
         user_id = outputs.get("user_id")
         if query:
-            qa = {user_id: query, "me": aida}
+            qa = {"user": query, "me": aida}
             return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance_score=importance, now=now)
         return []
 
