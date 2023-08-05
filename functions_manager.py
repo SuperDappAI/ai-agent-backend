@@ -162,8 +162,6 @@ class FunctionsManager1:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                 docs = self.get_retrieved_nodes(
                     query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
-                for doc in docs:
-                    doc.metadata["last_accessed_at"] = nowStamp
                 if len(docs) > 0:
                     parsed_response = self.extract_name_and_category(docs)
                     response.append(parsed_response)
@@ -220,7 +218,8 @@ class FunctionsManager1:
                     transformed_functions = self.transform(
                         functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
-            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait=True)
+            asyncio.create_task(
+                        self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait=False))
             tokens = self.count_tokens(functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: push_functions exception {e}")

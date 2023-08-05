@@ -5,6 +5,7 @@ import os
 import random
 import threading
 import asyncio
+import json
 from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
@@ -15,7 +16,6 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from memory_summarizer import MemorySummarizer
-from concurrent.futures import ThreadPoolExecutor
 from pydantic import BaseModel, Field
 
 class MemoryInput(BaseModel):
@@ -49,52 +49,43 @@ class AgentManager:
         # Create an instance of MemorySummarizer
         self.memory_summarizer = MemorySummarizer(agent_manager=self)
         self.memory_summarizer.start()
-        self.thread_pool = ThreadPoolExecutor(max_workers=100)
         self.stop_event = threading.Event()
 
     def stop(self):
         self.memory_summarizer.stop()
         self.stop_event.set() # Signal to all threads to stop
-        self.thread_pool.shutdown()
 
-    async def save_and_reflect(self, id, memory_output: MemoryOutput):
-        if len(id) > 0 and memory_output.importance >= 9:
-            logging.info(f"memory importance {memory_output.importance}, queuing to reflect")
-            asyncio.create_task(self.pause_to_reflect(id[0], memory_output))
+    async def save_and_reflect_if_important(self, memory_output: MemoryOutput):
+        if memory_output.importance >= 9:
+            logging.info(f"memory importance {memory_output.importance}, queuing to reflect...")
+            asyncio.create_task(self.pause_to_reflect(memory_output))
 
-    async def save_context_and_call_reflect(self, memory_output: MemoryOutput):
-        id = await self.memory.save_context(memory_output.dict())
-        asyncio.create_task(self.save_and_reflect(id, memory_output))
-
-    async def pause_to_reflect(self, id_to_skip, memory_output: MemoryOutput):
+    async def pause_to_reflect(self, memory_output: MemoryOutput):
         delay = random.randint(5, 300) # Delay in seconds, between 5 seconds and 5 minutes
-        # Define a regular function that runs the coroutine
-        def run_coroutine():
-            asyncio.run(self._pause_to_reflect(id_to_skip, memory_output, delay))
+        await self._pause_to_reflect(memory_output, delay)
 
-        # Submit the regular function to the thread pool
-        self.thread_pool.submit(run_coroutine)
-
-    async def _pause_to_reflect(self, id_to_skip, memory_output: MemoryOutput, delay):
+    async def _pause_to_reflect(self, memory_output: MemoryOutput, delay):
         start_time = time.time()
         while time.time() - start_time < delay:
             if self.stop_event.is_set():
                 print("AgentManager: _pause_to_reflect was interrupted")
                 return
-            time.sleep(1) # Sleep for short periods and check again
+            await asyncio.sleep(1) # Sleep for short periods and check again
         start = time.time()
         try:
-            asyncio.create_task(self.memory.pause_to_reflect(id_to_skip, memory_output.user_id, memory_output.query, memory_output.conversation_id, now=datetime.now()))
+            await self.memory.pause_to_reflect(json.dumps({memory_output.user_id: memory_output.query, "me": memory_output.llm_response}), memory_output.user_id, memory_output.conversation_id, now=datetime.now())
         finally:
             end = time.time()
             logging.info(f"AgentManager: _pause_to_reflect operation took {end - start} seconds")
+
             
     async def push_memory(self, memory_output: MemoryOutput):
         """Add new memory to the current index for a specific user."""
         start = time.time()
         try:
             # This will start executing the function but not await its completion
-            asyncio.create_task(self.save_context_and_call_reflect(memory_output))
+            asyncio.create_task(self.memory.save_context(memory_output.dict()))
+            asyncio.create_task(self.save_and_reflect_if_important(memory_output))
         except Exception as e:
             logging.warn(f"AgentManager: push_memory exception {e}") 
         finally:
@@ -120,7 +111,7 @@ class AgentManager:
             #client.create_payload_index(collection_name, self.payload_groupid_index_key, field_schema=PayloadSchemaType.KEYWORD)
             client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
             # ditto for summarizer
-            #client.create_payload_index(collection_name, self.payload_importance_index_key, field_schema=PayloadSchemaType.INTEGER)
+            #client.create_payload_index(collection_name, "metadata.importance_score", field_schema=PayloadSchemaType.INTEGER)
             #client.create_payload_index(collection_name, self.payload_lastaccessed_index_key, field_schema=PayloadSchemaType.FLOAT)
         except:
             print("AgentManager: loaded from disk...")

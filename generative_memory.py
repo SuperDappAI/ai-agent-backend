@@ -1,20 +1,18 @@
 import logging
 import re
-import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from qdrant_retriever import QDrantVectorStoreRetriever
+from qdrant_retriever import QDrantVectorStoreRetriever, MemoryType
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
 import json
 
 logger = logging.getLogger(__name__)
-
-
+    
 class GenerativeAgentMemory(BaseMemory):
     """Memory for the generative agent."""
 
@@ -34,7 +32,7 @@ class GenerativeAgentMemory(BaseMemory):
         lines = [line for line in lines if line.strip()]  # remove empty lines
         return [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in lines]
 
-    def _get_topics_of_reflection(self, id_to_skip: str, memory_content: str, user_id: str, conversation: str) -> [List[Document], List[str]]:
+    def _get_topics_of_reflection(self, memory_content: str, user_id: str, conversation: str) -> [List[Document], List[str]]:
         """Return the 3 most salient high-level questions about recent observations."""
         prompt = PromptTemplate.from_template(
             "{observations}\n\n"
@@ -43,8 +41,8 @@ class GenerativeAgentMemory(BaseMemory):
             "Provide each question on a new line."
         )
         # get last important memories to get reflections on them
-        kwargs = {"score_threshold": 0.8, "k": 10}
-        observationsDocuments = self.memory_retriever.get_relevant_documents_for_reflection(id_to_skip, memory_content, user_id, conversation, **kwargs)
+        kwargs = {"score_threshold": 0.6, "k": 11}
+        observationsDocuments = self.memory_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
         print(f"_get_topics_of_reflection observationsDocuments {observationsDocuments}")
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(
@@ -82,37 +80,37 @@ class GenerativeAgentMemory(BaseMemory):
         )
         return self._parse_list(result)
 
-    async def pause_to_reflect(self, id_to_skip: str, memory_content: str, user_id: str, conversation: str, now: Optional[datetime] = None) -> List[str]:
+    async def pause_to_reflect(self, memory_content: str, user_id: str, conversation: str, now: Optional[datetime] = None) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
         if self.verbose:
             logger.info("AiDA is reflecting")
         new_insights = []
-        observationDocuments, topics = self._get_topics_of_reflection(id_to_skip, memory_content, user_id, conversation)
+        observationDocuments, topics = self._get_topics_of_reflection(memory_content, user_id, conversation)
         if len(observationDocuments) > 0 and len(topics) > 0:
             insights = self._get_insights_on_topics(topics, observationDocuments, conversation=conversation, now=now)
-            print(f"_get_insights_on_topics {insights}")
             if len(insights) > 0:
                 qa = {"my_reflections": topics, "my_insights": insights}
                 # ensure we are dealing with non-core memories because reflections are sub-conscious thoughts
-                asyncio.create_task(self.add_memory(json.dumps(qa), conversation, importance_score=8 , now=now))
+                await self.add_memory(memory_content=json.dumps(qa), user_id=user_id, conversation_id=conversation, importance_score=8, memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
                 new_insights.extend(insights)
                 return new_insights
         return []
 
     async def add_memories(
-        self, qa: List[str], user_id: str, conversation: str, importance_scores: List[int], now: Optional[datetime] = None
+        self, qa: List[str], user_id: str, conversation_id: str, importance_scores: List[int], memory_types: List[MemoryType], now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observations or memories to the agent's memory."""
         documents = []
         nowStamp = now.timestamp()
         for i in range(len(qa)):
             metadata = {
-                "extra_index": conversation,
+                "extra_index": conversation_id,
                 "created_at": nowStamp,
                 "importance_score": importance_scores[i],
                 "last_accessed_at": nowStamp,
                 "summarizations": 0,
                 "group_id": user_id,
+                "memory_type": memory_types[i].value,
             }
             doc = Document(
                     page_content=qa[i],
@@ -123,17 +121,18 @@ class GenerativeAgentMemory(BaseMemory):
         return await self.memory_retriever.vectorstore.aadd_documents(documents, wait = False)
 
     async def add_memory(
-        self, memory_content: str, user_id: str, conversation: str, importance_score: int, now: Optional[datetime] = None
+        self, memory_content: str, user_id: str, conversation_id: str, importance_score: int, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observation or memory to the agent's memory."""
         nowStamp = now.timestamp()
         metadata = {
-            "extra_index": conversation,
+            "extra_index": conversation_id,
             "created_at": nowStamp,
             "importance_score": importance_score, 
             "last_accessed_at": nowStamp,
             "summarizations": 0,
             "group_id": user_id,
+            "memory_type": memory_type.value,
         }
         document = Document(
             page_content=memory_content, 
@@ -171,12 +170,16 @@ class GenerativeAgentMemory(BaseMemory):
         return "\n".join([f"{mem}" for mem in content])
 
     def _format_memory_detail(self, memory: Document, prefix: str = "") -> str:
+        memory_type = MemoryType(memory.metadata["memory_type"]).name.replace("_", " ").lower()
         created_time = datetime.fromtimestamp(memory.metadata["created_at"]).strftime("%B %d, %Y, %I:%M %p")
-        return f"{prefix}[{created_time}] {memory.page_content.strip()}"
+        return f"{prefix}[{created_time}] ({memory_type}) {memory.page_content.strip()}"
 
     def format_memories_simple(self, relevant_memories: List[Document]) -> str:
-        return "; ".join([f"{mem.page_content}" for mem in relevant_memories])
-
+        formatted_memories = []
+        for mem in relevant_memories:
+            memory_type = MemoryType(mem.metadata["memory_type"]).name.replace("_", " ").lower()
+            formatted_memories.append(f"({memory_type}) {mem.page_content}")
+        return "; ".join(formatted_memories)
     def format_qa_simple(self, qa: List[object]) -> str:
         return "; ".join(mem for mem in qa)
 
@@ -208,7 +211,7 @@ class GenerativeAgentMemory(BaseMemory):
         user_id = outputs.get("user_id")
         if query:
             qa = {user_id: query, "me": aida}
-            return await self.add_memory(json.dumps(qa), user_id, conversation_id, importance, now=now)
+            return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance_score=importance, now=now)
         return []
 
     def clear(self, conversation_id) -> None:

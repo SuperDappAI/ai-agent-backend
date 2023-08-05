@@ -2,6 +2,7 @@
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
 from pydantic import Field
+from enum import Enum
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 from langchain.schema import BaseRetriever, Document
 from qdrant_client import QdrantClient
@@ -9,7 +10,10 @@ from qdrant_client.http import models as rest
 from datetime import timedelta
 from langchain.vectorstores import Qdrant
 
-
+class MemoryType(Enum):
+    CONSCIOUS_MEMORY = 0
+    SUBCONSCIOUS_MEMORY = 1
+    
 class QDrantVectorStoreRetriever(BaseRetriever):
     """Retriever that combines embedding similarity with conversation matching scores in retrieving values."""
     collection_name: str
@@ -19,8 +23,10 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     vectorstore: Qdrant
     """The vectorstore to store documents and determine salience."""
 
-    extra_index_bonus: float = Field(default=0.1)
-    """Bonus given to semantic scoring (percentage) if we are searching within extra_index metadata field."""
+    extra_index_penalty: float = Field(default=0.1)
+    
+    subconscious_memory_penalty: float = Field(default=0.05)
+    """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
     class Config:
         """Configuration for this pydantic object."""
@@ -36,25 +42,26 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         score = 0
         if vector_relevance is not None:
             score += vector_relevance
-        if extra_index is not None and extra_index == document.metadata.get("extra_index"):
-            score += self.extra_index_bonus
+        if extra_index is not None and extra_index != document.metadata.get("extra_index"):
+            score -= self.extra_index_penalty
+        if document.metadata.get("memory_type") == MemoryType.SUBCONSCIOUS_MEMORY:
+            score -= self.subconscious_memory_penalty
         return score
 
     def _build_condition(self, key: str, value: Any) -> List[rest.FieldCondition]:
         out = []
 
-        if isinstance(value, dict):
-            if 'match' in value: # If it is a match dictionary, create a condition directly
-                condition_args = {
-                    "key": key,
-                    "match": rest.MatchValue(value=value['match']['value'])
-                }
-                out.append(rest.FieldCondition(**condition_args))
-            else:
-                for _key, val in value.items():
-                    out.extend(self._build_condition(f"{key}.{_key}" if key else _key, val))
-        else:
-            condition_args = {"key": f"{key}", "match": rest.MatchValue(value=value)}
+        if 'match' in value:
+            condition_args = {
+                "key": key,
+                "match": rest.MatchValue(value=value['match']['value'])
+            }
+            out.append(rest.FieldCondition(**condition_args))
+        elif 'range' in value:
+            condition_args = {
+                "key": key,
+                "range": rest.Range(**value['range'])
+            }
             out.append(rest.FieldCondition(**condition_args))
 
         return out
@@ -68,15 +75,22 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         should_conditions = []
         must_not_conditions = []
 
-        for key, value in filter.items():
-            if key == 'must':
-                must_conditions.extend(self._build_condition("", value))
-            elif key == 'should':
-                should_conditions.extend(self._build_condition("", value))
-            elif key == 'must_not':
-                must_not_conditions.extend(self._build_condition("", value))
-            else:
-                must_conditions.extend(self._build_condition(key, value))  # Default to must if not specified
+        # Check if the filter is a list or dictionary, and handle accordingly
+        if isinstance(filter, list):
+            for item in filter:
+                key = item['key']
+                value = item['value']
+                must_conditions.extend(self._build_condition(key, value))
+        else:
+            for key, value in filter.items():
+                if key == 'must':
+                    must_conditions.extend(self._build_condition("", value))
+                elif key == 'should':
+                    should_conditions.extend(self._build_condition("", value))
+                elif key == 'must_not':
+                    must_not_conditions.extend(self._build_condition("", value))
+                else:
+                    must_conditions.extend(self._build_condition(key, value))  # Default to must if not specified
 
         return rest.Filter(
             must=must_conditions if must_conditions else None,
@@ -89,37 +103,38 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         return self.vectorstore.similarity_search_with_relevance_scores(query, **kwargs)
 
     def get_relevant_documents_for_reflection(
-        self, id_to_skip: str, query: str, user_id: str, conversation: str, **kwargs
+        self, query: str, user_id: str, conversation: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
         current_time = datetime.now()
         filter_dict = {
-            'must': {
-                'metadata.group_id': {
+            'must': [
+                {
+                    'key': 'metadata.group_id',
                     'match': {'value': user_id}
                 },
-                'metadata.importance_score': {
-                    'range': {'gte': 9} # gte stands for 'greater than or equal to'
+                {
+                    'key': 'metadata.importance_score',
+                    'range': {'gte': 8} # gte stands for 'greater than or equal to'
                 }
-            },
-            'must_not': {
-                'id': {
-                    'match': {'value': id_to_skip}
-                }
-            }
+            ]
         }
         filter = self._qdrant_filter_from_dict(filter_dict)
         kwargs.update({"filter": filter})
         docs_and_scores = self.get_salient_docs(query, **kwargs)
-    
-        rescored_docs = [
-            (doc, self._get_combined_score(doc, relevance, conversation))
-            for doc, relevance in docs_and_scores
-        ]
+        min_score = kwargs.get("score_threshold")
+        rescored_docs = []
+        for doc, relevance in docs_and_scores:
+            combined_score = self._get_combined_score(doc, relevance, conversation)
+            # Skip the document if it matches the given query, user_id, and conversation
+            if doc.page_content == query and doc.metadata["group_id"] == user_id and doc.metadata["extra_index"] == conversation:
+                continue  # Skip to the next iteration
+            if combined_score >= min_score:
+                rescored_docs.append((doc, combined_score))
         rescored_docs.sort(key=lambda x: x[1], reverse=True)
         # only look at the top 3 results out of 10
         if len(rescored_docs) > 3:
-            rescored_docs = rescored_docs[-3:]
+            rescored_docs = rescored_docs[:3]
         # Ensure frequently accessed memories aren't forgotten
         for doc, _ in rescored_docs:
             doc.metadata["last_accessed_at"] = current_time.timestamp()
@@ -171,7 +186,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         # Ensure frequently accessed memories aren't forgotten
         for doc, _ in rescored_docs:
             doc.metadata["last_accessed_at"] = current_time
-         # Sort by score and extract just the documents
+        # Sort by score and extract just the documents
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
         return sorted_docs
