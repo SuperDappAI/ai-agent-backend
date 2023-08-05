@@ -155,7 +155,6 @@ class FunctionsManager1:
     async def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
-        nowStamp = datetime.now().timestamp()
         response = []
         try:
             for action_item in function_input.action_items:
@@ -218,8 +217,8 @@ class FunctionsManager1:
                     transformed_functions = self.transform(
                         functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
-            asyncio.create_task(
-                        self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait=False))
+            
+            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, wait=True)
             tokens = self.count_tokens(functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: push_functions exception {e}")
