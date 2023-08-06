@@ -6,6 +6,7 @@ import os
 import asyncio
 import uuid
 import logging
+import traceback
 
 from dotenv import load_dotenv
 from llama_index.langchain_helpers.text_splitter import SentenceSplitter
@@ -162,7 +163,7 @@ class WebManager:
                     doc.metadata.pop('relevance_score', None)
                 asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
         except Exception as e:
-            logging.warn(f"WebManager: search_html exception {e}")
+            logging.warn(f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(
@@ -180,7 +181,7 @@ class WebManager:
         try:
             result = self.retriever.base_retriever.does_key_exist("metadata.hash_key", cache_html.hash)
         except Exception as e:
-            logging.warn(f"WebManager: does_hash_exist exception {e}")
+            logging.warn(f"WebManager: does_hash_exist exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
         logging.info(

@@ -1,15 +1,17 @@
 import time
-from dotenv import load_dotenv
 import tiktoken
 import schedule
-from qdrant_client import QdrantClient
-from typing import List
 import json
 import asyncio
 import threading
 import os
 import uuid
 import logging
+import traceback
+
+from dotenv import load_dotenv
+from qdrant_client import QdrantClient
+from typing import List
 from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
@@ -83,8 +85,7 @@ class FunctionsManager1:
             )
             was_created = True
         except Exception as e:
-            logging.warn(
-                f"FunctionsManager: create_new_functions_retriever exception {e}")
+            logging.warn(f"FunctionsManager: create_new_functions_retriever exception {e}\n{traceback.format_exc()}")
         finally:
             logging.info(
                 f"FunctionsManager: Creating memory store with collection {collection_name}")
@@ -171,7 +172,7 @@ class FunctionsManager1:
                         doc.metadata.pop('relevance_score', None)
                     asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
         except Exception as e:
-            logging.warn(f"FunctionsManager: pull_functions exception {e}")
+            logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(
@@ -225,7 +226,7 @@ class FunctionsManager1:
             await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
-            logging.warn(f"FunctionsManager: push_functions exception {e}")
+            logging.warn(f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(

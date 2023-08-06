@@ -1,11 +1,13 @@
 import time
 import logging
-from dotenv import load_dotenv
 import os
 import random
 import threading
 import asyncio
 import json
+import traceback
+
+from dotenv import load_dotenv
 from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
@@ -90,7 +92,7 @@ class AgentManager:
             asyncio.create_task(self.memory.save_context(memory_output.dict()))
             asyncio.create_task(self.save_and_reflect_if_important(memory_output))
         except Exception as e:
-            logging.warn(f"AgentManager: push_memory exception {e}") 
+            logging.warn(f"AgentManager: push_memory exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(f"AgentManager: push_memory operation took {end - start} seconds")
@@ -156,7 +158,7 @@ class AgentManager:
                 k=memory_input.num_semantic_results,
             )
         except Exception as e:
-            logging.info(f"AgentManager: pull_memory exception {e}")
+            logging.warn(f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(
@@ -169,7 +171,7 @@ class AgentManager:
         try:
             self.memory.clear(clear_memory.conversation_id)
         except Exception as e:
-            logging.info(f"AgentManager: clear_conversation exception {e}")
+            logging.warn(f"AgentManager: clear_conversation exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(

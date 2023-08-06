@@ -1,8 +1,11 @@
+import logging
+import os
+import traceback
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from document_summarizer import FlexibleDocumentSummarizer
 from langchain.chat_models import ChatOpenAI
-import logging
-import os
+
 
 class MemorySummarizer:
     def __init__(self, agent_manager):
@@ -27,7 +30,7 @@ class MemorySummarizer:
                 ids = [doc.metadata["id"] for doc in documents]
                 await self.agent_manager.memory.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
             except Exception as e:
-                logging.warn(f"MemorySummarizer: exception {e}")
+                logging.warn(f"MemorySummarizer: exception {e}\n{traceback.format_exc()}")
                 break
 
     def start(self):
