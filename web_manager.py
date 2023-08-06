@@ -1,14 +1,17 @@
 import time
 import datetime
+import schedule
+import threading
+import os
+import asyncio
+import uuid
+import logging
+
 from dotenv import load_dotenv
 from llama_index.langchain_helpers.text_splitter import SentenceSplitter
 from typing import List
 from qdrant_client import QdrantClient
 from pydantic import BaseModel, Field
-import schedule
-import threading
-import os
-import asyncio
 from langchain.vectorstores import Qdrant
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.embeddings import OpenAIEmbeddings
@@ -18,7 +21,7 @@ from langchain.schema import Document
 from datetime import datetime, timedelta
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
-import logging
+
 
 class HTMLItem(BaseModel):
     source_url: str
@@ -141,7 +144,7 @@ class WebManager:
             for item in function_input.action_items:
                 text_splitter = SentenceSplitter()
                 chunks = text_splitter.split_text(text=item.html_doc)
-                documents.extend([Document(page_content=chunk, metadata={"hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
+                documents.extend([Document(page_content=chunk, metadata={"id":  uuid.uuid4().hex, "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
                 await self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
