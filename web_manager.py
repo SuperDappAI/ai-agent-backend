@@ -116,14 +116,14 @@ class WebManager:
         return result
 
     def get_retrieved_nodes(self, function_input: HTMLInput):
-        filter_dict = {
-            'must': {
-                "metadata.hash_key": {
-                    'match': {'value': function_input.hash}
-                }
-            }
-        }
-        filter = self.retriever.base_retriever._qdrant_filter_from_dict(filter_dict)
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="metadata.hash_key", 
+                    match=rest.MatchValue(value=function_input.hash), 
+                )
+            ]
+        )
         result = self.retriever.get_relevant_documents(function_input.query, filter=filter, score_threshold=function_input.similarity_threshold, k=function_input.num_semantic_results)
         return result
 

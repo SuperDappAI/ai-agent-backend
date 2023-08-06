@@ -13,7 +13,7 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
-
+from qdrant_client.http import models as rest
 
 logger = logging.getLogger(__name__)
     
@@ -158,15 +158,14 @@ class GenerativeAgentMemory(BaseMemory):
             with mock_now(current_time):
                 return self.memory_retriever.get_relevant_documents(topic)
         else:
-            filter_dict = {
-                'must': {
-                    'metadata.extra_index': {
-                        'match': {'value': conversation_id}
-                    }
-                }
-            }
-            filter = self.memory_retriever.base_retriever._qdrant_filter_from_dict(filter_dict)
-            kwargs.update({"filter": filter})
+            kwargs.update({"filter": rest.Filter(
+                must=[
+                    rest.FieldCondition(
+                        key="metadata.extra_index", 
+                        match=rest.MatchValue(value=conversation_id), 
+                    )
+                ]
+            )})
             docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
             return docs
 

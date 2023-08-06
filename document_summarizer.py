@@ -1,26 +1,27 @@
 import asyncio
-from typing import Sequence, Any, List
+from typing import Sequence
 from datetime import datetime
 from math import ceil
 from langchain.schema import Document
-from llama_index.indices.service_context import ServiceContext
 from pydantic import Field
+from langchain.schema import SystemMessage, HumanMessage
+from langchain.chat_models import ChatOpenAI
 
 class SummaryPrompt:
     def __init__(self, flexibility_score: int):
         self.flexibility_score = min(max(flexibility_score, 0), 10)
 
-    def to_prompt_string(self):
+    def to_prompt_string(self) -> str:
         return (f"Summarize this text with a flexibility score of {self.flexibility_score}. "
                 "A score of 10 means no loss of detail, only rewording or reorganizing for clarity. "
                 "A score of 0 allows full summarization flexibility while retaining the general context.")
 
 class FlexibleDocumentSummarizer:
+    _llm: ChatOpenAI
+    """The model used to summarize."""
+    
     _decay_rate: float = Field(default=0.0314)
     """The decay factor going into the power law for forgetting."""
-
-    _service_context: ServiceContext
-    """Service context to utilize various services for summarization."""
 
     _use_async: bool
     """Determines if the summarization should be processed asynchronously."""
@@ -28,8 +29,8 @@ class FlexibleDocumentSummarizer:
     _verbose: bool
     """Controls the verbosity of logging during the summarization process."""
 
-    def __init__(self, service_context: ServiceContext, decay_rate: float = 0.0314, use_async: bool = False, verbose: bool = False) -> None:
-        self._service_context = service_context
+    def __init__(self, llm: ChatOpenAI, decay_rate: float = 0.0314, use_async: bool = False, verbose: bool = False) -> None:
+        self._llm = llm
         self._decay_rate = decay_rate
         self._use_async = use_async
         self._verbose = verbose
@@ -52,19 +53,19 @@ class FlexibleDocumentSummarizer:
 
     async def _get_single_summary(self,  document: Document) -> None:
         flexibility_score = self._calculate_flexibility_score(datetime.now(), document)
-        summary_prompt = SummaryPrompt(flexibility_score)
+        summary_prompt = SummaryPrompt(flexibility_score=flexibility_score)
 
-        prompt_str = summary_prompt.to_prompt_string()
         text_chunk = document.page_content
+        messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
+                    HumanMessage(content=str(text_chunk))]]
+        response = await self._llm.agenerate(messages)
 
-        response = await self._service_context.llm_predictor.apredict(prompt_str, context_str=text_chunk)
-        
+        summarized_content = response.generations[0][0].text
+        print(f"summarized_content")
         # Update the document's page_content in place with the summarized text
-        document.page_content = response
+        document.page_content = summarized_content
+
 
     async def aupdate_documents(self,  documents: Sequence[Document]) -> None:
         tasks = [self._get_single_summary(document) for document in documents]
         await asyncio.gather(*tasks)
-
-    def update_documents(self, documents: Sequence[Document]) -> None:
-        asyncio.run(self.aupdate_documents(documents))
