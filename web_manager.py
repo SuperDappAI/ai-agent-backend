@@ -141,6 +141,10 @@ class WebManager:
         nowStamp = datetime.now().timestamp()
         try:
             documents = []
+            if len(function_input.action_items) > 0:
+                hashExist, _ = self.does_hash_exist(CacheHTML(hash=function_input.hash))
+                if hashExist:
+                    function_input.action_items = []
             for item in function_input.action_items:
                 text_splitter = SentenceSplitter()
                 chunks = text_splitter.split_text(text=item.html_doc)
@@ -154,7 +158,7 @@ class WebManager:
             response = self.extract_text_and_source_url(nodes)
             if len(function_input.action_items) == 0 and len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
-                for doc in documents:
+                for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
                 asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
         except Exception as e:
