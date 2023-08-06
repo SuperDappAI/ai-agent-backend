@@ -97,7 +97,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     def get_documents_for_summarization(self) -> List[Document]:
         """Return documents that are relevant to summarize."""
         current_time = datetime.now()
-        nowStamp = current_time.timestamp()
         two_weeks_ago = current_time - timedelta(weeks=2)
         filter = rest.Filter(
             must=[
@@ -120,7 +119,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 document.metadata['summarizations'] += 1
             else:
                 document.metadata['summarizations'] = 1
-            document.metadata['last_accessed_at'] = nowStamp
             docs.append(document)
 
         return docs

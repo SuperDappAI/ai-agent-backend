@@ -39,12 +39,12 @@ class FlexibleDocumentSummarizer:
         t = self._get_days_passed(current_time, datetime.fromtimestamp(document.metadata["last_accessed_at"]))
         e = int(document.metadata["summarizations"])
         I = float(document.metadata.get('importance_score', 0.0)) / 10.0
-        importance_score = self._power_law_forgetting(t, I, self._decay_rate, e)
-        return ceil(importance_score * 10)
+        importance_score = self._power_law_forgetting(t, I, e)
+        return round(importance_score * 10)
 
-    def _power_law_forgetting(self, t, I, decay_rate, e):
-        b = decay_rate + (decay_rate * I)
-        score = 1 / (t + 1) ** (b / (e + 1))
+    def _power_law_forgetting(self, t, I, e):
+        b = self._decay_rate + (self._decay_rate * I)
+        score = 1 / (t + 1) ** (b / (e + 2))
         return score
 
     def _get_days_passed(self, current_time: datetime, last_accessed_at: datetime) -> int:
@@ -61,7 +61,6 @@ class FlexibleDocumentSummarizer:
         response = await self._llm.agenerate(messages)
 
         summarized_content = response.generations[0][0].text
-        print(f"summarized_content")
         # Update the document's page_content in place with the summarized text
         document.page_content = summarized_content
 
