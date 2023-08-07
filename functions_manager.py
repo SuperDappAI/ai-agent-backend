@@ -12,7 +12,6 @@ import traceback
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from typing import List
-from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
 from langchain.vectorstores import Qdrant
@@ -38,7 +37,7 @@ class FunctionInput(BaseModel):
 
 
 class FunctionsManager1:
-    scheduler = schedule.Scheduler()
+    # scheduler = schedule.Scheduler()
 
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -50,6 +49,7 @@ class FunctionsManager1:
         self.index = None
         self.max_length_allowed = 512
         self.retriever = None
+        self.scheduler = schedule.Scheduler()
         self.scheduler.every(2).weeks.do(self.prune_functions)
 
         # Create new thread for schedule
@@ -57,11 +57,23 @@ class FunctionsManager1:
         self.scheduler_thread = threading.Thread(target=self.run_continuously)
         self.scheduler_thread.start()
 
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            self.scheduler.run_pending()
-            time.sleep(1)
+    def run_continuously(self, interval=1):
+        cease_continuous_run = threading.Event()
+        scheduler = self.scheduler  
+
+        class ScheduleThread(threading.Thread):
+            def run(self):
+                while not cease_continuous_run.is_set():
+                    scheduler.run_pending() 
+                    sleep_time = scheduler.idle_seconds()
+                    if sleep_time is None:
+                        sleep_time = interval
+                    time.sleep(sleep_time)
+
+        continuous_thread = ScheduleThread()
+        continuous_thread.start()
+        return cease_continuous_run
+
 
     def stop(self):
         """Stops the scheduler thread."""
@@ -170,7 +182,7 @@ class FunctionsManager1:
                     ids = [doc.metadata["id"] for doc in documents]
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
-                    asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+                    await asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
@@ -237,4 +249,21 @@ class FunctionsManager1:
         """Prune functions that haven't been used for atleast six weeks."""
         current_time = datetime.now()
         one_hour_ago = current_time - timedelta(weeks=6)
-        self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+
+        def attempt_prune():
+            if self.retriever is None:
+                self.load()
+            self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+
+        try:
+            attempt_prune()
+        except Exception as e:
+            logging.warn(f"FunctionsManager: prune_functions exception {e}\n{traceback.format_exc()}")
+            # Attempt a second prune after reload
+            try:
+                attempt_prune()
+            except Exception as e:
+                # If prune after reload fails, propagate the error upwards
+                logging.error(f"FunctionsManager: prune_functions failed after reload, exception {e}\n{traceback.format_exc()}")
+                raise
+        return True
