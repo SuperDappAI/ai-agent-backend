@@ -151,16 +151,54 @@ class FunctionsManager1:
                         {func['name']: len(encoding.encode(function_string))})
         return tokens
 
-    def extract_name_and_category(self, documents):
+    # def extract_name_and_category(self, documents):
+    #     result = []
+    #     seen = set()  # Track seen combinations of name and category
+    #     for doc in documents:
+    #         # Parse the page_content string into a Python dict
+    #         text = json.loads(doc.page_content)
+    #         name = text.get('name')
+    #         category = text.get('category')
+
+    #         # Check if this combination has been seen before
+    #         if (name, category) not in seen:
+    #             result.append({'name': name, 'category': category})
+    #             seen.add((name, category))  # Mark this combination as seen
+
+    #     return result
+
+    # async def pull_functions(self, function_input: FunctionInput):
+    #     """Fetch functions based on a query."""
+    #     start = time.time()
+    #     response = []
+    #     try:
+    #         for action_item in function_input.action_items:
+    #             query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
+    #             documents = self.get_retrieved_nodes(
+    #                 query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
+    #             if len(documents) > 0:
+    #                 parsed_response = self.extract_name_and_category(documents)
+    #                 response.append(parsed_response)
+    #                 ids = [doc.metadata["id"] for doc in documents]
+    #                 for doc in documents:
+    #                     doc.metadata.pop('relevance_score', None)
+    #                 await asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+    #     except Exception as e:
+    #         logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
+    #     finally:
+    #         end = time.time()
+    #         logging.info(
+    #             f"FunctionsManager: pull_functions operation took {end - start} seconds")
+    #         return response, end-start
+
+    async def extract_name_and_category(self, documents):
         result = []
         seen = set()  # Track seen combinations of name and category
         for doc in documents:
-            # Parse the page_content string into a Python dict
             text = json.loads(doc.page_content)
             name = text.get('name')
             category = text.get('category')
 
-            # Check if this combination has been seen before
             if (name, category) not in seen:
                 result.append({'name': name, 'category': category})
                 seen.add((name, category))  # Mark this combination as seen
@@ -168,21 +206,21 @@ class FunctionsManager1:
         return result
 
     async def pull_functions(self, function_input: FunctionInput):
-        """Fetch functions based on a query."""
         start = time.time()
         response = []
+
+        function_tasks = []
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                documents = self.get_retrieved_nodes(
+                documents = await self.get_retrieved_nodes(
                     query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
+
                 if len(documents) > 0:
-                    parsed_response = self.extract_name_and_category(documents)
-                    response.append(parsed_response)
-                    ids = [doc.metadata["id"] for doc in documents]
-                    for doc in documents:
-                        doc.metadata.pop('relevance_score', None)
-                    await asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+                    function_tasks.append(self.extract_name_and_category(documents))
+
+            responses = await asyncio.gather(*function_tasks)
+            response.extend(responses)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
@@ -191,10 +229,10 @@ class FunctionsManager1:
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
+    async def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
         kwargs = {"extra_index": category,
                 "score_threshold": score, "k": num_semantic_results}
-        return self.retriever.get_relevant_documents(query_str, **kwargs)
+        return self.retriever.aget_relevant_documents(query_str, **kwargs)
 
     async def load(self):
         """Load existing index data from the filesystem for a specific user."""
