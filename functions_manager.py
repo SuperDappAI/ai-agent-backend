@@ -37,7 +37,7 @@ class FunctionInput(BaseModel):
 
 
 class FunctionsManager1:
-    # scheduler = schedule.Scheduler()
+    scheduler = schedule.Scheduler()
 
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -49,7 +49,6 @@ class FunctionsManager1:
         self.index = None
         self.max_length_allowed = 512
         self.retriever = None
-        self.scheduler = schedule.Scheduler()
         self.scheduler.every(2).weeks.do(self.prune_functions)
 
         # Create new thread for schedule
@@ -57,23 +56,11 @@ class FunctionsManager1:
         self.scheduler_thread = threading.Thread(target=self.run_continuously)
         self.scheduler_thread.start()
 
-    def run_continuously(self, interval=1):
-        cease_continuous_run = threading.Event()
-        scheduler = self.scheduler  
-
-        class ScheduleThread(threading.Thread):
-            def run(self):
-                while not cease_continuous_run.is_set():
-                    scheduler.run_pending() 
-                    sleep_time = scheduler.idle_seconds()
-                    if sleep_time is None:
-                        sleep_time = interval
-                    time.sleep(sleep_time)
-
-        continuous_thread = ScheduleThread()
-        continuous_thread.start()
-        return cease_continuous_run
-
+    def run_continuously(self):
+        """Keep checking and running pending tasks every second."""
+        while not self.stop_event.is_set():
+            self.scheduler.run_pending()
+            time.sleep(1)
 
     def stop(self):
         """Stops the scheduler thread."""
@@ -232,7 +219,7 @@ class FunctionsManager1:
     async def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
         kwargs = {"extra_index": category,
                 "score_threshold": score, "k": num_semantic_results}
-        return self.retriever.aget_relevant_documents(query_str, **kwargs)
+        return await self.retriever.aget_relevant_documents(query_str, **kwargs)
 
     async def load(self):
         """Load existing index data from the filesystem for a specific user."""
