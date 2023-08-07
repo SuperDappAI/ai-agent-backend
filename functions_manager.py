@@ -237,4 +237,24 @@ class FunctionsManager1:
         """Prune functions that haven't been used for atleast six weeks."""
         current_time = datetime.now()
         one_hour_ago = current_time - timedelta(weeks=6)
-        self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+
+        def attempt_prune():
+            if self.retriever is None:
+                loop = asyncio.new_event_loop()  
+                asyncio.set_event_loop(loop)  
+                loop.run_until_complete(self.load())  
+                loop.close()
+            self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+
+        try:
+            attempt_prune()
+        except Exception as e:
+            logging.warn(f"FunctionsManager: prune_functions exception {e}\n{traceback.format_exc()}")
+            # Attempt a second prune after reload
+            try:
+                attempt_prune()
+            except Exception as e:
+                # If prune after reload fails, propagate the error upwards
+                logging.error(f"FunctionsManager: prune_functions failed after reload, exception {e}\n{traceback.format_exc()}")
+                raise
+        return True
