@@ -36,20 +36,15 @@ class FlexibleDocumentSummarizer:
         self._verbose = verbose
 
     def _calculate_flexibility_score(self, current_time: datetime, document: Document) -> int:
-        t = self._get_days_passed(current_time, datetime.fromtimestamp(document.metadata["last_accessed_at"]))
         e = int(document.metadata["summarizations"])
         I = float(document.metadata.get('importance_score', 0.0)) / 10.0
-        importance_score = self._power_law_forgetting(t, I, e)
+        importance_score = self._power_law_forgetting(I, e)
         return round(importance_score * 10)
 
-    def _power_law_forgetting(self, t, I, e):
-        b = self._decay_rate + (self._decay_rate * I)
-        score = 1 / (t + 1) ** (b / (e + 2))
-        return score
-
-    def _get_days_passed(self, current_time: datetime, last_accessed_at: datetime) -> int:
-        delta = current_time - last_accessed_at
-        return delta.days
+    def _power_law_forgetting(self, I, e):
+        if e == 0:
+            return I
+        return (1 - self._decay_rate * e)
 
     async def _get_single_summary(self,  document: Document) -> None:
         flexibility_score = self._calculate_flexibility_score(datetime.now(), document)
