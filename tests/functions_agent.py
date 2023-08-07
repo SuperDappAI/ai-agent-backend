@@ -5,7 +5,14 @@ from tenacity import retry, wait_random_exponential, stop_after_attempt
 from termcolor import colored
 import asyncio
 import httpx
+import logging
+from dotenv import load_dotenv
 # from memory import MemoryManager
+
+load_dotenv()
+
+logging.basicConfig(filename='tests/response_agent.log', filemode='a', format='%(name)s - %(levelname)s - %(message)s')
+logging.getLogger().setLevel(logging.INFO)
 
 GPT_MODEL = "gpt-3.5-turbo-0613"
 GPT4_MODEL = "gpt-4-0613"
