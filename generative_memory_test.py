@@ -41,10 +41,10 @@ class MockVectorStore(VectorStore):
 
 class MockQDrantVectorStoreRetriever(QDrantVectorStoreRetriever):
     def get_relevant_documents(self, topic):
-        return [Document(page_content="relevant document", metadata={"created_at": datetime.datetime.now().timestamp(), "importance_score": 7})]
+        return [Document(page_content="relevant document", metadata={"created_at": datetime.datetime.now().timestamp(), "importance": "medium"})]
 
-    def get_relevant_documents_for_reflection(self, memory_content, conversation):
-        return [Document(page_content="relevant document for reflection", metadata={"created_at": datetime.datetime.now().timestamp(), "importance_score": 9})]
+    def get_relevant_documents_for_reflection(self):
+        return [Document(page_content="relevant document for reflection", metadata={"created_at": datetime.datetime.now().timestamp(), "importance": "high"})]
 
     def add_documents(self, documents):
         return ["document added"]

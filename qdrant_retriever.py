@@ -68,8 +68,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                     match=rest.MatchValue(value=user_id), 
                 ),
                 rest.FieldCondition(
-                    key="metadata.importance_score", 
-                    range=rest.Range(gte=8), 
+                    key="metadata.importancee", 
+                    match=rest.MatchValue(value="high"), 
                 )
             ]
         )

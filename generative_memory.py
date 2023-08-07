@@ -95,13 +95,13 @@ class GenerativeAgentMemory(BaseMemory):
             if len(insights) > 0:
                 qa = {"my_reflections": topics, "my_insights": insights}
                 # ensure we are dealing with non-core memories because reflections are sub-conscious thoughts
-                await self.add_memory(memory_content=json.dumps(qa), user_id=user_id, conversation_id=conversation, importance_score=8, memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
+                await self.add_memory(memory_content=json.dumps(qa), user_id=user_id, conversation_id=conversation, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
                 new_insights.extend(insights)
                 return new_insights
         return []
 
     async def add_memories(
-        self, qa: List[str], user_id: str, conversation_id: str, importance_scores: List[int], memory_types: List[MemoryType], now: Optional[datetime] = None
+        self, qa: List[str], user_id: str, conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observations or memories to the agent's memory."""
         documents = []
@@ -112,7 +112,7 @@ class GenerativeAgentMemory(BaseMemory):
                 "id":  uuid.uuid4().hex,
                 "extra_index": conversation_id,
                 "created_at": nowStamp,
-                "importance_score": importance_scores[i],
+                "importance": importance[i],
                 "last_accessed_at": nowStamp,
                 "summarizations": 0,
                 "group_id": user_id,
@@ -128,7 +128,7 @@ class GenerativeAgentMemory(BaseMemory):
         return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
     async def add_memory(
-        self, memory_content: str, user_id: str, conversation_id: str, importance_score: int, memory_type: MemoryType, now: Optional[datetime] = None
+        self, memory_content: str, user_id: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observation or memory to the agent's memory."""
         nowStamp = now.timestamp()
@@ -136,7 +136,7 @@ class GenerativeAgentMemory(BaseMemory):
             "id":  uuid.uuid4().hex,
             "extra_index": conversation_id,
             "created_at": nowStamp,
-            "importance_score": importance_score, 
+            "importance": importance, 
             "last_accessed_at": nowStamp,
             "summarizations": 0,
             "group_id": user_id,
@@ -192,7 +192,7 @@ class GenerativeAgentMemory(BaseMemory):
         for mem in relevant_memories:
             memory_type = MemoryType(mem.metadata["memory_type"]).name.replace("_", " ").lower()
             summarizations_count = mem.metadata.get("summarizations", 0)
-            importance = mem.metadata.get("importance_score", 1)  # assuming 1 as default importance
+            importance = mem.metadata.get("importance", "medium")  # assuming 1 as default importance
             created_at = mem.metadata.get("created_at", now)
             created_ago = self._time_ago(created_at)
             formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}) {mem.page_content}")
@@ -232,7 +232,7 @@ class GenerativeAgentMemory(BaseMemory):
         user_id = outputs.get("user_id")
         if query:
             qa = {"user": query, "me": aida}
-            return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance_score=importance, now=now)
+            return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []
 
     def clear(self, conversation_id) -> None:

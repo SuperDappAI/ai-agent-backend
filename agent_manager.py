@@ -34,7 +34,7 @@ class MemoryOutput(BaseModel):
     query: str
     llm_response: str
     conversation_id: str
-    importance: int
+    importance: str
 
 class ClearMemory(BaseModel):
     user_id: str
@@ -50,6 +50,7 @@ class AgentManager:
         self.embeddings = OpenAIEmbeddings()
         self.LLM = OpenAI()
         self.memory = None
+        self.verbose = True
         self.load()
         # Create an instance of MemorySummarizer
         self.memory_summarizer = MemorySummarizer(agent_manager=self)
@@ -61,7 +62,7 @@ class AgentManager:
         self.stop_event.set() # Signal to all threads to stop
 
     async def save_and_reflect_if_important(self, memory_output: MemoryOutput):
-        if memory_output.importance >= 9:
+        if memory_output.importance == "high":
             logging.info(f"memory importance {memory_output.importance}, queuing to reflect...")
             asyncio.create_task(self.pause_to_reflect(memory_output))
 
@@ -116,7 +117,7 @@ class AgentManager:
             #client.create_payload_index(collection_name, self.payload_groupid_index_key, field_schema=PayloadSchemaType.KEYWORD)
             client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
             # ditto for summarizer
-            #client.create_payload_index(collection_name, "metadata.importance_score", field_schema=PayloadSchemaType.INTEGER)
+            #client.create_payload_index(collection_name, "metadata.importance", field_schema=PayloadSchemaType.INTEGER)
             #client.create_payload_index(collection_name, self.payload_lastaccessed_index_key, field_schema=PayloadSchemaType.FLOAT)
         except:
             print("AgentManager: loaded from disk...")
@@ -135,7 +136,7 @@ class AgentManager:
         return GenerativeAgentMemory(
             llm=self.LLM,
             memory_retriever=self.create_new_memory_retriever(),
-            verbose=True
+            verbose=self.verbose
         )
 
     def load(self):
