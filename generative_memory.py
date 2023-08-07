@@ -1,39 +1,30 @@
 import logging
 import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+import json
+import uuid
+import asyncio
 
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from time_weighted_retriever import TimeWeightedVectorStoreRetriever
+from qdrant_retriever import MemoryType
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
-import json
+from qdrant_client.http import models as rest
 
 logger = logging.getLogger(__name__)
-
-
+    
 class GenerativeAgentMemory(BaseMemory):
     """Memory for the generative agent."""
 
     llm: BaseLanguageModel
     """The core language model."""
-    memory_retriever: TimeWeightedVectorStoreRetriever
+    memory_retriever: ContextualCompressionRetriever
     """The retriever to fetch related memories."""
     verbose: bool = False
-    """How much weight to assign the memory importance."""
-    
-    # input keys
-    queries_key: str = "queries"
-    add_memory_user_key: str = "add_user_memory"
-    add_memory_aida_key: str = "add_aida_memory"
-    payload_conversation_key: str = "payload_conversation_key"
-    # output keys
-    relevant_memories_key: str = "relevant_memories"
-    relevant_memories_simple_key: str = "relevant_memories_simple"
-    now_key: str = "now"
-    reflecting: bool = False
 
     def chain(self, prompt: PromptTemplate) -> LLMChain:
         return LLMChain(llm=self.llm, prompt=prompt, verbose=self.verbose)
@@ -45,7 +36,7 @@ class GenerativeAgentMemory(BaseMemory):
         lines = [line for line in lines if line.strip()]  # remove empty lines
         return [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in lines]
 
-    def _get_topics_of_reflection(self, memory_content: str, conversation: str) -> [List[Document], List[str]]:
+    def _get_topics_of_reflection(self, memory_content: str, user_id: str, conversation: str) -> [List[Document], List[str]]:
         """Return the 3 most salient high-level questions about recent observations."""
         prompt = PromptTemplate.from_template(
             "{observations}\n\n"
@@ -54,7 +45,9 @@ class GenerativeAgentMemory(BaseMemory):
             "Provide each question on a new line."
         )
         # get last important memories to get reflections on them
-        observationsDocuments = self.memory_retriever.get_relevant_documents_for_reflection(memory_content, conversation)
+        kwargs = {"score_threshold": 0.6, "k": 11}
+        observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
+        print(f"_get_topics_of_reflection observationsDocuments {observationsDocuments}")
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(
                 [self._format_memory_detail(o) for o in observationsDocuments]
@@ -91,144 +84,119 @@ class GenerativeAgentMemory(BaseMemory):
         )
         return self._parse_list(result)
 
-    def pause_to_reflect(self, memory_content: str, conversation: str, now: Optional[datetime] = None) -> List[str]:
+    async def pause_to_reflect(self, memory_content: str, user_id: str, conversation: str, now: Optional[datetime] = None) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
         if self.verbose:
             logger.info("AiDA is reflecting")
         new_insights = []
-        observationDocuments, topics = self._get_topics_of_reflection(memory_content, conversation)
+        observationDocuments, topics = self._get_topics_of_reflection(memory_content, user_id, conversation)
         if len(observationDocuments) > 0 and len(topics) > 0:
             insights = self._get_insights_on_topics(topics, observationDocuments, conversation=conversation, now=now)
             if len(insights) > 0:
                 qa = {"my_reflections": topics, "my_insights": insights}
-                self.add_memory(json.dumps(qa), conversation, now=now)
+                # ensure we are dealing with non-core memories because reflections are sub-conscious thoughts
+                await self.add_memory(memory_content=json.dumps(qa), user_id=user_id, conversation_id=conversation, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
                 new_insights.extend(insights)
                 return new_insights
         return []
 
-    def _score_memory_importance(self, memory_content: str) -> int:
-        """Score the absolute importance of the given memory."""
-        prompt = PromptTemplate.from_template(
-            "On the scale of 1 to 10, where 1 is purely mundane"
-            + " (e.g., brushing teeth, making bed) and 10 is"
-            + " extremely poignant (e.g., a break up, college"
-            + " acceptance), rate the likely poignancy of the"
-            + " following piece of memory. Respond with a single integer."
-            + "\nMemory: {memory_content}"
-            + "\nRating: "
-        )
-        score = self.chain(prompt).run(memory_content=memory_content).strip()
-        if self.verbose:
-            logger.info(f"Importance score: {score}")
-        match = re.search(r"^\D*(\d+)", score)
-        if match:
-            return int(match.group(1))
-        else:
-            return 0
-
-    def _score_memories_importance(self, memory_list: str) -> List[int]:
-        """Score the absolute importance of the given memory."""
-        prompt = PromptTemplate.from_template(
-            "On the scale of 1 to 10, where 1 is purely mundane"
-            + " (e.g., brushing teeth, making bed) and 10 is"
-            + " extremely poignant (e.g., a break up, college"
-            + " acceptance), rate the likely poignancy of the"
-            + " following piece of memory. Always answer with only a list of numbers."
-            + " If just given one memory still respond in a list."
-            + " Memories are separated by semi colans (;)"
-            + "\Memories: {memory_list}"
-            + "\nRating: "
-        )
-        scores = self.chain(prompt).run(memory_list=memory_list).strip()
-
-        if self.verbose:
-            logger.info(f"Importance scores: {scores}")
-
-        # Split into list of strings and convert to ints
-        scores_list = [int(x) for x in scores.split(";")]
-
-        return scores_list
-
-    def add_memories(
-        self, qa: List[str], conversation: str, now: Optional[datetime] = None
+    async def add_memories(
+        self, qa: List[str], user_id: str, conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observations or memories to the agent's memory."""
-        memory_list = self.format_qa_simple(qa)
-        importance_scores = self._score_memories_importance(memory_list)
         documents = []
-        max_importance = 0
-
+        ids = []
+        nowStamp = now.timestamp()
         for i in range(len(qa)):
             metadata = {
-                "conversation": conversation,
-                "created_at": now,
-                "importance_score": importance_scores[i],
-                "last_accessed_at": now
+                "id":  uuid.uuid4().hex,
+                "extra_index": conversation_id,
+                "created_at": nowStamp,
+                "importance": importance[i],
+                "last_accessed_at": nowStamp,
+                "summarizations": 0,
+                "group_id": user_id,
+                "memory_type": memory_types[i].value,
             }
             doc = Document(
                     page_content=qa[i],
                     metadata=metadata
                 )
             documents.append(doc)
-            if importance_scores[i] > max_importance:
-                max_importance = importance_scores[i]
-                max_importance_doc = doc
+            ids.append(metadata["id"])
         
-        result = self.memory_retriever.vectorstore.add_documents(documents)
-        if ( max_importance >= 9):
-            # reflect on the most important memory with like memories that were also important
-            self.pause_to_reflect(max_importance_doc.page_content, conversation, now=now)
-        return result
+        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
-    def add_memory(
-        self, memory_content: str, conversation: str, now: Optional[datetime] = None
+    async def add_memory(
+        self, memory_content: str, user_id: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observation or memory to the agent's memory."""
-        importance_score = self._score_memory_importance(memory_content)
+        nowStamp = now.timestamp()
         metadata = {
-            "conversation": conversation,
-            "created_at": now,
-            "importance_score": importance_score, 
-            "last_accessed_at": now,
+            "id":  uuid.uuid4().hex,
+            "extra_index": conversation_id,
+            "created_at": nowStamp,
+            "importance": importance, 
+            "last_accessed_at": nowStamp,
+            "summarizations": 0,
+            "group_id": user_id,
+            "memory_type": memory_type.value,
         }
         document = Document(
             page_content=memory_content, 
             metadata=metadata,
         )
-        result = self.memory_retriever.vectorstore.add_documents([document])
-        if (importance_score >= 9):
-            # reflect on the most important memory with like memories that were also important
-            self.pause_to_reflect(memory_content, conversation, now=now)
-        return result
+        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
 
     def fetch_memories(
         self, topic: str, **kwargs: Any
     ) -> List[Document]:
         """Fetch related memories."""
         current_time = kwargs.get("current_time", None)
-        conversation = kwargs.get(self.payload_conversation_key)
+        conversation_id = kwargs.pop("conversation_id")
         if current_time is not None:
             with mock_now(current_time):
                 return self.memory_retriever.get_relevant_documents(topic)
         else:
-            oldargs = self.memory_retriever.search_kwargs.copy()
-            self.memory_retriever.search_kwargs.update({"filter": {"conversation": conversation}})
-            docs = self.memory_retriever.get_relevant_documents(topic)
-            self.memory_retriever.search_kwargs = oldargs
+            kwargs.update({"filter": rest.Filter(
+                must=[
+                    rest.FieldCondition(
+                        key="metadata.extra_index", 
+                        match=rest.MatchValue(value=conversation_id), 
+                    )
+                ]
+            )})
+            docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
             return docs
 
-    def format_memories_detail(self, relevant_memories: List[Document]) -> str:
-        content = []
-        for mem in relevant_memories:
-            content.append(self._format_memory_detail(mem, prefix="- "))
-        return "\n".join([f"{mem}" for mem in content])
-
     def _format_memory_detail(self, memory: Document, prefix: str = "") -> str:
-        created_time = memory.metadata["created_at"].strftime("%B %d, %Y, %I:%M %p")
-        return f"{prefix}[{created_time}] {memory.page_content.strip()}"
+        memory_type = MemoryType(memory.metadata["memory_type"]).name.replace("_", " ").lower()
+        created_time = datetime.fromtimestamp(memory.metadata["created_at"]).strftime("%B %d, %Y, %I:%M %p")
+        return f"{prefix}[{created_time}] ({memory_type}) {memory.page_content.strip()}"
+
+    def _time_ago(self, timestamp: float) -> str:
+        """Return a rough string representation of the time passed since a timestamp."""
+        delta = datetime.now() - datetime.fromtimestamp(timestamp)
+        if delta < timedelta(minutes=1):
+            return "just now"
+        elif delta < timedelta(hours=1):
+            return f"{int(delta.total_seconds() / 60)} minutes ago"
+        elif delta < timedelta(days=1):
+            return f"{int(delta.total_seconds() / 3600)} hours ago"
+        else:
+            return f"{int(delta.total_seconds() / 86400)} days ago"
 
     def format_memories_simple(self, relevant_memories: List[Document]) -> str:
-        return "; ".join([f"{mem.page_content}" for mem in relevant_memories])
+        now = datetime.now().timestamp()
+        formatted_memories = []
+        for mem in relevant_memories:
+            memory_type = MemoryType(mem.metadata["memory_type"]).name.replace("_", " ").lower()
+            summarizations_count = mem.metadata.get("summarizations", 0)
+            importance = mem.metadata.get("importance", "medium")  # assuming 1 as default importance
+            created_at = mem.metadata.get("created_at", now)
+            created_ago = self._time_ago(created_at)
+            formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}) {mem.page_content}")
+        return "; ".join(formatted_memories)
 
     def format_qa_simple(self, qa: List[object]) -> str:
         return "; ".join(mem for mem in qa)
@@ -238,36 +206,35 @@ class GenerativeAgentMemory(BaseMemory):
         """Input keys this memory class will load dynamically."""
         return []
 
-    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, str]:
+    def load_memory_variables(self, **kwargs) -> Dict[str, str]:
         """Return key-value pairs given the text input to the chain."""
-        queries = inputs.get(self.queries_key)
-        now = inputs.get(self.now_key)
-        conversation = inputs.get(self.payload_conversation_key)
-        kwargs = {self.payload_conversation_key: conversation, "current_time": now}
+        queries = kwargs.pop("queries")
         if queries is not None:
             relevant_memories = [
                 mem for query in queries for mem in self.fetch_memories(query, **kwargs)
             ]
+            ids = [doc.metadata["id"] for doc in relevant_memories]
+            for doc in relevant_memories:
+                doc.metadata.pop('relevance_score', None)
+            asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
             return {
-                self.relevant_memories_key: self.format_memories_detail(
-                    relevant_memories
-                ),
-                self.relevant_memories_simple_key: self.format_memories_simple(
-                    relevant_memories
-                ),
+                "relevant_memories": self.format_memories_simple(relevant_memories),
             }
         return {}
 
-    def save_context(self, outputs: Dict[str, Any]) -> None:
+    async def save_context(self, outputs: Dict[str, Any]) -> List[str]:
         """Save the context of this model run to memory."""
-        user = outputs.get(self.add_memory_user_key)
-        aida = outputs.get(self.add_memory_aida_key)
-        now = outputs.get(self.now_key)
-        conversation = outputs.get(self.payload_conversation_key)
-        if user:
-            qa = {"user": user, "me": aida}
-            self.add_memory(json.dumps(qa), conversation, now=now)
+        query = outputs.get("query")
+        aida = outputs.get("llm_response")
+        now = datetime.now()
+        importance = outputs.get("importance")
+        conversation_id = outputs.get("conversation_id")
+        user_id = outputs.get("user_id")
+        if query:
+            qa = {"user": query, "me": aida}
+            return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
+        return []
 
-    def clear(self) -> None:
+    def clear(self, conversation_id) -> None:
         """Clear memory contents."""
-        # TODO
+        self.memory_retriever.base_retriever.clear_using_extra_index(conversation_id)

@@ -10,7 +10,7 @@ import re
 class QueryPlanManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
+        os.getenv("OPENAI_API_KEY")
 
         # gpt-4
         self.llm = ChatOpenAI(model='gpt-4', temperature=0)

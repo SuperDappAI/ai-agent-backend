@@ -1,21 +1,27 @@
 import time
-from dotenv import load_dotenv
-from llama_index import ServiceContext, VectorStoreIndex, Document, StorageContext, load_index_from_storage
-from llama_index.llms import OpenAI
-from llama_index.indices.postprocessor import LLMRerank
-from reader_writer_lock import ReaderWriterLock
-import sys
-import os
 import tiktoken
 import schedule
-import threading
-from typing import List
-from pathlib import Path
 import json
-from pydantic import BaseModel, Field
-from llama_index.retrievers import VectorIndexRetriever
-from llama_index.indices.query.schema import QueryBundle
+import asyncio
+import threading
+import os
+import uuid
 import logging
+import traceback
+
+from dotenv import load_dotenv
+from qdrant_client import QdrantClient
+from typing import List
+from datetime import datetime
+from pydantic import BaseModel, Field
+from qdrant_client.http import models as rest
+from langchain.vectorstores import Qdrant
+from langchain.embeddings import OpenAIEmbeddings
+from qdrant_retriever import QDrantVectorStoreRetriever
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CohereRerank
+from langchain.schema import Document
+from datetime import datetime, timedelta
 
 
 class ActionItem(BaseModel):
@@ -27,8 +33,8 @@ class ActionItem(BaseModel):
 class FunctionInput(BaseModel):
     action_items: List[ActionItem] = Field(..., example=[
                                            {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
-    num_results: int = Field(..., example=5)
-    similarity_threshold: float = Field(..., example=0.8)
+    num_semantic_results: int = Field(..., example=10)
+    similarity_threshold: float = Field(..., example=0.72)
 
 
 class FunctionsManager1:
@@ -36,27 +42,65 @@ class FunctionsManager1:
 
     def __init__(self):
         load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")  # Get API Key from environment variable
-        self.dirpath = Path("./storage_functions")
+        os.getenv("OPENAI_API_KEY")
+        self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+        os.getenv("COHERE_API_KEY")
+        self.QDRANT_URL = os.getenv("QDRANT_URL")
+        self.embeddings = OpenAIEmbeddings()
         self.index = None
         self.max_length_allowed = 512
         self.retriever = None
-        self.lock = ReaderWriterLock()
-        self.reranker = LLMRerank(choice_batch_size=10, top_n=3,
-                                  service_context=ServiceContext.from_defaults(
-                                      llm=OpenAI(temperature=0,
-                                                 model="gpt-3.5-turbo-0613"),
-                                  ))
-        self.load()
+        self.scheduler.every(2).weeks.do(self.prune_functions)
+
+        # Create new thread for schedule
+        self.stop_event = threading.Event()
+        self.scheduler_thread = threading.Thread(target=self.run_continuously)
+        self.scheduler_thread.start()
+
+    def run_continuously(self):
+        """Keep checking and running pending tasks every second."""
+        while not self.stop_event.is_set():
+            self.scheduler.run_pending()
+            time.sleep(1)
 
     def stop(self):
         """Stops the scheduler thread."""
-        self.save()
-        # self.stop_event.set()
-        # self.scheduler_thread.join()
+        self.stop_event.set()
+        self.scheduler_thread.join()
+
+    def create_new_functions_retriever(self):
+        """Create a new vector store retriever unique to the agent."""
+        collection_name = "functions"
+        client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        was_created = False
+        # create collection if it doesn't exist (if it exists it will fall into finally)
+        try:
+            client.create_collection(
+                on_disk_payload=True,
+                collection_name=collection_name,
+                vectors_config=rest.VectorParams(
+                    size=1536,
+                    distance=rest.Distance.COSINE,
+                ),
+            )
+            was_created = True
+        except Exception as e:
+            logging.warn(f"FunctionsManager: create_new_functions_retriever exception {e}\n{traceback.format_exc()}")
+        finally:
+            logging.info(
+                f"FunctionsManager: Creating memory store with collection {collection_name}")
+            vectorstore = Qdrant(client, collection_name, self.embeddings)
+            compressor = CohereRerank()
+            compression_retriever = ContextualCompressionRetriever(
+                base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
+                    collection_name=collection_name, client=client, vectorstore=vectorstore,
+                )
+            )
+            return was_created, compression_retriever
 
     def transform(self, data, category):
         """Transforms function data for a specific category."""
+        now = datetime.now().timestamp()
         result = []
         for item in data:
             page_content = {'name': item['name'], 'category': category, 'description': str(
@@ -66,24 +110,17 @@ class FunctionsManager1:
                 logging.info(
                     f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
                 continue
-            result.append(page_content)
+            metadata = {
+                "id":  uuid.uuid4().hex,
+                "extra_index": category,
+                "last_accessed_at": now,
+            }
+            doc = Document(
+                page_content=json.dumps(page_content),
+                metadata=metadata
+            )
+            result.append(doc)
         return result
-
-    def save(self):
-        """Persist current index data to the filesystem."""
-        start = time.time()
-        if not os.path.exists(self.dirpath):
-            try:
-                os.makedirs(self.dirpath)
-            except PermissionError:
-                logging.info(
-                    f"No Permission to create directory {self.dirpath}")
-                return False
-
-        self.index.storage_context.persist(persist_dir=self.dirpath)
-        end = time.time()
-        logging.info(
-            f"FunctionsManager: Save operation took {end - start} seconds")
 
     def count_tokens(self, functions):
         """Count the tokens for all the functions."""
@@ -102,87 +139,72 @@ class FunctionsManager1:
                         {func['name']: len(encoding.encode(function_string))})
         return tokens
 
-    def extract_name_and_category(self, nodes_with_scores):
+    def extract_name_and_category(self, documents):
         result = []
-        for node_with_score in nodes_with_scores:
-            # Parse the string into a Python dict
-            text = json.loads(node_with_score.node.text)
+        seen = set()  # Track seen combinations of name and category
+        for doc in documents:
+            # Parse the page_content string into a Python dict
+            text = json.loads(doc.page_content)
             name = text.get('name')
             category = text.get('category')
-            result.append({'name': name, 'category': category})
+
+            # Check if this combination has been seen before
+            if (name, category) not in seen:
+                result.append({'name': name, 'category': category})
+                seen.add((name, category))  # Mark this combination as seen
+
         return result
 
-    def pull_functions(self, function_input: FunctionInput):
+    async def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
-        self.lock.reader_acquire()
         response = []
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                parsed_response = self.extract_name_and_category(
-                    self.get_retrieved_nodes(query))
-                response.append(parsed_response)
+                documents = self.get_retrieved_nodes(
+                    query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
+                if len(documents) > 0:
+                    parsed_response = self.extract_name_and_category(documents)
+                    response.append(parsed_response)
+                    ids = [doc.metadata["id"] for doc in documents]
+                    for doc in documents:
+                        doc.metadata.pop('relevance_score', None)
+                    asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
         except Exception as e:
-            logging.info('Exception Error: ' + str(e))
-            print('functions_manager.py: Error on line {}'.format(
-                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
+            logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
-            self.lock.reader_release()
             end = time.time()
+            logging.info(
+                f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, query_str: str):
-        query_bundle = QueryBundle(query_str)
-        retrieved_nodes = self.retriever.retrieve(query_bundle)
-        retrieved_nodes[:] = [
-            node for node in retrieved_nodes if node.score >= 0.6]
-        # rerank if we need to up to the top_n
-        if len(retrieved_nodes) > self.reranker._top_n:
-            retrieved_nodes[:] = self.reranker.postprocess_nodes(
-                retrieved_nodes, query_bundle)
-        return retrieved_nodes
+    def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
+        kwargs = {"extra_index": category,
+                "score_threshold": score, "k": num_semantic_results}
+        return self.retriever.get_relevant_documents(query_str, **kwargs)
 
-    def load(self):
-        """Load existing index data from the filesystem."""
+    async def load(self):
+        """Load existing index data from the filesystem for a specific user."""
         start = time.time()
-        result = False
-        try:
-            if self.dirpath.exists() and self.dirpath.is_dir():
-                logging.info("FunctionsManager: Loading from disk")
-                # rebuild storage context
-                storage_context = StorageContext.from_defaults(
-                    persist_dir=self.dirpath)
-                # load index
-                self.index = load_index_from_storage(storage_context)
-                self.retriever = VectorIndexRetriever(
-                    index=self.index,
-                    similarity_top_k=10
-                )
-                result = True
-            else:
-                # Try to load index data from the filesystem only if not running tests
-                if 'unittest' not in sys.modules.keys():
-                    # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-                    with open('./utils/functions.json', 'r') as f:
-                        logging.info(
-                            "FunctionsManager: Loading from functions.json")
-                        functions_json = json.load(f)
-                        self.push_functions(functions_json)
-                        result = True
-        except Exception as e:
-            logging.info('Exception Error: ' + str(e))
-            print('functions_manager.py: Error on line {}'.format(
-                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
-        finally:
-            end = time.time()
-            logging.info(f"FunctionsManager: Load took {end - start} seconds")
-            return result
+        was_created, self.retriever = self.create_new_functions_retriever()
+        logging.info(
+            f"FunctionsManager: load create_new_functions_retriever was_created? {was_created}")
+        if was_created:
+            logging.info(
+                f"FunctionsManager: unittest not in sys.modules.keys()")
+            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
+            with open('./utils/functions.json', 'r') as f:
+                print("FunctionsManager: Loading from functions.json")
+                functions_json = json.load(f)
+                await self.push_functions(functions_json)
+        end = time.time()
+        logging.info(
+            f"FunctionsManager: Load operation took {end - start} seconds")
 
-    def push_functions(self, functions):
+    async def push_functions(self, functions):
         """Update the current index with new functions."""
         start = time.time()
-        self.lock.writer_acquire()
         tokens = None
         try:
             logging.info("FunctionsManager: adding functions to index...")
@@ -200,22 +222,19 @@ class FunctionsManager1:
                     transformed_functions = self.transform(
                         functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
-
-            documents = [Document(text=json.dumps(t)) for t in all_docs]
-            self.index = VectorStoreIndex.from_documents(documents)
-            self.retriever = VectorIndexRetriever(
-                index=self.index,
-                similarity_top_k=10
-            )
+            ids = [doc.metadata["id"] for doc in all_docs]
+            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
             tokens = self.count_tokens(functions)
-            self.save()
         except Exception as e:
-            logging.info('Exception Error: ' + str(e))
-            print('functions_manager.py: Error on line {}'.format(
-                sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
+            logging.warn(f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")
         finally:
-            self.lock.writer_release()
             end = time.time()
             logging.info(
                 f"FunctionsManager: push_functions took {end - start} seconds")
             return tokens, end-start
+
+    def prune_functions(self):
+        """Prune functions that haven't been used for atleast six weeks."""
+        current_time = datetime.now()
+        one_hour_ago = current_time - timedelta(weeks=6)
+        self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
