@@ -252,7 +252,10 @@ class FunctionsManager1:
 
         def attempt_prune():
             if self.retriever is None:
-                self.load()
+                loop = asyncio.new_event_loop()  # Create a new event loop
+                asyncio.set_event_loop(loop)  # Set the new event loop
+                loop.run_until_complete(self.load())  # Use it to run asynchronous tasks
+                loop.close()
             self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
 
         try:
