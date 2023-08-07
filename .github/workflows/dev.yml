@@ -26,7 +26,7 @@
 on:
   push:
     branches:
-      - dev-pipeline-backup-03082023
+      - dev-pipeline
 
 name: Deploy to Amazon ECS
 
