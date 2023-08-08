@@ -31,10 +31,10 @@ class FlexibleDocumentTreeSummarizer:
     _input_limit: int
     _encoding: tiktoken.Encoding
 
-    def __init__(self, llm: ChatOpenAI, verbose: bool = False) -> None:
+    def __init__(self, llm: ChatOpenAI, input_limit: int, verbose: bool = False) -> None:
         self._llm = llm
         self._verbose = verbose
-        self._input_limit = 1000 * 0.6
+        self._input_limit = input_limit * 0.6
         self._encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-0613")
 
     def importance_to_score(self, importance: str) -> int:

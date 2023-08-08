@@ -19,13 +19,13 @@ class MemorySummarizer:
             ChatOpenAI(model="gpt-3.5-turbo-0613", temperature=0), verbose=self.agent_manager.verbose
         )
         self.flexible_document_tree_summarizer = FlexibleDocumentTreeSummarizer(
-            ChatOpenAI(model="gpt-3.5-turbo-16k-0613", temperature=0), verbose=self.agent_manager.verbose
+            ChatOpenAI(model="gpt-3.5-turbo-16k-0613", temperature=0), 16384, verbose=self.agent_manager.verbose
         )
         self.scheduler = AsyncIOScheduler(timezone="America/Los_Angeles")
-        #self.scheduler.add_job(self.summarize_and_update_documents, 'cron', hour=23)
-        self.scheduler.add_job(self.summarize_and_update_documents, 'interval', seconds=30)
-        #self.scheduler.add_job(self.tree_summarize_and_update_documents, 'cron', hour=3)
-        self.scheduler.add_job(self.tree_summarize_and_update_documents, 'interval', seconds=90)
+        self.scheduler.add_job(self.summarize_and_update_documents, 'cron', hour=23)
+        #self.scheduler.add_job(self.summarize_and_update_documents, 'interval', seconds=30)
+        self.scheduler.add_job(self.tree_summarize_and_update_documents, 'cron', hour=3)
+        #self.scheduler.add_job(self.tree_summarize_and_update_documents, 'interval', seconds=90)
         self.summarizing = False
 
     async def summarize_and_update_documents(self):

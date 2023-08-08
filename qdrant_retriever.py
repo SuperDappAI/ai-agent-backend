@@ -100,7 +100,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     def get_documents_for_summarization(self) -> List[Document]:
         """Return documents that are relevant to summarize."""
         current_time = datetime.now()
-        two_weeks_ago = current_time - timedelta(seconds=5)
+        two_weeks_ago = current_time - timedelta(weeks=2)
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
