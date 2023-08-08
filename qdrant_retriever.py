@@ -32,6 +32,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     subconscious_memory_penalty: float = Field(default=0.05)
     """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
+    _max_summarizations: int = int(2)
+    """How many summaries before we tree summaries and prune unused memories."""
+    
     class Config:
         """Configuration for this pydantic object."""
         arbitrary_types_allowed = True
@@ -97,12 +100,16 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     def get_documents_for_summarization(self) -> List[Document]:
         """Return documents that are relevant to summarize."""
         current_time = datetime.now()
-        two_weeks_ago = current_time - timedelta(weeks=2)
+        two_weeks_ago = current_time - timedelta(seconds=5)
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
                     key="metadata.last_accessed_at", 
                     range=rest.Range(lte=two_weeks_ago.timestamp()), 
+                ),
+                rest.FieldCondition(
+                    key="metadata.summarizations", 
+                    range=rest.Range(lt=self._max_summarizations), 
                 )
             ]
         )
@@ -113,16 +120,34 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 record, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
             )
 
-
             # Increment the summarizations count
             if 'summarizations' in document.metadata:
                 document.metadata['summarizations'] += 1
             else:
                 document.metadata['summarizations'] = 1
             docs.append(document)
-
         return docs
 
+    def get_documents_for_tree_summarization(self) -> List[Document]:
+        """Return documents that are relevant to summarize."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="metadata.summarizations", 
+                    range=rest.Range(gte=self._max_summarizations), 
+                )
+            ]
+        )
+        results, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 5000)
+        docs = []
+        for record in results:
+            document = self.vectorstore._document_from_scored_point(
+                record, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
+            )
+
+            docs.append(document)
+
+        return docs
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs
@@ -187,3 +212,14 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             ]
         )
         self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+
+    def delete_documents(self, documents: List[Document]) -> None:
+        """Delete the documents that have been summarized from the given Qdrant collection."""
+        
+        # Extract IDs of the documents to be deleted
+        points_to_delete = [doc.metadata["id"] for doc in documents]
+        
+        # Use the Qdrant client to delete the documents by their IDs
+        self.client.delete(collection_name=self.collection_name,
+                        points_selector=rest.PointIdsList(points=points_to_delete), wait=True)
+

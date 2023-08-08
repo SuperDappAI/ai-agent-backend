@@ -4,7 +4,7 @@ import schedule
 import threading
 import os
 import asyncio
-import uuid
+import random
 import logging
 import traceback
 
@@ -149,7 +149,7 @@ class WebManager:
             for item in function_input.action_items:
                 text_splitter = SentenceSplitter()
                 chunks = text_splitter.split_text(text=item.html_doc)
-                documents.extend([Document(page_content=chunk, metadata={"id":  uuid.uuid4().hex, "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
+                documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
                 await self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)

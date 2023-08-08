@@ -5,7 +5,7 @@ import json
 import asyncio
 import threading
 import os
-import uuid
+import random
 import logging
 import traceback
 
@@ -111,7 +111,7 @@ class FunctionsManager1:
                     f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
                 continue
             metadata = {
-                "id":  uuid.uuid4().hex,
+                "id":  random.randint(0, 2**32 - 1),
                 "extra_index": category,
                 "last_accessed_at": now,
             }

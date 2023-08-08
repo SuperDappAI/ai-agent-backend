@@ -74,7 +74,7 @@ class AgentManager:
         start_time = time.time()
         while time.time() - start_time < delay:
             if self.stop_event.is_set():
-                print("AgentManager: _pause_to_reflect was interrupted")
+                logging.info("AgentManager: _pause_to_reflect was interrupted")
                 return
             await asyncio.sleep(1) # Sleep for short periods and check again
         start = time.time()

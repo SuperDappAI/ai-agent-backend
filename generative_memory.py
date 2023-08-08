@@ -1,7 +1,7 @@
 import logging
 import re
 import json
-import uuid
+import random
 import asyncio
 
 from datetime import datetime, timedelta
@@ -108,7 +108,7 @@ class GenerativeAgentMemory(BaseMemory):
         nowStamp = now.timestamp()
         for i in range(len(qa)):
             metadata = {
-                "id":  uuid.uuid4().hex,
+                "id":  random.randint(0, 2**32 - 1),
                 "extra_index": conversation_id,
                 "created_at": nowStamp,
                 "importance": importance[i],
@@ -132,7 +132,7 @@ class GenerativeAgentMemory(BaseMemory):
         """Add an observation or memory to the agent's memory."""
         nowStamp = now.timestamp()
         metadata = {
-            "id":  uuid.uuid4().hex,
+            "id": random.randint(0, 2**32 - 1),
             "extra_index": conversation_id,
             "created_at": nowStamp,
             "importance": importance, 
