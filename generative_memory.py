@@ -192,10 +192,13 @@ class GenerativeAgentMemory(BaseMemory):
         for mem in relevant_memories:
             memory_type = MemoryType(mem.metadata["memory_type"]).name.replace("_", " ").lower()
             summarizations_count = mem.metadata.get("summarizations", 0)
-            importance = mem.metadata.get("importance", "medium")  # assuming 1 as default importance
+            importance = mem.metadata.get("importance", "medium")  # assuming "medium" as default importance
             created_at = mem.metadata.get("created_at", now)
             created_ago = self._time_ago(created_at)
-            formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}) {mem.page_content}")
+            
+            # Extracting the extra_index (conversation_id)
+            conversation_id = mem.metadata.get("extra_index", "N/A")
+            formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}, conversation_id: {conversation_id}) {mem.page_content}")
         return "; ".join(formatted_memories)
 
     def format_qa_simple(self, qa: List[object]) -> str:
