@@ -134,7 +134,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             must=[
                 rest.FieldCondition(
                     key="metadata.summarizations", 
-                    range=rest.Range(gte=self._max_summarizations), 
+                    range=rest.Range(gte=self._max_summarizations, lt=100), 
                 )
             ]
         )
@@ -163,7 +163,11 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         # Ensure frequently accessed memories aren't forgotten
         for doc, _ in rescored_docs:
             doc.metadata["last_accessed_at"] = current_time
-        # Sort by score and extract just the documents
+            if 'summarizations' in doc.metadata:
+                if doc.metadata['summarizations'] == 100:
+                    print("resetting summarizations")
+                    doc.metadata['summarizations'] = 0
+            # Sort by score and extract just the documents
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
         return sorted_docs

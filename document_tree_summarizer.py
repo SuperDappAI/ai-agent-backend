@@ -67,14 +67,12 @@ class FlexibleDocumentTreeSummarizer:
                 continue
             document_tokens = len(self._encoding.encode(document.page_content))
             if total_tokens + document_tokens > self._input_limit:
-                # If adding this document would exceed the limit, stop adding more documents
-                break
+                continue
             context_documents.append(document)
             total_tokens += document_tokens
             total_importance += self.importance_to_score(document.metadata["importance"])
 
         average_importance = self.score_to_importance(total_importance // len(context_documents))
-
         return TreeSummaryPrompt(documents=context_documents), average_importance
 
     async def _get_single_summary(self,  summary_prompt: TreeSummaryPrompt, average_importance: str) -> Document:
@@ -96,7 +94,7 @@ class FlexibleDocumentTreeSummarizer:
                 "last_accessed_at": nowStamp,
                 "summarizations": 0,
                 "group_id": summary_prompt.documents[0].metadata["group_id"],
-                "memory_type": MemoryType.SUBCONSCIOUS_MEMORY,
+                "memory_type": MemoryType.SUBCONSCIOUS_MEMORY.value,
             }
             return Document(page_content=summarized_content,metadata=metadata)
         except Exception as e:
@@ -114,13 +112,15 @@ class FlexibleDocumentTreeSummarizer:
             batch_size = len(summary_prompt.documents)
 
             # Create an asynchronous task for summarizing the batched documents.
-            task = self._get_single_summary(summary_prompt, average_importance)
-            tasks.append(task)
+            if batch_size > 0:  # Check if there are documents to summarize
+                task = self._get_single_summary(summary_prompt, average_importance)
+                tasks.append(task)
+                i += batch_size  # Move the index to the next unprocessed document.
+            else:
+                i += 1  # If a document is too large, skip it
 
-            # Move the index to the next unprocessed document.
-            i += batch_size
         # Wait for all tasks to complete in parallel.
-        return await asyncio.gather(*tasks)
+        return [doc for doc in await asyncio.gather(*tasks) if doc is not None]
 
     async def tree_summarize(self, documents: List[Document], new_docs: List[Document] = None) -> List[Document]:
         if not documents:
@@ -130,7 +130,8 @@ class FlexibleDocumentTreeSummarizer:
         if new_docs is None:
             new_docs = []
         layer_summaries = await self._get_layer_summaries(documents)
-        layer_summaries = [doc for doc in layer_summaries if doc is not None]
+        if not layer_summaries:
+            return documents  # If no summaries are generated, return the original documents
         new_docs.extend(layer_summaries)
         return await self.tree_summarize(layer_summaries, new_docs)
 
