@@ -47,7 +47,6 @@ class GenerativeAgentMemory(BaseMemory):
         # get last important memories to get reflections on them
         kwargs = {"score_threshold": 0.6, "k": 11}
         observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
-        print(f"_get_topics_of_reflection observationsDocuments {observationsDocuments}")
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(
                 [self._format_memory_detail(o) for o in observationsDocuments]
@@ -158,14 +157,15 @@ class GenerativeAgentMemory(BaseMemory):
             with mock_now(current_time):
                 return self.memory_retriever.get_relevant_documents(topic)
         else:
-            kwargs.update({"filter": rest.Filter(
-                must=[
-                    rest.FieldCondition(
-                        key="metadata.extra_index", 
-                        match=rest.MatchValue(value=conversation_id), 
-                    )
-                ]
-            )})
+            if conversation_id is not "":
+                kwargs.update({"filter": rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="metadata.extra_index", 
+                            match=rest.MatchValue(value=conversation_id), 
+                        )
+                    ]
+                )})
             docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
             return docs
 
