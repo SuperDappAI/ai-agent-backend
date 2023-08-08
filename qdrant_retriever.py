@@ -167,7 +167,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 if doc.metadata['summarizations'] == 100:
                     print("resetting summarizations")
                     doc.metadata['summarizations'] = 0
-            # Sort by score and extract just the documents
+        # Sort by score and extract just the documents
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
         return sorted_docs
