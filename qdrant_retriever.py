@@ -71,7 +71,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                     match=rest.MatchValue(value=user_id), 
                 ),
                 rest.FieldCondition(
-                    key="metadata.importancee", 
+                    key="metadata.importance", 
                     match=rest.MatchValue(value="high"), 
                 )
             ]
@@ -125,6 +125,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 document.metadata['summarizations'] += 1
             else:
                 document.metadata['summarizations'] = 1
+            # summarize once every 2 weeks
+            document.metadata["last_accessed_at"] = current_time.timestamp()
             docs.append(document)
         return docs
 
