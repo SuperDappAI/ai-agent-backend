@@ -235,10 +235,9 @@ class FunctionsManager1:
 
     def prune_functions(self):
         """Prune functions that haven't been used for atleast six weeks."""
-        current_time = datetime.now()
-        one_hour_ago = current_time - timedelta(weeks=6)
-
         def attempt_prune():
+            current_time = datetime.now()
+            one_hour_ago = current_time - timedelta(weeks=6)
             if self.retriever is None:
                 loop = asyncio.new_event_loop()  
                 asyncio.set_event_loop(loop)  
