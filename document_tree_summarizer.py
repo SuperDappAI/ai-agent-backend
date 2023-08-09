@@ -72,7 +72,7 @@ class FlexibleDocumentTreeSummarizer:
             total_tokens += document_tokens
             total_importance += self.importance_to_score(document.metadata["importance"])
 
-        average_importance = self.score_to_importance(total_importance // len(context_documents))
+        average_importance = self.score_to_importance(round(total_importance / len(context_documents)))
         return TreeSummaryPrompt(documents=context_documents), average_importance
 
     async def _get_single_summary(self,  summary_prompt: TreeSummaryPrompt, average_importance: str) -> Document:
