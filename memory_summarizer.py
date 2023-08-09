@@ -45,7 +45,7 @@ class MemorySummarizer:
                     await self.agent_manager.memory.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
                     end = time.time()
                     if self.flexible_document_summarizer._verbose:
-                        logging.info(f"summarize_and_update_documents completed in {end-start}")
+                        logging.info(f"summarize_and_update_documents completed in {end-start} seconds")
                 else:
                     break          
             except Exception as e:
@@ -56,57 +56,49 @@ class MemorySummarizer:
         if self.summarizing:
             logging.info("tree_summarize_and_update_documents: already summarizing")
             return
+
         self.summarizing = True
         while not self.agent_manager.stop_event.is_set():
             try:
                 start = time.time()
-                # Get the documents to summarize
                 documents = self.agent_manager.memory.memory_retriever.base_retriever.get_documents_for_tree_summarization()
 
-                # Stop if no documents were found
                 if len(documents) > 0:
                     if self.flexible_document_summarizer._verbose:
                         logging.info("Starting document processing...")
                     # Sort documents by user and conversation to ensure correct grouping
                     sorted_by_user_convo = sorted(documents, key=lambda x: (x.metadata["group_id"], x.metadata["extra_index"]))
-
                     # Group by user and conversation, then sort each group by time
                     groups = []
                     for _, group in itertools.groupby(sorted_by_user_convo, key=lambda x: (x.metadata["group_id"], x.metadata["extra_index"])):
                         sorted_group = sorted(list(group), key=lambda x: x.metadata["created_at"])
                         groups.append(sorted_group)
 
+                    async def process_group(group):
+                        if len(group) == 1:
+                            group[0].metadata["summarizations"] = 100
+                            await self.agent_manager.memory.memory_retriever.base_retriever.vectorstore.aadd_documents(group, ids=[group[0].metadata["id"]])
+                            return []
+
+                        return await self.flexible_document_tree_summarizer.aupdate_documents(group)
                     # Summarize each group asynchronously
-                    summarization_tasks = [self.flexible_document_tree_summarizer.aupdate_documents(group) for group in groups]
-                    original_ids = set(doc.metadata["id"] for doc in documents)
-                    all_new_docs = await asyncio.gather(*summarization_tasks)
-                    
+                    all_new_docs = await asyncio.gather(*(process_group(group) for group in groups))
                     # Flatten the list of new docs
                     if all(isinstance(sublist, list) for sublist in all_new_docs):
                         flat_new_docs = [doc for sublist in all_new_docs for doc in sublist]
                     else:
                         flat_new_docs = all_new_docs
 
-                    # Deduplicate by filtering out docs with IDs present in original documents
-                    flat_new_docs = [doc for doc in flat_new_docs if doc.metadata["id"] not in original_ids]
-
-                    # Extract IDs and add new summary documents
                     ids = [doc.metadata["id"] for doc in flat_new_docs]
                     if len(flat_new_docs) > 0:
                         if self.flexible_document_summarizer._verbose:
                             logging.info("Adding new summarized documents and deleting originals...")
-                        await self.agent_manager.memory.memory_retriever.base_retriever.vectorstore.aadd_documents(flat_new_docs, ids=ids)
-                        # delete the summarized documents
                         self.agent_manager.memory.memory_retriever.base_retriever.delete_documents(documents)
-                    else:
-                        if self.flexible_document_summarizer._verbose:
-                            logging.info("Only one document to summarize, resetting its summarization count...")
-                        # the other case will mean we had only one document in so we can just set its summarization to 100 so we will not summarize again
-                        documents[0].metadata["summarizations"] = 100
-                        await self.agent_manager.memory.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=[documents[0].metadata["id"]])
+                        await self.agent_manager.memory.memory_retriever.base_retriever.vectorstore.aadd_documents(flat_new_docs, ids=ids)
+
                     end = time.time()
                     if self.flexible_document_summarizer._verbose:
-                        logging.info(f"tree_summarize_and_update_documents completed in {end-start}")
+                        logging.info(f"tree_summarize_and_update_documents completed in {end-start} seconds")
                 else:
                     if self.flexible_document_summarizer._verbose:
                         logging.info("No documents found for processing...")
@@ -114,7 +106,6 @@ class MemorySummarizer:
             except Exception as e:
                 logging.warn(f"MemorySummarizer: tree_summarize_and_update_documents exception {e}\n{traceback.format_exc()}")
         self.summarizing = False
-
 
     def start(self):
         self.scheduler.start()
