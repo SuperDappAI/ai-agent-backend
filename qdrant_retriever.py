@@ -58,8 +58,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
         """Return documents that are salient to the query."""
-        embedding = self.vectorstore._embed_query(query)
-        return self.vectorstore.max_marginal_relevance_search_with_score_by_vector(embedding, k=10, **kwargs)
+        return self.vectorstore.similarity_search_with_score(query, k=10, **kwargs)
 
     def get_relevant_documents_for_reflection(
         self, query: str, user_id: str, conversation: str, **kwargs
@@ -167,7 +166,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             doc.metadata["last_accessed_at"] = current_time
             if 'summarizations' in doc.metadata:
                 if doc.metadata['summarizations'] == 100:
-                    print("resetting summarizations")
                     doc.metadata['summarizations'] = 0
         # Sort by score and extract just the documents
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
