@@ -47,7 +47,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     ) -> float:
         """Return the combined score for a document."""
         score = 0
-        print(f"vector_relevance {vector_relevance}")
         if vector_relevance is not None:
             score += vector_relevance
         if extra_index is not None and extra_index != document.metadata.get("extra_index"):
