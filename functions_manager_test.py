@@ -126,7 +126,7 @@ class TestFunctionsManager1(unittest.TestCase):
 
         # create FunctionInput instance
         action_item = ActionItem(action='test_query', intent='intent_example', category='category_example')
-        function_input = FunctionInput(action_items=[action_item], num_semantic_results=5, similarity_threshold=0.8)
+        function_input = FunctionInput(action_items=[action_item])
 
         fm.pull_functions(function_input)
 

@@ -26,8 +26,6 @@ class MemoryInput(BaseModel):
     user_id: str
     query: str
     conversation_id: str
-    num_semantic_results: int = Field(..., example=10)
-    similarity_threshold: float = Field(..., example=0.72)
 
 class MemoryOutput(BaseModel):
     user_id: str
@@ -154,9 +152,7 @@ class AgentManager:
         try:
             response = self.memory.load_memory_variables(
                 queries=[memory_input.query], 
-                conversation_id=memory_input.conversation_id, 
-                score_threshold=memory_input.similarity_threshold,
-                k=memory_input.num_semantic_results,
+                conversation_id=memory_input.conversation_id
             )
         except Exception as e:
             logging.warn(f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")

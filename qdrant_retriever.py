@@ -47,6 +47,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     ) -> float:
         """Return the combined score for a document."""
         score = 0
+        print(f"vector_relevance {vector_relevance}")
         if vector_relevance is not None:
             score += vector_relevance
         if extra_index is not None and extra_index != document.metadata.get("extra_index"):
@@ -57,7 +58,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
         """Return documents that are salient to the query."""
-        return self.vectorstore.similarity_search_with_relevance_scores(query, **kwargs)
+        embedding = self.vectorstore._embed_query(query)
+        return self.vectorstore.max_marginal_relevance_search_with_score_by_vector(embedding, k=10, **kwargs)
 
     def get_relevant_documents_for_reflection(
         self, query: str, user_id: str, conversation: str, **kwargs
@@ -78,15 +80,13 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         )
         kwargs.update({"filter": filter})
         docs_and_scores = self.get_salient_docs(query, **kwargs)
-        min_score = kwargs.get("score_threshold")
         rescored_docs = []
         for doc, relevance in docs_and_scores:
             combined_score = self._get_combined_score(doc, relevance, conversation)
             # Skip the document if it matches the given query, user_id, and conversation
             if doc.page_content == query and doc.metadata["group_id"] == user_id and doc.metadata["extra_index"] == conversation:
                 continue  # Skip to the next iteration
-            if combined_score >= min_score:
-                rescored_docs.append((doc, combined_score))
+            rescored_docs.append((doc, combined_score))
         rescored_docs.sort(key=lambda x: x[1], reverse=True)
         # only look at the top 3 results out of 10
         if len(rescored_docs) > 3:

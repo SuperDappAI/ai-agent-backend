@@ -39,8 +39,6 @@ class HTMLInput(BaseModel):
                                          {"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
     query: str
-    num_semantic_results: int = Field(..., example=10)
-    similarity_threshold: float = Field(..., example=0.72)
 
 
 class WebManager:
@@ -125,7 +123,7 @@ class WebManager:
                 )
             ]
         )
-        result = self.retriever.get_relevant_documents(function_input.query, filter=filter, score_threshold=function_input.similarity_threshold, k=function_input.num_semantic_results)
+        result = self.retriever.get_relevant_documents(function_input.query, filter=filter)
         return result
 
     def load(self):

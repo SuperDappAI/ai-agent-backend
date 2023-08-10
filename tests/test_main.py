@@ -14,21 +14,21 @@ def test_memory_output():
     assert "elapsed_time" in response.json()
 
 def test_memory_input():
-    mock_data = {"user_id": "1", "query": "test", "conversation_id": "1", "num_semantic_results": 10, "similarity_threshold": 0.72}
+    mock_data = {"user_id": "1", "query": "test", "conversation_id": "1"}
     response = requests.post("http://localhost:8000/pull_memory/", json=mock_data)
     assert response.status_code == 200
     assert "response" in response.json()
     assert "elapsed_time" in response.json()
 
 def test_semantic_search_html():
-    mock_data = {"action_items": [{"source_url": "http://example.com", "html_doc": "text1"}], "hash": "string", "query": "test", "num_semantic_results": 10, "similarity_threshold": 0.72}
+    mock_data = {"action_items": [{"source_url": "http://example.com", "html_doc": "text1"}], "hash": "string", "query": "test"}
     response = requests.post("http://localhost:8000/semantic_search_html/", json=mock_data)
     assert response.status_code == 200
     assert "response" in response.json()
     assert "elapsed_time" in response.json()
 
 def test_get_functions():
-    mock_data = {"action_items": [{"action": "search stocks", "intent": "get price of aapl", "category": "information retrieval"}], "num_semantic_results": 10, "similarity_threshold": 0.72}
+    mock_data = {"action_items": [{"action": "search stocks", "intent": "get price of aapl", "category": "information retrieval"}]}
     response = requests.post("http://localhost:8000/get_functions/", json=mock_data)
     assert response.status_code == 200
     assert "response" in response.json()

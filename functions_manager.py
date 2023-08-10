@@ -33,8 +33,6 @@ class ActionItem(BaseModel):
 class FunctionInput(BaseModel):
     action_items: List[ActionItem] = Field(..., example=[
                                            {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
-    num_semantic_results: int = Field(..., example=10)
-    similarity_threshold: float = Field(..., example=0.72)
 
 
 class FunctionsManager1:
@@ -163,7 +161,7 @@ class FunctionsManager1:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                 documents = self.get_retrieved_nodes(
-                    query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
+                    query, action_item.category)
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
@@ -179,9 +177,8 @@ class FunctionsManager1:
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
-        kwargs = {"extra_index": category,
-                "score_threshold": score, "k": num_semantic_results}
+    def get_retrieved_nodes(self, query_str: str, category: str):
+        kwargs = {"extra_index": category}
         return self.retriever.get_relevant_documents(query_str, **kwargs)
 
     async def load(self):
