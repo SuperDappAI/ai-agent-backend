@@ -173,14 +173,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     def clear_using_extra_index(self, extra_index) -> None:
         """Clear memory contents."""
-        filter_dict = {
-            'must': [
-                {
-                    'key': 'metadata.extra_index',
-                    'match': {'value': extra_index}
-                }
-            ]
-        }
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -210,7 +202,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             must=[
                 rest.FieldCondition(
                     key="metadata.last_accessed_at", 
-                    match=rest.Range(lte=fromTime), 
+                    range=rest.Range(lte=fromTime), 
                 )
             ]
         )

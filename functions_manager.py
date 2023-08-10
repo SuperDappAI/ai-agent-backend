@@ -234,13 +234,13 @@ class FunctionsManager1:
         """Prune functions that haven't been used for atleast six weeks."""
         def attempt_prune():
             current_time = datetime.now()
-            one_hour_ago = current_time - timedelta(weeks=6)
+            six_weeks_ago = current_time - timedelta(weeks=6)
             if self.retriever is None:
                 loop = asyncio.new_event_loop()  
                 asyncio.set_event_loop(loop)  
                 loop.run_until_complete(self.load())  
                 loop.close()
-            self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+            self.retriever.base_retriever.prune_from(six_weeks_ago.timestamp())
 
         try:
             attempt_prune()
