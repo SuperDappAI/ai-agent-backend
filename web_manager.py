@@ -4,7 +4,7 @@ import schedule
 import threading
 import os
 import asyncio
-import uuid
+import random
 import logging
 import traceback
 
@@ -39,8 +39,6 @@ class HTMLInput(BaseModel):
                                          {"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
     query: str
-    num_semantic_results: int = Field(..., example=10)
-    similarity_threshold: float = Field(..., example=0.72)
 
 
 class WebManager:
@@ -125,7 +123,7 @@ class WebManager:
                 )
             ]
         )
-        result = self.retriever.get_relevant_documents(function_input.query, filter=filter, score_threshold=function_input.similarity_threshold, k=function_input.num_semantic_results)
+        result = self.retriever.get_relevant_documents(function_input.query, filter=filter)
         return result
 
     def load(self):
@@ -149,7 +147,7 @@ class WebManager:
             for item in function_input.action_items:
                 text_splitter = SentenceSplitter()
                 chunks = text_splitter.split_text(text=item.html_doc)
-                documents.extend([Document(page_content=chunk, metadata={"id":  uuid.uuid4().hex, "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
+                documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
                 await self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)

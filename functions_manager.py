@@ -5,7 +5,7 @@ import json
 import asyncio
 import threading
 import os
-import uuid
+import random
 import logging
 import traceback
 
@@ -33,8 +33,6 @@ class ActionItem(BaseModel):
 class FunctionInput(BaseModel):
     action_items: List[ActionItem] = Field(..., example=[
                                            {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
-    num_semantic_results: int = Field(..., example=10)
-    similarity_threshold: float = Field(..., example=0.72)
 
 
 class FunctionsManager1:
@@ -111,7 +109,7 @@ class FunctionsManager1:
                     f"FunctionsManager: transform tried to create a function that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
                 continue
             metadata = {
-                "id":  uuid.uuid4().hex,
+                "id":  random.randint(0, 2**32 - 1),
                 "extra_index": category,
                 "last_accessed_at": now,
             }
@@ -163,7 +161,7 @@ class FunctionsManager1:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                 documents = self.get_retrieved_nodes(
-                    query, action_item.category, function_input.similarity_threshold, function_input.num_semantic_results)
+                    query, action_item.category)
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
@@ -179,9 +177,8 @@ class FunctionsManager1:
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, query_str: str, category: str, score: float, num_semantic_results: int):
-        kwargs = {"extra_index": category,
-                "score_threshold": score, "k": num_semantic_results}
+    def get_retrieved_nodes(self, query_str: str, category: str):
+        kwargs = {"extra_index": category}
         return self.retriever.get_relevant_documents(query_str, **kwargs)
 
     async def load(self):
@@ -235,6 +232,25 @@ class FunctionsManager1:
 
     def prune_functions(self):
         """Prune functions that haven't been used for atleast six weeks."""
-        current_time = datetime.now()
-        one_hour_ago = current_time - timedelta(weeks=6)
-        self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+        def attempt_prune():
+            current_time = datetime.now()
+            one_hour_ago = current_time - timedelta(weeks=6)
+            if self.retriever is None:
+                loop = asyncio.new_event_loop()  
+                asyncio.set_event_loop(loop)  
+                loop.run_until_complete(self.load())  
+                loop.close()
+            self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+
+        try:
+            attempt_prune()
+        except Exception as e:
+            logging.warn(f"FunctionsManager: prune_functions exception {e}\n{traceback.format_exc()}")
+            # Attempt a second prune after reload
+            try:
+                attempt_prune()
+            except Exception as e:
+                # If prune after reload fails, propagate the error upwards
+                logging.error(f"FunctionsManager: prune_functions failed after reload, exception {e}\n{traceback.format_exc()}")
+                raise
+        return True

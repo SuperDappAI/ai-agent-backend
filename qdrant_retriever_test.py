@@ -25,7 +25,7 @@ class TestQDrantVectorStoreRetriever(unittest.TestCase):
         self.vector_store.similarity_search_with_relevance_scores.return_value = [(self.doc1, 0.75), (self.doc2, 0.5)]
         docs = self.retriever.get_relevant_documents_for_reflection(query, conversation)
         self.assertEqual(docs, [self.doc1, self.doc2], f"Expected docs [doc1, doc2], but got {docs}")
-        self.vector_store.similarity_search_with_relevance_scores.assert_called_with(query, k=10, filter={'importancee': "high"})
+        self.vector_store.similarity_search_with_relevance_scores.assert_called_with(query, k=10, filter={'importance': "high"})
 
     def test_get_salient_docs(self):
         query = "test_query"

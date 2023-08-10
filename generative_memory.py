@@ -1,7 +1,7 @@
 import logging
 import re
 import json
-import uuid
+import random
 import asyncio
 
 from datetime import datetime, timedelta
@@ -45,9 +45,8 @@ class GenerativeAgentMemory(BaseMemory):
             "Provide each question on a new line."
         )
         # get last important memories to get reflections on them
-        kwargs = {"score_threshold": 0.6, "k": 11}
+        kwargs = {"k": 11}
         observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
-        print(f"_get_topics_of_reflection observationsDocuments {observationsDocuments}")
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(
                 [self._format_memory_detail(o) for o in observationsDocuments]
@@ -109,7 +108,7 @@ class GenerativeAgentMemory(BaseMemory):
         nowStamp = now.timestamp()
         for i in range(len(qa)):
             metadata = {
-                "id":  uuid.uuid4().hex,
+                "id":  random.randint(0, 2**32 - 1),
                 "extra_index": conversation_id,
                 "created_at": nowStamp,
                 "importance": importance[i],
@@ -133,7 +132,7 @@ class GenerativeAgentMemory(BaseMemory):
         """Add an observation or memory to the agent's memory."""
         nowStamp = now.timestamp()
         metadata = {
-            "id":  uuid.uuid4().hex,
+            "id": random.randint(0, 2**32 - 1),
             "extra_index": conversation_id,
             "created_at": nowStamp,
             "importance": importance, 
@@ -158,14 +157,15 @@ class GenerativeAgentMemory(BaseMemory):
             with mock_now(current_time):
                 return self.memory_retriever.get_relevant_documents(topic)
         else:
-            kwargs.update({"filter": rest.Filter(
-                must=[
-                    rest.FieldCondition(
-                        key="metadata.extra_index", 
-                        match=rest.MatchValue(value=conversation_id), 
-                    )
-                ]
-            )})
+            if conversation_id is not "":
+                kwargs.update({"filter": rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="metadata.extra_index", 
+                            match=rest.MatchValue(value=conversation_id), 
+                        )
+                    ]
+                )})
             docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
             return docs
 
@@ -192,10 +192,13 @@ class GenerativeAgentMemory(BaseMemory):
         for mem in relevant_memories:
             memory_type = MemoryType(mem.metadata["memory_type"]).name.replace("_", " ").lower()
             summarizations_count = mem.metadata.get("summarizations", 0)
-            importance = mem.metadata.get("importance", "medium")  # assuming 1 as default importance
+            importance = mem.metadata.get("importance", "medium")  # assuming "medium" as default importance
             created_at = mem.metadata.get("created_at", now)
             created_ago = self._time_ago(created_at)
-            formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}) {mem.page_content}")
+            
+            # Extracting the extra_index (conversation_id)
+            conversation_id = mem.metadata.get("extra_index", "N/A")
+            formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}, conversation_id: {conversation_id}) {mem.page_content}")
         return "; ".join(formatted_memories)
 
     def format_qa_simple(self, qa: List[object]) -> str:

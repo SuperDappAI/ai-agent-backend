@@ -32,6 +32,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     subconscious_memory_penalty: float = Field(default=0.05)
     """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
+    _max_summarizations: int = int(2)
+    """How many summaries before we tree summaries and prune unused memories."""
+    
     class Config:
         """Configuration for this pydantic object."""
         arbitrary_types_allowed = True
@@ -54,7 +57,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
         """Return documents that are salient to the query."""
-        return self.vectorstore.similarity_search_with_relevance_scores(query, **kwargs)
+        return self.vectorstore.similarity_search_with_score(query, k=10, **kwargs)
 
     def get_relevant_documents_for_reflection(
         self, query: str, user_id: str, conversation: str, **kwargs
@@ -68,22 +71,20 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                     match=rest.MatchValue(value=user_id), 
                 ),
                 rest.FieldCondition(
-                    key="metadata.importancee", 
+                    key="metadata.importance", 
                     match=rest.MatchValue(value="high"), 
                 )
             ]
         )
         kwargs.update({"filter": filter})
         docs_and_scores = self.get_salient_docs(query, **kwargs)
-        min_score = kwargs.get("score_threshold")
         rescored_docs = []
         for doc, relevance in docs_and_scores:
             combined_score = self._get_combined_score(doc, relevance, conversation)
             # Skip the document if it matches the given query, user_id, and conversation
             if doc.page_content == query and doc.metadata["group_id"] == user_id and doc.metadata["extra_index"] == conversation:
                 continue  # Skip to the next iteration
-            if combined_score >= min_score:
-                rescored_docs.append((doc, combined_score))
+            rescored_docs.append((doc, combined_score))
         rescored_docs.sort(key=lambda x: x[1], reverse=True)
         # only look at the top 3 results out of 10
         if len(rescored_docs) > 3:
@@ -103,6 +104,10 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 rest.FieldCondition(
                     key="metadata.last_accessed_at", 
                     range=rest.Range(lte=two_weeks_ago.timestamp()), 
+                ),
+                rest.FieldCondition(
+                    key="metadata.summarizations", 
+                    range=rest.Range(lt=self._max_summarizations), 
                 )
             ]
         )
@@ -113,16 +118,36 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 record, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
             )
 
-
             # Increment the summarizations count
             if 'summarizations' in document.metadata:
                 document.metadata['summarizations'] += 1
             else:
                 document.metadata['summarizations'] = 1
+            # summarize once every 2 weeks
+            document.metadata["last_accessed_at"] = current_time.timestamp()
+            docs.append(document)
+        return docs
+
+    def get_documents_for_tree_summarization(self) -> List[Document]:
+        """Return documents that are relevant to summarize."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="metadata.summarizations", 
+                    range=rest.Range(gte=self._max_summarizations, lt=100), 
+                )
+            ]
+        )
+        results, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 5000)
+        docs = []
+        for record in results:
+            document = self.vectorstore._document_from_scored_point(
+                record, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
+            )
+
             docs.append(document)
 
         return docs
-
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs
@@ -138,6 +163,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         # Ensure frequently accessed memories aren't forgotten
         for doc, _ in rescored_docs:
             doc.metadata["last_accessed_at"] = current_time
+            if 'summarizations' in doc.metadata:
+                if doc.metadata['summarizations'] == 100:
+                    doc.metadata['summarizations'] = 0
         # Sort by score and extract just the documents
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
@@ -187,3 +215,14 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             ]
         )
         self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+
+    def delete_documents(self, documents: List[Document]) -> None:
+        """Delete the documents that have been summarized from the given Qdrant collection."""
+        
+        # Extract IDs of the documents to be deleted
+        points_to_delete = [doc.metadata["id"] for doc in documents]
+        
+        # Use the Qdrant client to delete the documents by their IDs
+        self.client.delete(collection_name=self.collection_name,
+                        points_selector=rest.PointIdsList(points=points_to_delete), wait=True)
+

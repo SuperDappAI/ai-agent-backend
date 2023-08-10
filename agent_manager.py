@@ -26,8 +26,6 @@ class MemoryInput(BaseModel):
     user_id: str
     query: str
     conversation_id: str
-    num_semantic_results: int = Field(..., example=10)
-    similarity_threshold: float = Field(..., example=0.72)
 
 class MemoryOutput(BaseModel):
     user_id: str
@@ -74,7 +72,7 @@ class AgentManager:
         start_time = time.time()
         while time.time() - start_time < delay:
             if self.stop_event.is_set():
-                print("AgentManager: _pause_to_reflect was interrupted")
+                logging.info("AgentManager: _pause_to_reflect was interrupted")
                 return
             await asyncio.sleep(1) # Sleep for short periods and check again
         start = time.time()
@@ -154,9 +152,7 @@ class AgentManager:
         try:
             response = self.memory.load_memory_variables(
                 queries=[memory_input.query], 
-                conversation_id=memory_input.conversation_id, 
-                score_threshold=memory_input.similarity_threshold,
-                k=memory_input.num_semantic_results,
+                conversation_id=memory_input.conversation_id
             )
         except Exception as e:
             logging.warn(f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")
