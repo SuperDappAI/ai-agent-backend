@@ -45,7 +45,7 @@ class GenerativeAgentMemory(BaseMemory):
             "Provide each question on a new line."
         )
         # get last important memories to get reflections on them
-        kwargs = {"k": 11}
+        kwargs = {}
         observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(

@@ -32,7 +32,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     subconscious_memory_penalty: float = Field(default=0.05)
     """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
-    _max_summarizations: int = int(2)
+    _max_summarizations: int = int(20)
     """How many summaries before we tree summaries and prune unused memories."""
     
     class Config:
@@ -86,7 +86,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 continue  # Skip to the next iteration
             rescored_docs.append((doc, combined_score))
         rescored_docs.sort(key=lambda x: x[1], reverse=True)
-        # only look at the top 3 results out of 10
+        # only look at the top 3 results
         if len(rescored_docs) > 3:
             rescored_docs = rescored_docs[:3]
         # Ensure frequently accessed memories aren't forgotten
