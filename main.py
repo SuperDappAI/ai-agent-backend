@@ -97,7 +97,7 @@ async def addDoc(function_input: DocAddInput):
 
 @app.post('/is_doc_cached/')
 async def isDocCached(cache_html: CacheDoc):
-    """Endpoint to conduct a semantic search in HTML content."""
+    """Endpoint to check if doc content is cached."""
     logging.info('Checking if doc is cached')
     result, elapsed_time = doc_manager.does_source_exist(cache_html)
     return {'response': result, 'elapsed_time': elapsed_time}
