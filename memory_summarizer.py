@@ -87,7 +87,7 @@ class MemorySummarizer:
                         logging.info("Starting document processing...")
                     groups = self._sort_and_group_documents(documents)
                     all_new_docs = await asyncio.gather(*[self._process_group(group) for group in groups])
-                    # Flatten the list and filter out empty lists
+                    # Flatten the list
                     all_new_docs = [doc for sublist in all_new_docs for doc in sublist]
                     if all_new_docs:
                         if self.flexible_document_tree_summarizer._verbose:
