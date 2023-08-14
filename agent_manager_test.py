@@ -1,54 +1,37 @@
-import unittest
-from unittest.mock import MagicMock, patch
-from agent_manager import AgentManager
-from pathlib import Path
+import asyncio
+import pytest
+from unittest import mock
+from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 
-class TestAgentManager(unittest.TestCase):
-    def setUp(self):
-        self.agent_manager = AgentManager()
-    
-    @patch('agent_manager.GenerativeAgentMemory', autospec=True)
-    @patch('agent_manager.OpenAIEmbeddings', autospec=True)
-    @patch('agent_manager.QDrantVectorStoreRetriever', autospec=True)
-    @patch('agent_manager.QdrantClient', autospec=True)
-    def test_create_memory(self, mock_qdrant_client, mock_retriever, mock_embeddings, mock_memory):
-        user_id = 'user1'
-        path = './storage_memory/user1'
-        self.agent_manager.create_memory(user_id, path)
-        mock_qdrant_client.assert_called_with(path=path)
-        mock_retriever.assert_called()
-        mock_memory.assert_called()
+@pytest.fixture
+def agent_manager():
+    agent_manager = AgentManager()
 
-    def test_load(self):
-        user_id = 'user1'
-        with patch.object(self.agent_manager, 'create_memory') as mock_create_memory:
-            self.agent_manager.load(user_id)
-            mock_create_memory.assert_called_with(user_id, Path(f"{self.agent_manager.dirpath}/{user_id}"))
+    # Mock time-consuming or IO-bound functions
+    agent_manager.create_new_memory_retriever = mock.Mock()
+    agent_manager.memory = mock.Mock()
+    return agent_manager
 
-    @patch('agent_manager.shutil.rmtree', autospec=True)
-    def test_delete_memory(self, mock_rmtree):
-        user_id = 'user1'
-        self.agent_manager.memory[user_id] = MagicMock()
-        userpath = Path(f"{self.agent_manager.dirpath}/{user_id}")
-        self.agent_manager.delete_memory(user_id)
-        mock_rmtree.assert_called_with(userpath)
+@pytest.mark.asyncio
+async def test_push_memory(agent_manager):
+    test_memory_output = MemoryOutput(user_id='1', query='Test query', llm_response='Test response', conversation_id='1', importance='high')
+    duration = await agent_manager.push_memory(test_memory_output)
+    # Check that the save_context function was called once with the correct argument
+    agent_manager.memory.save_context.assert_called_once_with(test_memory_output.dict())
+    assert duration >= 0  # Ensures it took some time
 
-    def test_push_memory(self):
-        user_id = 'user1'
-        conversation_id = 'convo1'
-        query = 'query'
-        llm_response = 'response'
-        with patch.object(self.agent_manager, 'load') as mock_load:
-            self.agent_manager.push_memory(user_id, conversation_id, query, llm_response)
-            mock_load.assert_called_with(user_id)
+def test_pull_memory(agent_manager):
+    test_memory_input = MemoryInput(user_id='1', query='Test query', conversation_id='1')
+    response, duration = agent_manager.pull_memory(test_memory_input)
+    # make sure load_memory_variables is called
+    agent_manager.memory.load_memory_variables.assert_called_once_with(queries=[test_memory_input.query], conversation_id=test_memory_input.conversation_id)
+    assert duration >= 0  # Check that the operation took some time
 
-    def test_pull_memory(self):
-        user_id = 'user1'
-        convo_id = 'convo1'
-        query = 'query'
-        with patch.object(self.agent_manager, 'load') as mock_load:
-            self.agent_manager.pull_memory(user_id, convo_id, query)
-            mock_load.assert_called_with(user_id)
+def test_clear_conversation(agent_manager):
+    test_clear_memory = ClearMemory(user_id='1', conversation_id='1')
+    response, duration = agent_manager.clear_conversation(test_clear_memory)
+    agent_manager.memory.clear.assert_called_once_with(test_clear_memory.conversation_id)  # make sure clear method is called
+    assert duration >= 0  # Check that the operation took some time
+    assert response == "success"  # Make sure response is success
 
-if __name__ == "__main__":
-    unittest.main()
+
