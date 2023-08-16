@@ -4,6 +4,7 @@ import schedule
 import os
 import asyncio
 import random
+import requests
 import logging
 import traceback
 
@@ -149,6 +150,23 @@ class DocManager:
             logging.info(
                 f"DocManager: search_html operation took {end - start} seconds")
             return response, end - start
+
+    # async def fetch_web_content(self, url_to_fetch: str, category: str, source_url: str, input_format: str):
+    async def fetch_web_content(self, url_to_fetch: str, category: str, source_url: str):
+        # fetch md or html from source_url from the web using requests library
+        start = time.time()
+        response = None
+        try:
+            response = requests.get(url_to_fetch)
+            if response.status_code == 200:
+                response = response.content.decode('utf-8')
+                doc_add_input = DocAddInput(source_url=source_url, html_doc=response, category=category)
+            else:
+                logging.warn(f"DocManager: fetch_web_content status code {response.status_code}")
+        except:
+            logging.warn(f"DocManager: fetch_web_content exception")
+
+        return await self.add_doc(doc_add_input), response, time.time() - start
 
     def does_source_exist(self, cache_html: CacheDoc):
         start = time.time()

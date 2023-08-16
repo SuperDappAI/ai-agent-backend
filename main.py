@@ -95,6 +95,15 @@ async def addDoc(function_input: DocAddInput):
     results, elapsed_time = await doc_manager.add_doc(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
+@app.post('/ingest_remote_doc/')
+async def ingestRemoteDoc(url_to_fetch: str = Form(...), category: str = Form(...), source_url: str = Form(...)):
+    """Endpoint to conduct add HTML document for doc portal."""
+    logging.info('add to Doc Portal')
+    results, raw_doc, elapsed_time= await doc_manager.fetch_web_content(url_to_fetch, category, source_url)
+    print(url_to_fetch,category,source_url)
+
+    return {'response': results, 'raw_doc': raw_doc, 'elapsed_time': elapsed_time}
+
 @app.post('/is_doc_cached/')
 async def isDocCached(cache_html: CacheDoc):
     """Endpoint to check if doc content is cached."""
