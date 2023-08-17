@@ -178,7 +178,9 @@ class FunctionsManager1:
             return response, end-start
 
     def get_retrieved_nodes(self, query_str: str, category: str):
-        kwargs = {"extra_index": category}
+        kwargs = {}
+        if len(category) > 0:
+            kwargs = {"extra_index": category}
         return self.retriever.get_relevant_documents(query_str, **kwargs)
 
     async def load(self):
