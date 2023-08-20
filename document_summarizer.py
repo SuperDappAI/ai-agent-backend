@@ -18,7 +18,7 @@ class SummaryPrompt:
             summarization_description = "has already been summarized once."
         else:
             summarization_description = f"has already been summarized {self.summarizations} times."
-        return (f"Summarize this text. Keep in mind it's of {self.importance} importance and {summarization_description}")
+        return (f"Summarize this memory. Keep in mind it's of {self.importance} importance and {summarization_description}")
 
 class FlexibleDocumentSummarizer:
     _llm: ChatOpenAI

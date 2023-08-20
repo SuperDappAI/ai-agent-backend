@@ -1,0 +1,78 @@
+import pytest
+import os
+from unittest.mock import MagicMock, patch
+from functions_manager import FunctionsManager1, ActionItem, FunctionInput 
+from dotenv import load_dotenv
+from langchain.schema import Document
+
+class TestFunctionsManager1:
+    @pytest.fixture(autouse=True)
+    def setup_teardown(self):
+        load_dotenv()
+        self.functions_manager = FunctionsManager1()
+        yield
+        self.functions_manager.stop()
+
+    # @patch("qdrant_client.QdrantClient")  # replace 'your_code_file' with actual file name
+    # def test_create_new_functions_retriever(self, mock_qdrant_client):
+    #     was_created, compression_retriever = self.functions_manager.create_new_functions_retriever()
+        
+    #     assert isinstance(was_created, bool)
+    #     assert compression_retriever is not None
+
+    def test_transform(self):
+        data = [{"name": "test", "description": "test description"}]
+        category = "test_category"
+
+        transformed = self.functions_manager.transform(data, category)
+        
+        assert isinstance(transformed, list)
+        assert all(isinstance(doc, Document) for doc in transformed)
+
+    def test_count_tokens(self):
+        functions = {
+            "information_retrieval": [{"name": "test function", "description": "test description"}],
+            "communication": [{"name": "test function", "description": "test description"}],
+            "data_processing": [{"name": "test function", "description": "test description"}],
+            "sensory_perception": [{"name": "test function", "description": "test description"}],
+        }
+
+        tokens = self.functions_manager.count_tokens(functions)
+        
+        assert isinstance(tokens, list)
+        assert all(isinstance(token_dict, dict) for token_dict in tokens)
+
+    def test_extract_name_and_category(self):
+        documents = [
+            Document(page_content='{"name": "test1", "category": "cat1"}', metadata={}),
+            Document(page_content='{"name": "test2", "category": "cat2"}', metadata={})
+        ]
+
+        extracted = self.functions_manager.extract_name_and_category(documents)
+
+        expected_output = [{'name': 'test1', 'category': 'cat1'}, {'name': 'test2', 'category': 'cat2'}]
+        
+        assert extracted == expected_output
+
+    @pytest.mark.asyncio
+    async def test_pull_functions(self):
+        function_input = FunctionInput(
+            action_items=[ActionItem(action="act", intent="int", category="cat")]
+        )
+        self.functions_manager.get_retrieved_nodes = MagicMock(return_value=[])
+        
+        response, time_taken = await self.functions_manager.pull_functions(function_input)
+        
+        assert isinstance(response, list)
+        assert isinstance(time_taken, float)
+
+    @pytest.mark.asyncio
+    async def test_load(self):
+        await self.functions_manager.load()
+
+        assert self.functions_manager.retriever is not None
+
+    def test_prune_functions(self):
+        result = self.functions_manager.prune_functions()
+
+        assert result is True

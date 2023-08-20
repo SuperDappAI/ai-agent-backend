@@ -12,20 +12,21 @@ from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
+from langchain.retrievers.document_compressors import CohereRerank
 from generative_memory import GenerativeAgentMemory
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CohereRerank
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from memory_summarizer import MemorySummarizer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class MemoryInput(BaseModel):
     user_id: str
     query: str
     conversation_id: str
+    summary: bool
 
 class MemoryOutput(BaseModel):
     user_id: str
@@ -49,11 +50,11 @@ class AgentManager:
         self.LLM = OpenAI()
         self.memory = None
         self.verbose = True
-        self.load()
         # Create an instance of MemorySummarizer
         self.memory_summarizer = MemorySummarizer(agent_manager=self)
         self.memory_summarizer.start()
         self.stop_event = threading.Event()
+        self.load()
 
     def stop(self):
         self.memory_summarizer.stop()
@@ -118,7 +119,7 @@ class AgentManager:
             #client.create_payload_index(collection_name, "metadata.importance", field_schema=PayloadSchemaType.INTEGER)
             #client.create_payload_index(collection_name, self.payload_lastaccessed_index_key, field_schema=PayloadSchemaType.FLOAT)
         except:
-            print("AgentManager: loaded from disk...")
+            print("AgentManager: loaded from cloud...")
         finally:
             logging.info(f"AgentManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
@@ -134,6 +135,7 @@ class AgentManager:
         return GenerativeAgentMemory(
             llm=self.LLM,
             memory_retriever=self.create_new_memory_retriever(),
+            memory_summarizer=self.memory_summarizer,
             verbose=self.verbose
         )
 
@@ -150,10 +152,18 @@ class AgentManager:
         start = time.time()
         response = None
         try:
-            response = self.memory.load_memory_variables(
-                queries=[memory_input.query], 
-                conversation_id=memory_input.conversation_id
-            )
+            # look up from summary or semantically
+            if memory_input.summary:
+                if len(memory_input.conversation_id) <= 0:
+                    logging.warn(f"AgentManager: pull_memory asked for summary but no conversation_id provided!")
+                    end = time.time()
+                    return None, end - start
+                response = self.memory_summarizer.load_memory_variables(conversation_id=memory_input.conversation_id)
+            else: 
+                response = self.memory.load_memory_variables(
+                    queries=[memory_input.query], 
+                    conversation_id=memory_input.conversation_id
+                )
         except Exception as e:
             logging.warn(f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")
         finally:

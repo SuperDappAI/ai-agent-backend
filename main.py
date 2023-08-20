@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Form
 import json
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
-from web_manager import WebManager, HTMLInput, CacheHTML, FunctionOverwrite
+from web_manager import WebManager, HTMLInput, CacheHTML
+from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager1, FunctionInput
 from queryplan_manager import QueryPlanManager
 
@@ -32,19 +33,19 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True, level=logging.INFO)
 
 
-functions_manager1 = None
+functions_manager = None
 agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
-
+doc_manager = DocManager()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     print("Application shutdown")
     agent_manager.stop()
     web_manager.stop()
-    if functions_manager1 is not None:
-        functions_manager1.stop()
+    if functions_manager is not None:
+        functions_manager.stop()
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
@@ -75,7 +76,6 @@ async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     memories, elapsed_time = agent_manager.pull_memory(memory_input)
     return {'response': memories, 'elapsed_time': elapsed_time}
 
-
 @app.post('/semantic_search_html/')
 async def semanticSearchHTML(function_input: HTMLInput):
     """Endpoint to conduct a semantic search in HTML content."""
@@ -83,45 +83,43 @@ async def semanticSearchHTML(function_input: HTMLInput):
     results, elapsed_time = await web_manager.search_html(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
-
 @app.post('/is_html_search_cached/')
 async def isHTMLSearchCached(cache_html: CacheHTML):
-    """Endpoint to conduct a semantic search in HTML content."""
+    """Endpoint to check if HTML content is cached."""
     logging.info('Checking if HTML results are cached')
     result, elapsed_time = web_manager.does_hash_exist(cache_html)
     return {'response': result, 'elapsed_time': elapsed_time}
 
+@app.post('/add_doc/')
+async def addDoc(function_input: DocAddInput):
+    """Endpoint to conduct add HTML document for doc portal."""
+    logging.info('add to Doc Portal')
+    results, elapsed_time = await doc_manager.add_doc(function_input)
+    return {'response': results, 'elapsed_time': elapsed_time}
+
+@app.post('/is_doc_cached/')
+async def isDocCached(cache_html: CacheDoc):
+    """Endpoint to check if doc content is cached."""
+    logging.info('Checking if doc is cached')
+    result, elapsed_time = doc_manager.does_source_exist(cache_html)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/search_doc/')
+async def semanticSearchDoc(function_input: DocSearchInput):
+    """Endpoint to conduct a semantic search in doc portal."""
+    logging.info('Semantic search Doc Portal')
+    results, elapsed_time = await doc_manager.search_doc(function_input)
+    return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/get_functions/')
 async def getFunctions(function_input: FunctionInput):
     """Endpoint to get functions based on provided input."""
-    global functions_manager1  # Declare functions_manager1 as global
-    if functions_manager1 is None:
-        functions_manager1 = FunctionsManager1()
-        await functions_manager1.load()
+    global functions_manager  # Declare functions_manager as global
+    if functions_manager is None:
+        functions_manager = FunctionsManager1()
+        await functions_manager.load()
     logging.info(f'Processing Action Item: {function_input.action_items}')
-    result, elapsed_time = await functions_manager1.pull_functions(function_input)
-    return {'response': result, 'elapsed_time': elapsed_time}
-
-@app.post('/overwrite_functions/')
-async def overwriteFunctions(function_overwrite: FunctionOverwrite):
-    """Endpoint to overwrite functions."""
-    global functions_manager1  # Declare functions_manager1 as global
-    if functions_manager1 is None:
-        functions_manager1 = FunctionsManager1()
-        await functions_manager1.load()
-    logging.info('Overwriting functions')
-    with open('utils/functions.json', 'w') as f:
-        f.write(function_overwrite.value)
-    with open('utils/functions.json', 'r') as f:
-        function_overwrite.value = json.load(f)
-
-    if function_overwrite.value is None or function_overwrite.value['information_retrieval'] is None:
-        return {'Reverted': True}
-
-    result, elapsed_time = await functions_manager1.push_functions(function_overwrite.value)
-    logging.info('Overwrote functions')
-
+    result, elapsed_time = await functions_manager.pull_functions(function_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/clear_conversation/')

@@ -127,7 +127,7 @@ class FunctionsManager1:
                           'data_processing',
                           'sensory_perception']
 
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-0613")
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
         tokens = []
         for func_type in function_types:
             if func_type in functions:
@@ -165,6 +165,7 @@ class FunctionsManager1:
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
+                    # update last_accessed_at
                     ids = [doc.metadata["id"] for doc in documents]
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
@@ -178,7 +179,9 @@ class FunctionsManager1:
             return response, end-start
 
     def get_retrieved_nodes(self, query_str: str, category: str):
-        kwargs = {"extra_index": category}
+        kwargs = {}
+        if len(category) > 0:
+            kwargs = {"extra_index": category}
         return self.retriever.get_relevant_documents(query_str, **kwargs)
 
     async def load(self):
@@ -234,13 +237,13 @@ class FunctionsManager1:
         """Prune functions that haven't been used for atleast six weeks."""
         def attempt_prune():
             current_time = datetime.now()
-            one_hour_ago = current_time - timedelta(weeks=6)
+            six_weeks_ago = current_time - timedelta(weeks=6)
             if self.retriever is None:
                 loop = asyncio.new_event_loop()  
                 asyncio.set_event_loop(loop)  
                 loop.run_until_complete(self.load())  
                 loop.close()
-            self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+            self.retriever.base_retriever.prune_from(six_weeks_ago.timestamp())
 
         try:
             attempt_prune()
