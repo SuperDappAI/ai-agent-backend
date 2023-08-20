@@ -128,27 +128,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             docs.append(document)
         return docs
 
-    def get_documents_for_tree_summarization(self) -> List[Document]:
-        """Return documents that are relevant to summarize."""
-        filter = rest.Filter(
-            must=[
-                rest.FieldCondition(
-                    key="metadata.summarizations", 
-                    range=rest.Range(gte=self._max_summarizations, lt=100), 
-                )
-            ]
-        )
-        results, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 5000)
-        docs = []
-        for record in results:
-            document = self.vectorstore._document_from_scored_point(
-                record, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
-            )
-
-            docs.append(document)
-
-        return docs
-
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs
     ) -> List[Document]:
@@ -163,9 +142,10 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         # Ensure frequently accessed memories aren't forgotten
         for doc, _ in rescored_docs:
             doc.metadata["last_accessed_at"] = current_time
-            if 'summarizations' in doc.metadata:
-                if doc.metadata['summarizations'] == 100:
-                    doc.metadata['summarizations'] = 0
+            # Decrement the summarizations count
+            if 'summarizations' in doc.metadata and doc.metadata['summarizations'] > 0:
+                doc.metadata['summarizations'] -= 1
+
         # Sort by score and extract just the documents
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
@@ -193,8 +173,27 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 )
             ]
         )
-        results = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
-        return results is not None and len(results[0]) > 0
+        results, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+        return results is not None and len(results) > 0
+
+    def get_key_value_document(self, key, value) -> Document:
+        """Get the key value from vectordb via scrolling."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key=key, 
+                    match=rest.MatchValue(value=value), 
+                )
+            ]
+        )
+        record, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+        if record is not None and len(record) > 0:
+            return self.vectorstore._document_from_scored_point(
+                record[0], self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
+            )
+        else:
+            return None
+         
 
     def prune_from(self, fromTime: float):
         """Prune points that are older than fromTime timestamp."""
@@ -208,13 +207,14 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         )
         self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
 
-    def delete_documents(self, documents: List[Document]) -> None:
-        """Delete the documents that have been summarized from the given Qdrant collection."""
-        
-        # Extract IDs of the documents to be deleted
-        points_to_delete = [doc.metadata["id"] for doc in documents]
-        
-        # Use the Qdrant client to delete the documents by their IDs
-        self.client.delete(collection_name=self.collection_name,
-                        points_selector=rest.PointIdsList(points=points_to_delete), wait=True)
-
+    def delete_max_summarized(self):
+        """Prune points that have been summarized more than _max_summarizations times."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="metadata.summarized", 
+                    range=rest.Range(gt=self._max_summarizations), 
+                )
+            ]
+        )
+        self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)

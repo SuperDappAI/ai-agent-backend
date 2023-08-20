@@ -14,6 +14,7 @@ from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
 from qdrant_client.http import models as rest
+from memory_summarizer import MemorySummarizer
 
 logger = logging.getLogger(__name__)
     
@@ -24,6 +25,8 @@ class GenerativeAgentMemory(BaseMemory):
     """The core language model."""
     memory_retriever: ContextualCompressionRetriever
     """The retriever to fetch related memories."""
+    memory_summarizer: MemorySummarizer
+    """Memory summarizer to be used when adding core memories."""
     verbose: bool = False
 
     def chain(self, prompt: PromptTemplate) -> LLMChain:
@@ -123,7 +126,6 @@ class GenerativeAgentMemory(BaseMemory):
                 )
             documents.append(doc)
             ids.append(metadata["id"])
-        
         return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
     async def add_memory(
@@ -157,7 +159,7 @@ class GenerativeAgentMemory(BaseMemory):
             with mock_now(current_time):
                 return self.memory_retriever.get_relevant_documents(topic)
         else:
-            if conversation_id is not "":
+            if conversation_id != "":
                 kwargs.update({"filter": rest.Filter(
                     must=[
                         rest.FieldCondition(
@@ -201,9 +203,6 @@ class GenerativeAgentMemory(BaseMemory):
             formatted_memories.append(f"({memory_type}, importance: {importance}, summarizations: {summarizations_count}, from: {created_ago}, conversation_id: {conversation_id}) {mem.page_content}")
         return "; ".join(formatted_memories)
 
-    def format_qa_simple(self, qa: List[object]) -> str:
-        return "; ".join(mem for mem in qa)
-
     @property
     def memory_variables(self) -> List[str]:
         """Input keys this memory class will load dynamically."""
@@ -216,6 +215,7 @@ class GenerativeAgentMemory(BaseMemory):
             relevant_memories = [
                 mem for query in queries for mem in self.fetch_memories(query, **kwargs)
             ]
+            # update last_accessed_at/summarizations
             ids = [doc.metadata["id"] for doc in relevant_memories]
             for doc in relevant_memories:
                 doc.metadata.pop('relevance_score', None)
@@ -235,9 +235,11 @@ class GenerativeAgentMemory(BaseMemory):
         user_id = outputs.get("user_id")
         if query:
             qa = {"user": query, "me": aida}
+            await self.memory_summarizer.retriever.save_context(outputs)
             return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []
 
     def clear(self, conversation_id) -> None:
         """Clear memory contents."""
         self.memory_retriever.base_retriever.clear_using_extra_index(conversation_id)
+        self.memory_summarizer.retriever.clear(conversation_id)

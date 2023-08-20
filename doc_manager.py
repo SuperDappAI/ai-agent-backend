@@ -62,7 +62,7 @@ class DocManager:
             )
             client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
         except:
-            logging.info("DocManager: loaded from disk...")
+            logging.info("DocManager: loaded from cloud...")
         finally:
             logging.info(f"DocManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
@@ -137,6 +137,7 @@ class DocManager:
         try:
             nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
+            # update last_accessed_at
             if len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:

@@ -3,10 +3,10 @@ import datetime
 import schedule
 import threading
 import os
-import asyncio
 import random
 import logging
 import traceback
+import asyncio
 
 from dotenv import load_dotenv
 from llama_index.langchain_helpers.text_splitter import SentenceSplitter
@@ -74,7 +74,7 @@ class WebManager:
             )
             client.create_payload_index(collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
         except:
-            logging.info("WebManager: loaded from disk...")
+            logging.info("WebManager: loaded from cloud...")
         finally:
             logging.info(f"WebManager: Creating memory store with collection {collection_name}")
             vectorstore = Qdrant(client, collection_name, self.embeddings)
@@ -152,6 +152,7 @@ class WebManager:
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
             nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
+            # update last_accessed_at
             if len(function_input.action_items) == 0 and len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:

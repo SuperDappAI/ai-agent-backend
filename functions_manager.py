@@ -165,6 +165,7 @@ class FunctionsManager1:
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
+                    # update last_accessed_at
                     ids = [doc.metadata["id"] for doc in documents]
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
