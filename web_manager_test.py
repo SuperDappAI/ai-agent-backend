@@ -15,7 +15,6 @@ class TestWebManager(unittest.TestCase):
         wm = WebManager()
 
         mock_load_dotenv.assert_called_once()
-        mock_getenv.assert_called_once_with("OPENAI_API_KEY")
         mock_thread.assert_called()
         wm.stop()
 

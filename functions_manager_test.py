@@ -1,9 +1,9 @@
 import unittest
 import json
 from unittest.mock import patch, MagicMock
-from functions_manager import FunctionsManager1, ActionItem, FunctionInput
+from functions_manager import FunctionsManager, ActionItem, FunctionInput
 
-class TestFunctionsManager1(unittest.TestCase):
+class TestFunctionsManager(unittest.TestCase):
     @patch("functions_manager.schedule")
     @patch("functions_manager.load_dotenv")
     @patch("functions_manager.threading.Thread")
@@ -18,12 +18,10 @@ class TestFunctionsManager1(unittest.TestCase):
         mock_llm_rerank.return_value = MagicMock()
         mock_service_context.from_defaults.return_value = MagicMock()
 
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
 
         # Assert that environment is loaded
         mock_load_dotenv.assert_called_once()
-        # Assert that getenv is called
-        mock_getenv.assert_any_call("OPENAI_API_KEY")
         # Assert that scheduler is set up correctly
         mock_schedule.every.assert_called_once_with(300)
         mock_schedule.every.return_value.to.assert_called_once_with(600)
@@ -36,18 +34,18 @@ class TestFunctionsManager1(unittest.TestCase):
     @patch('memory_manager.time.sleep')
     def test_run_continuously(self, mock_sleep, mock_run_pending):
         mock_sleep.side_effect = lambda *args: exit(0)
-        functions_manager = FunctionsManager1()
+        functions_manager = FunctionsManager()
 
         try:
             functions_manager.run_continuously()
         except SystemExit:
             pass
-        #functions_manager.release_locks()  # Assuming the FunctionsManager1 class has a method to release locks
+        #functions_manager.release_locks()  # Assuming the FunctionsManager class has a method to release locks
         mock_run_pending.assert_called()
 
 
     def test_transform(self):
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
         data = [{"name": "test_name", "description": "test_description"}]
         result = fm.transform(data, "test_category")
         expected_result = [{"name": "test_name", "description": "test_description", "category": "test_category"}]
@@ -64,7 +62,7 @@ class TestFunctionsManager1(unittest.TestCase):
             'data_processing': [{'name': 'function3', 'description': 'description3'}],
             'sensory_perception': [{'name': 'function4', 'description': 'description4'}]
         }
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
         for idx, func_type in enumerate(functions):
             result = fm.push_functions({func_type: functions[func_type]})
             expected_result = [{f"function{idx+1}": 14}]
@@ -83,7 +81,7 @@ class TestFunctionsManager1(unittest.TestCase):
         mock_llm_rerank.return_value = MagicMock()
         mock_index.as_query_engine.return_value = MagicMock()
 
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
         result = fm.load()
         if result:
             # If load is successful, these functions should be called
@@ -101,14 +99,14 @@ class TestFunctionsManager1(unittest.TestCase):
         mock_encoding_for_model.return_value = MagicMock()
         mock_encoding_for_model.return_value.encode.side_effect = ['token1', 'token2', 'token3']
         functions = {'information_retrieval': [{'name': 'function1', 'description': 'description1'}]}
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
         result = fm.count_tokens(functions)
         expected_result = [{'function1': 6}]
         self.assertEqual(result, expected_result)
         fm.stop()
 
     def test_save(self):
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
         fm.index = MagicMock()  # Mock the entire index object
         fm.dirty = True  # Set dirty attribute to True
 
@@ -121,7 +119,7 @@ class TestFunctionsManager1(unittest.TestCase):
         fm.stop()
 
     def test_pull_functions(self):
-        fm = FunctionsManager1()
+        fm = FunctionsManager()
         fm.query_engine = MagicMock()
 
         # create FunctionInput instance

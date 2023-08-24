@@ -40,7 +40,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         return self.chain(prompt).run(existing_summary=existing_summary, new_text=new_text)
 
     async def add_memories(
-        self, qa: List[str], user_id: str, conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
+        self, qa: List[str], conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observations or memories to the agent's memory."""
         documents = []
@@ -53,7 +53,6 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
                 "id":  random.randint(0, 2**32 - 1),
                 "extra_index": conversation_id,
                 "created_at": nowStamp,
-                "group_id": user_id,
             }
             doc = Document(
                 page_content=qa[i],
@@ -70,7 +69,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
     # add into global memory as well with learnings that can apply into AiDAs personality (traits, mood, feelings) and goals/subgoals
     # as well as users personality and goals (what AiDA thinks of the user and the goals/subgoals)  
     async def add_memory(
-        self, memory_content: str, user_id: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
+        self, memory_content: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observation or memory to the agent's memory."""
         if memory_type != MemoryType.CONSCIOUS_MEMORY or importance == "low":
@@ -80,7 +79,6 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             "id": random.randint(0, 2**32 - 1),
             "extra_index": conversation_id,
             "created_at": nowStamp,
-            "group_id": user_id,
         }
         document = Document(
             page_content=memory_content, 
@@ -103,9 +101,8 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         now = datetime.now()
         importance = outputs.get("importance")
         conversation_id = outputs.get("conversation_id")
-        user_id = outputs.get("user_id")
         if query:
-            return await self.add_memory(aida, user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
+            return await self.add_memory(aida,  conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []
     
     def get_conversation(
@@ -146,7 +143,3 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         # Extracting the extra_index (conversation_id)
         conversation_id = conversation_summary.metadata.get("extra_index", "N/A")
         return f"(created: {created_ago}, conversation_id: {conversation_id}) {conversation_summary.page_content}"
-
-    def clear(self, conversation_id) -> None:
-        """Clear memory contents."""
-        self.memory_retriever.base_retriever.clear_using_extra_index(conversation_id)

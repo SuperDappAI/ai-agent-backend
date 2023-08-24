@@ -7,6 +7,7 @@ import random
 import logging
 import traceback
 import asyncio
+import cachetools.func
 
 from dotenv import load_dotenv
 from llama_index.langchain_helpers.text_splitter import SentenceSplitter
@@ -32,10 +33,19 @@ class CacheHTML(BaseModel):
     hash: str
 
 class HTMLInput(BaseModel):
+    api_key: str
     action_items: List[HTMLItem] = Field(..., example=[
                                          {"source_url": "http://example.com", "html_doc": "text1"}])
     hash: str
     query: str
+    def __str__(self):
+        return self.api_key + self.hash + self.query
+
+    def __eq__(self,other):
+        return self.api_key == other.api_key and self.hash == other.hash and self.query == other.query
+
+    def __hash__(self):
+        return hash(str(self))
 
 
 class WebManager:
@@ -43,45 +53,39 @@ class WebManager:
 
     def __init__(self):
         load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.embeddings = OpenAIEmbeddings()
-        
-        self.retriever = None
+        self.collection_name = "web"
+        self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.scheduler.every(3600).seconds.do(self.prune_web)
 
         # Create new thread for schedule
         self.stop_event = threading.Event()
         self.scheduler_thread = threading.Thread(target=self.run_continuously)
         self.scheduler_thread.start()
-        self.load()
 
-    def create_new_web_retriever(self):
+    def create_new_web_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
-        client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         # create collection if it doesn't exist (if it exists it will fall into finally)
-        collection_name = "web"
         try:
-            client.create_collection(
-                on_disk_payload=True,
-                collection_name=collection_name,
+            self.client.create_collection(
+                collection_name=self.collection_name,
                 vectors_config=rest.VectorParams(
                     size = 1536,
                     distance = rest.Distance.COSINE,
                 ),
             )
-            client.create_payload_index(collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
+            self.client.create_payload_index(self.collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
         except:
             logging.info("WebManager: loaded from cloud...")
         finally:
-            logging.info(f"WebManager: Creating memory store with collection {collection_name}")
-            vectorstore = Qdrant(client, collection_name, self.embeddings)
+            logging.info(f"WebManager: Creating memory store with collection {self.collection_name}")
+            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(openai_api_key=api_key))
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=collection_name, client=client, vectorstore=vectorstore,
+                    collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -111,7 +115,7 @@ class WebManager:
                 seen.add(key)
         return result
 
-    def get_retrieved_nodes(self, function_input: HTMLInput):
+    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: HTMLInput):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -120,15 +124,17 @@ class WebManager:
                 )
             ]
         )
-        result = self.retriever.get_relevant_documents(function_input.query, filter=filter)
+        result = memory.get_relevant_documents(function_input.query, filter=filter)
         return result
 
-    def load(self):
+    @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
+    def load(self, api_key: str):
         """Load existing index data from the filesystem."""
         start = time.time()
-        self.retriever = self.create_new_web_retriever()
+        memory = self.create_new_web_retriever(api_key)
         end = time.time()
         logging.info(f"WebManager: Load operation took {end - start} seconds")
+        return memory
 
     async def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
@@ -136,9 +142,10 @@ class WebManager:
         response = None
         nowStamp = datetime.now().timestamp()
         try:
+            memory = self.load(function_input.api_key)
             documents = []
             if len(function_input.action_items) > 0:
-                hashExist, _ = self.does_hash_exist(CacheHTML(hash=function_input.hash))
+                hashExist, _ = self.does_hash_exist(function_input.hash)
                 if hashExist:
                     function_input.action_items = []
             for item in function_input.action_items:
@@ -147,17 +154,17 @@ class WebManager:
                 documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
-                await self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+                await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
                 end = time.time()
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
-            nodes = self.get_retrieved_nodes(function_input)
+            nodes = self.get_retrieved_nodes(memory, function_input)
             response = self.extract_text_and_source_url(nodes)
             # update last_accessed_at
             if len(function_input.action_items) == 0 and len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
+                asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
         except Exception as e:
             logging.warn(f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
@@ -167,19 +174,35 @@ class WebManager:
             return response, end - start
 
     def prune_web(self):
-        """Prune cache that are older than an hour."""
+        """Prune points that are older than 4 hours."""
         current_time = datetime.now()
-        one_hour_ago = current_time - timedelta(hours=1)
-        self.retriever.base_retriever.prune_from(one_hour_ago.timestamp())
+        one_hour_ago = current_time - timedelta(hours=4)
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="metadata.last_accessed_at", 
+                    range=rest.Range(lte=one_hour_ago.timestamp()), 
+                )
+            ]
+        )
+        self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
 
-    def does_hash_exist(self, cache_html: CacheHTML):
+    def does_hash_exist(self, hash: str):
         start = time.time()
         try:
-            result = self.retriever.base_retriever.does_key_exist("metadata.hash_key", cache_html.hash)
+            filter = rest.Filter(
+                must=[
+                        rest.FieldCondition(
+                            key="metadata.hash_key", 
+                            match=rest.MatchValue(value=hash), 
+                        )
+                    ]
+            )
+            result, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
         except Exception as e:
             logging.warn(f"WebManager: does_hash_exist exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
         logging.info(
             f"WebManager: does_hash_exist operation took {end - start} seconds")
-        return result, end - start
+        return result is not None and len(result) > 0, end - start

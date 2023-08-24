@@ -24,3 +24,4 @@ schedule
 qdrant-client
 apscheduler
 nltk
+cachetools

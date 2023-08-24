@@ -1,20 +1,26 @@
 import time
 import logging
-import os
-from dotenv import load_dotenv
-from langchain.schema import SystemMessage, ChatMessage
-from langchain.chat_models import ChatOpenAI
 import re
 
+from langchain.schema import SystemMessage, ChatMessage
+from langchain.chat_models import ChatOpenAI
+from pydantic import BaseModel
+
+class QueryPlanInput(BaseModel):
+    api_key: str
+    query: str
+
+    def __str__(self):
+        return self.api_key + self.query
+
+    def __eq__(self,other):
+        return self.api_key == other.api_key and self.query == other.query
+
+    def __hash__(self):
+        return hash(str(self))
 
 class QueryPlanManager:
     def __init__(self):
-        load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")
-
-        # gpt-4
-        self.llm = ChatOpenAI(model='gpt-4', temperature=0)
-
         self.system_message = SystemMessage(content="Let's first understand the problem and devise a plan to solve the problem."
                                             " Please output the plan starting with the header 'Plan:' "
                                             "and then followed by a numbered list of steps. "
@@ -28,11 +34,11 @@ class QueryPlanManager:
         steps = [v for v in re.split("\n\s*\d+\. ", text)[1:]]
         return steps
 
-    def query_plan(self, query):
+    def query_plan(self, query_input: QueryPlanInput):
         start = time.time()
-
+        self.llm = ChatOpenAI(model='gpt-4', temperature=0, openai_api_key=query_input.api_key)
         messages = [self.system_message, ChatMessage(
-            content=str(query), role="user")]
+            content=str(query_input.query), role="user")]
         response = self.llm(messages)
         logging.info(response.content)
         end = time.time()

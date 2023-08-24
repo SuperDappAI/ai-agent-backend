@@ -1,14 +1,12 @@
 import time
 import logging
 import os
-import random
-import threading
 import asyncio
 import json
 import traceback
+import cachetools.func
 
 from dotenv import load_dotenv
-from datetime import datetime
 from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
@@ -21,14 +19,29 @@ from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from memory_summarizer import MemorySummarizer
 from pydantic import BaseModel
+from document_summarizer import FlexibleDocumentSummarizer
+from langchain.chat_models import ChatOpenAI
+from langchain.schema import Document
+from datetime import datetime, timedelta
+from typing import Any, Dict
 
 class MemoryInput(BaseModel):
+    api_key: str
     user_id: str
     query: str
     conversation_id: str
     summary: bool
+    def __str__(self):
+        return self.api_key + str(self.summary) + self.user_id + self.query + self.conversation_id
+
+    def __eq__(self,other):
+        return self.api_key == other.api_key and self.user_id == other.user_id and self.query == other.query and self.conversation_id == other.conversation_id and self.summary == other.summary
+
+    def __hash__(self):
+        return hash(str(self))
 
 class MemoryOutput(BaseModel):
+    api_key: str
     user_id: str
     query: str
     llm_response: str
@@ -38,59 +51,27 @@ class MemoryOutput(BaseModel):
 class ClearMemory(BaseModel):
     user_id: str
     conversation_id: str
-
+    
 class AgentManager:
     def __init__(self):
         load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.embeddings = OpenAIEmbeddings()
-        self.LLM = OpenAI()
-        self.memory = None
+        self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.verbose = True
-        # Create an instance of MemorySummarizer
-        self.memory_summarizer = MemorySummarizer(agent_manager=self)
-        self.memory_summarizer.start()
-        self.stop_event = threading.Event()
-        self.load()
 
-    def stop(self):
-        self.memory_summarizer.stop()
-        self.stop_event.set() # Signal to all threads to stop
-
-    async def save_and_reflect_if_important(self, memory_output: MemoryOutput):
-        if memory_output.importance == "high":
-            logging.info(f"memory importance {memory_output.importance}, queuing to reflect...")
-            asyncio.create_task(self.pause_to_reflect(memory_output))
-
-    async def pause_to_reflect(self, memory_output: MemoryOutput):
-        delay = random.randint(5, 300) # Delay in seconds, between 5 seconds and 5 minutes
-        await self._pause_to_reflect(memory_output, delay)
-
-    async def _pause_to_reflect(self, memory_output: MemoryOutput, delay):
-        start_time = time.time()
-        while time.time() - start_time < delay:
-            if self.stop_event.is_set():
-                logging.info("AgentManager: _pause_to_reflect was interrupted")
-                return
-            await asyncio.sleep(1) # Sleep for short periods and check again
-        start = time.time()
-        try:
-            await self.memory.pause_to_reflect(json.dumps({"user": memory_output.query, "me": memory_output.llm_response}), memory_output.user_id, memory_output.conversation_id, now=datetime.now())
-        finally:
-            end = time.time()
-            logging.info(f"AgentManager: _pause_to_reflect operation took {end - start} seconds")
-
-            
     async def push_memory(self, memory_output: MemoryOutput):
         """Add new memory to the current index for a specific user."""
         start = time.time()
+        memory = self.load(memory_output.api_key, memory_output.user_id)
         try:
-            # This will start executing the function but not await its completion
-            asyncio.create_task(self.memory.save_context(memory_output.dict()))
-            asyncio.create_task(self.save_and_reflect_if_important(memory_output))
+            if memory_output.importance == "high":
+                asyncio.create_task(memory.pause_to_reflect(json.dumps({"user": memory_output.query, "me": memory_output.llm_response}), memory_output.conversation_id))
+            # this will save to user memory and also incrementally summarize memory in seperate summary collection
+            asyncio.create_task(memory.save_context(memory_output.dict()))
+            # decay memory by summarizing it continiously until max_summarizations then prune
+            asyncio.create_task(memory.decay(memory_output))
         except Exception as e:
             logging.warn(f"AgentManager: push_memory exception {e}\n{traceback.format_exc()}")
         finally:
@@ -98,55 +79,112 @@ class AgentManager:
             logging.info(f"AgentManager: push_memory operation took {end - start} seconds")
             return end - start
 
-    def create_new_memory_retriever(self):
+    def create_new_memory_retriever(self, api_key: str, user_id: str):
         """Create a new vector store retriever unique to the agent."""
-        collection_name = "aida_memory"
-        client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        collection_name = user_id
         # create collection if it doesn't exist (if it exists it will fall into finally)
         try:
-            client.create_collection(
-                on_disk_payload=True,
+            self.client.create_collection(
                 collection_name=collection_name,
                 vectors_config=rest.VectorParams(
                     size=1536,
                     distance=rest.Distance.COSINE,
                 ),
             )
-            # only used in reflection which isn't time critical so keep the index out for now unless reflection is very slow
-            #client.create_payload_index(collection_name, self.payload_groupid_index_key, field_schema=PayloadSchemaType.KEYWORD)
-            client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
-            # ditto for summarizer
-            #client.create_payload_index(collection_name, "metadata.importance", field_schema=PayloadSchemaType.INTEGER)
-            #client.create_payload_index(collection_name, self.payload_lastaccessed_index_key, field_schema=PayloadSchemaType.FLOAT)
+            self.client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
         except:
             print("AgentManager: loaded from cloud...")
         finally:
             logging.info(f"AgentManager: Creating memory store with collection {collection_name}")
-            vectorstore = Qdrant(client, collection_name, self.embeddings)
+            vectorstore = Qdrant(self.client, collection_name, OpenAIEmbeddings(openai_api_key=api_key))
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=collection_name, client=client, vectorstore=vectorstore,
+                    collection_name=collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
 
-    def create_memory(self):
+    def create_memory(self, api_key: str, user_id: str):
         return GenerativeAgentMemory(
-            llm=self.LLM,
-            memory_retriever=self.create_new_memory_retriever(),
-            memory_summarizer=self.memory_summarizer,
+            llm=OpenAI(openai_api_key=api_key),
+            memory_retriever=self.create_new_memory_retriever(api_key, user_id),
+            memory_summarizer=MemorySummarizer(flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose
         )
 
-    def load(self):
+    @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
+    def load(self, api_key: str, user_id: str) -> GenerativeAgentMemory:
         """Load existing index data from the filesystem for a specific user."""
         start = time.time()
-        self.memory = self.create_memory()
+        memory = self.create_memory(api_key, user_id)
         end = time.time()
         logging.info(
             f"AgentManager: Load operation took {end - start} seconds")
+        return memory
 
+    def _document_from_scored_point(
+        cls,
+        scored_point: Any,
+        content_payload_key: str,
+        metadata_payload_key: str,
+    ) -> Document:
+        return Document(
+            page_content=scored_point.payload.get(content_payload_key),
+            metadata=scored_point.payload.get(metadata_payload_key) or {},
+        )
+
+    def get_key_value_document(self, collection_name, key, value) -> Document:
+        """Get the key value from vectordb via scrolling."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key=key, 
+                    match=rest.MatchValue(value=value), 
+                )
+            ]
+        )
+        record, _ = self.client.scroll(collection_name=collection_name, scroll_filter=filter, limit = 1)
+        if record is not None and len(record) > 0:
+            return self._document_from_scored_point(
+                record[0], "page_content", "metadata"
+            )
+        else:
+            return None
+    
+    def load_summary(self, memory_input: MemoryInput) -> Dict[str, str]:
+        return {
+            "relevant_summary": self.format_summary_simple(self.get_key_value_document(f"{memory_input.user_id}_summaries", "extra_index", memory_input.conversation_id)),
+        }
+
+    def load_memory(self, memory_input: MemoryInput):
+        memory = self.load(memory_input.api_key, memory_input.user_id)
+        return memory.load_memory_variables(
+            queries=[memory_input.query], 
+            conversation_id=memory_input.conversation_id
+        )
+    
+    def _time_ago(self, timestamp: float) -> str:
+        """Return a rough string representation of the time passed since a timestamp."""
+        delta = datetime.now() - datetime.fromtimestamp(timestamp)
+        if delta < timedelta(minutes=1):
+            return "just now"
+        elif delta < timedelta(hours=1):
+            return f"{int(delta.total_seconds() / 60)} minutes ago"
+        elif delta < timedelta(days=1):
+            return f"{int(delta.total_seconds() / 3600)} hours ago"
+        else:
+            return f"{int(delta.total_seconds() / 86400)} days ago"
+
+    def format_summary_simple(self, conversation_summary: Document) -> str:
+        now = datetime.now().timestamp()
+        created_at = conversation_summary.metadata.get("created_at", now)
+        created_ago = self._time_ago(created_at)
+        
+        # Extracting the extra_index (conversation_id)
+        conversation_id = conversation_summary.metadata.get("extra_index", "N/A")
+        return f"(created: {created_ago}, conversation_id: {conversation_id}) {conversation_summary.page_content}"
+  
     def pull_memory(self, memory_input: MemoryInput):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
@@ -158,12 +196,9 @@ class AgentManager:
                     logging.warn(f"AgentManager: pull_memory asked for summary but no conversation_id provided!")
                     end = time.time()
                     return None, end - start
-                response = self.memory_summarizer.load_memory_variables(conversation_id=memory_input.conversation_id)
+                response = self.load_summary(memory_input)
             else: 
-                response = self.memory.load_memory_variables(
-                    queries=[memory_input.query], 
-                    conversation_id=memory_input.conversation_id
-                )
+                response = self.load_memory(memory_input)
         except Exception as e:
             logging.warn(f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")
         finally:
@@ -172,11 +207,24 @@ class AgentManager:
                 f"AgentManager: pull_memory operation took {end - start} seconds")
             return response, end - start
 
+    def clear_collection_with_extra_index(self, collection_name, extra_index) -> None:
+        """Clear memory contents."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="metadata.extra_index", 
+                    match=rest.MatchValue(value=extra_index), 
+                )
+            ]
+        )
+        self.client.delete(collection_name=collection_name, points_selector=filter, wait = False)
+
     def clear_conversation(self, clear_memory: ClearMemory):
         """Delete all memories for a specific conversation with a user."""
         start = time.time()
         try:
-            self.memory.clear(clear_memory.conversation_id)
+            self.clear_collection_with_extra_index(clear_memory.user_id, clear_memory.conversation_id)
+            self.clear_collection_with_extra_index(f"{clear_memory.user_id}_summaries", clear_memory.conversation_id)
         except Exception as e:
             logging.warn(f"AgentManager: clear_conversation exception {e}\n{traceback.format_exc()}")
         finally:

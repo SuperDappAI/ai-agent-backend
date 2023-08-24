@@ -28,18 +28,18 @@ class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
 
         # Call add_memory method
         memory_content = "sample memory"
-        result = self.loop.run_until_complete(self.agent_memory.add_memory(memory_content, user_id, conversation_id, importance, memory_type, now=timestamp))
+        result = self.loop.run_until_complete(self.agent_memory.add_memory(memory_content, conversation_id, importance, memory_type, now=timestamp))
         self.assertIsNotNone(result)
 
         # Call add_memories method
         qa_list = ["question 1", "answer 1"]
         importance_list = ["high", "high"]
         memory_types_list = [MemoryType.CONSCIOUS_MEMORY, MemoryType.CONSCIOUS_MEMORY]
-        result = self.loop.run_until_complete(self.agent_memory.add_memories(qa_list, user_id, conversation_id, importance_list, memory_types_list, now=timestamp))
+        result = self.loop.run_until_complete(self.agent_memory.add_memories(qa_list, conversation_id, importance_list, memory_types_list, now=timestamp))
         self.assertIsNotNone(result)
 
         # Call save_context method
-        result = self.loop.run_until_complete(self.agent_memory.save_context({"query": "sample query", "llm_response": "sample response", "importance": "high", "conversation_id": conversation_id, "user_id": user_id}))
+        result = self.loop.run_until_complete(self.agent_memory.save_context({"query": "sample query", "llm_response": "sample response", "importance": "high", "conversation_id": conversation_id}))
         self.assertIsNotNone(result)
 
         # Call get_conversation method

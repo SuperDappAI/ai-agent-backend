@@ -3,6 +3,7 @@ import re
 import json
 import random
 import asyncio
+import traceback
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -39,7 +40,7 @@ class GenerativeAgentMemory(BaseMemory):
         lines = [line for line in lines if line.strip()]  # remove empty lines
         return [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in lines]
 
-    def _get_topics_of_reflection(self, memory_content: str, user_id: str, conversation: str) -> [List[Document], List[str]]:
+    def _get_topics_of_reflection(self, memory_content: str, conversation: str) -> [List[Document], List[str]]:
         """Return the 3 most salient high-level questions about recent observations."""
         prompt = PromptTemplate.from_template(
             "{observations}\n\n"
@@ -49,7 +50,7 @@ class GenerativeAgentMemory(BaseMemory):
         )
         # get last important memories to get reflections on them
         kwargs = {}
-        observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, user_id, conversation, **kwargs)
+        observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, conversation, **kwargs)
         if len(observationsDocuments) > 0:
             observation_str = "\n".join(
                 [self._format_memory_detail(o) for o in observationsDocuments]
@@ -86,24 +87,25 @@ class GenerativeAgentMemory(BaseMemory):
         )
         return self._parse_list(result)
 
-    async def pause_to_reflect(self, memory_content: str, user_id: str, conversation: str, now: Optional[datetime] = None) -> List[str]:
+    async def pause_to_reflect(self, memory_content: str, conversation_id: str) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
         if self.verbose:
             logger.info("AiDA is reflecting")
         new_insights = []
-        observationDocuments, topics = self._get_topics_of_reflection(memory_content, user_id, conversation)
+        now=datetime.now()
+        observationDocuments, topics = self._get_topics_of_reflection(memory_content, conversation_id)
         if len(observationDocuments) > 0 and len(topics) > 0:
-            insights = self._get_insights_on_topics(topics, observationDocuments, conversation=conversation, now=now)
+            insights = self._get_insights_on_topics(topics, observationDocuments, conversation=conversation_id, now=now)
             if len(insights) > 0:
                 qa = {"my_reflections": topics, "my_insights": insights}
                 # ensure we are dealing with non-core memories because reflections are sub-conscious thoughts
-                await self.add_memory(memory_content=json.dumps(qa), user_id=user_id, conversation_id=conversation, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
+                await self.add_memory(memory_content=json.dumps(qa), conversation_id=conversation_id, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
                 new_insights.extend(insights)
                 return new_insights
         return []
 
     async def add_memories(
-        self, qa: List[str], user_id: str, conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
+        self, qa: List[str], conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observations or memories to the agent's memory."""
         documents = []
@@ -117,7 +119,6 @@ class GenerativeAgentMemory(BaseMemory):
                 "importance": importance[i],
                 "last_accessed_at": nowStamp,
                 "summarizations": 0,
-                "group_id": user_id,
                 "memory_type": memory_types[i].value,
             }
             doc = Document(
@@ -129,7 +130,7 @@ class GenerativeAgentMemory(BaseMemory):
         return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
     async def add_memory(
-        self, memory_content: str, user_id: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
+        self, memory_content: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observation or memory to the agent's memory."""
         nowStamp = now.timestamp()
@@ -140,7 +141,6 @@ class GenerativeAgentMemory(BaseMemory):
             "importance": importance, 
             "last_accessed_at": nowStamp,
             "summarizations": 0,
-            "group_id": user_id,
             "memory_type": memory_type.value,
         }
         document = Document(
@@ -233,13 +233,25 @@ class GenerativeAgentMemory(BaseMemory):
         importance = outputs.get("importance")
         conversation_id = outputs.get("conversation_id")
         user_id = outputs.get("user_id")
+        api_key = outputs.get("api_key")
         if query:
             qa = {"user": query, "me": aida}
-            await self.memory_summarizer.retriever.save_context(outputs)
-            return await self.add_memory(json.dumps(qa), user_id=user_id, conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
+            await self.memory_summarizer.save(api_key, user_id, outputs)
+            return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []
 
-    def clear(self, conversation_id) -> None:
-        """Clear memory contents."""
-        self.memory_retriever.base_retriever.clear_using_extra_index(conversation_id)
-        self.memory_summarizer.retriever.clear(conversation_id)
+
+    async def decay(self):
+        """Decay all old memories by summarizing based on importance and summarization count."""
+        try:
+            # Delete memories flagged as too old
+            self.memory_retriever.base_retriever.delete_max_summarized()
+            # Get the documents to summarize
+            documents = self.memory_retriever.base_retriever.get_documents_for_summarization()
+            if len(documents) > 0:
+                await self.memory_summarizer.asummarize(documents)
+                # upsert entire document set to qdrant against existing IDs (stored in metadata)
+                ids = [doc.metadata["id"] for doc in documents]
+                await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 
+        except Exception as e:
+            logging.warn(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")

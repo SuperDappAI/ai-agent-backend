@@ -33,7 +33,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
     _max_summarizations: int = int(20)
-    """How many summaries before we tree summaries and prune unused memories."""
+    """How many summaries before we prune unused memories."""
     
     class Config:
         """Configuration for this pydantic object."""
@@ -60,16 +60,12 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         return self.vectorstore.similarity_search_with_score(query, k=10, **kwargs)
 
     def get_relevant_documents_for_reflection(
-        self, query: str, user_id: str, conversation: str, **kwargs
+        self, query: str, conversation: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
         current_time = datetime.now()
         filter = rest.Filter(
             must=[
-                rest.FieldCondition(
-                    key="metadata.group_id", 
-                    match=rest.MatchValue(value=user_id), 
-                ),
                 rest.FieldCondition(
                     key="metadata.importance", 
                     match=rest.MatchValue(value="high"), 
@@ -81,8 +77,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         rescored_docs = []
         for doc, relevance in docs_and_scores:
             combined_score = self._get_combined_score(doc, relevance, conversation)
-            # Skip the document if it matches the given query, user_id, and conversation
-            if doc.page_content == query and doc.metadata["group_id"] == user_id and doc.metadata["extra_index"] == conversation:
+            # Skip the document if it matches the given query, and conversation
+            if doc.page_content == query and doc.metadata["extra_index"] == conversation:
                 continue  # Skip to the next iteration
             rescored_docs.append((doc, combined_score))
         rescored_docs.sort(key=lambda x: x[1], reverse=True)
@@ -150,62 +146,6 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
         return sorted_docs
-
-    def clear_using_extra_index(self, extra_index) -> None:
-        """Clear memory contents."""
-        filter = rest.Filter(
-            must=[
-                rest.FieldCondition(
-                    key="metadata.extra_index", 
-                    match=rest.MatchValue(value=extra_index), 
-                )
-            ]
-        )
-        self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
-
-    def does_key_exist(self, key, value):
-        """Does the hash of the web content exist in our cache?."""
-        filter = rest.Filter(
-            must=[
-                rest.FieldCondition(
-                    key=key, 
-                    match=rest.MatchValue(value=value), 
-                )
-            ]
-        )
-        results, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
-        return results is not None and len(results) > 0
-
-    def get_key_value_document(self, key, value) -> Document:
-        """Get the key value from vectordb via scrolling."""
-        filter = rest.Filter(
-            must=[
-                rest.FieldCondition(
-                    key=key, 
-                    match=rest.MatchValue(value=value), 
-                )
-            ]
-        )
-        record, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
-        if record is not None and len(record) > 0:
-            return self.vectorstore._document_from_scored_point(
-                record[0], self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
-            )
-        else:
-            return None
-         
-
-    def prune_from(self, fromTime: float):
-        """Prune points that are older than fromTime timestamp."""
-        filter = rest.Filter(
-            must=[
-                rest.FieldCondition(
-                    key="metadata.last_accessed_at", 
-                    range=rest.Range(lte=fromTime), 
-                )
-            ]
-        )
-        self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
 
     def delete_max_summarized(self):
         """Prune points that have been summarized more than _max_summarizations times."""
