@@ -255,3 +255,6 @@ class GenerativeAgentMemory(BaseMemory):
                 await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 
         except Exception as e:
             logging.warn(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")
+            
+    def clear(self) -> None:
+        return

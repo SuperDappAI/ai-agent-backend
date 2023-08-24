@@ -71,7 +71,7 @@ class AgentManager:
             # this will save to user memory and also incrementally summarize memory in seperate summary collection
             asyncio.create_task(memory.save_context(memory_output.dict()))
             # decay memory by summarizing it continiously until max_summarizations then prune
-            asyncio.create_task(memory.decay(memory_output))
+            asyncio.create_task(memory.decay())
         except Exception as e:
             logging.warn(f"AgentManager: push_memory exception {e}\n{traceback.format_exc()}")
         finally:
@@ -153,8 +153,12 @@ class AgentManager:
             return None
     
     def load_summary(self, memory_input: MemoryInput) -> Dict[str, str]:
+        doc = self.get_key_value_document(f"{memory_input.user_id}_summaries", "metadata.extra_index", memory_input.conversation_id)
+        ret = ""
+        if doc:
+            ret = self.format_summary_simple(doc)
         return {
-            "relevant_summary": self.format_summary_simple(self.get_key_value_document(f"{memory_input.user_id}_summaries", "extra_index", memory_input.conversation_id)),
+            "relevant_summary": ret,
         }
 
     def load_memory(self, memory_input: MemoryInput):

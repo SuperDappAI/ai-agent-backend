@@ -147,6 +147,24 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         # Return just the list of Documents
         return sorted_docs
 
+    def get_key_value_document(self, key, value) -> Document:
+        """Get the key value from vectordb via scrolling."""
+        filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key=key, 
+                    match=rest.MatchValue(value=value), 
+                )
+            ]
+        )
+        record, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+        if record is not None and len(record) > 0:
+            return self.vectorstore._document_from_scored_point(
+                record[0], self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
+            )
+        else:
+            return None
+
     def delete_max_summarized(self):
         """Prune points that have been summarized more than _max_summarizations times."""
         filter = rest.Filter(

@@ -127,6 +127,9 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
     def memory_variables(self) -> List[str]:
         """Input keys this memory class will load dynamically."""
         return []
+    
+    def clear(self) -> None:
+        return
 
     def load_memory_variables(self, **kwargs) -> Dict[str, str]:
         """Return key-value pairs given the text input to the chain."""

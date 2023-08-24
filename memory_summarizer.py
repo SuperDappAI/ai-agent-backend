@@ -17,16 +17,16 @@ from langchain.embeddings import OpenAIEmbeddings
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 from typing import Sequence
 from langchain.schema import Document
-from datetime import datetime, timedelta
 
 class MemorySummarizer:
     flexible_document_summarizer: FlexibleDocumentSummarizer
-    def __init__(self, agent_manager):
+    def __init__(self, flexible_document_summarizer, agent_manager):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.agent_manager = agent_manager
+        self.flexible_document_summarizer = flexible_document_summarizer
 
     def create_new_conversation_summarizer(self, api_key: str, user_id: str):
         """Create a new vector store retriever unique to the agent."""
@@ -58,7 +58,7 @@ class MemorySummarizer:
         return GenerativeAgentConversationSummarizedMemory(
             llm=ChatOpenAI(openai_api_key=api_key, temperature=0),
             memory_retriever=self.create_new_conversation_summarizer(api_key, user_id),
-            verbose=self.verbose
+            verbose=self.agent_manager.verbose
         )
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
@@ -72,7 +72,7 @@ class MemorySummarizer:
 
     async def save(self, api_key: str, user_id: str, outputs: Dict[str, Any]) -> List[str]:
         memory = self.load(api_key, user_id)
-        memory.save_context(outputs)
+        await memory.save_context(outputs)
 
     async def asummarize(self,  documents: Sequence[Document]) -> None:
         self.flexible_document_summarizer.asummarize(documents)
