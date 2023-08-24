@@ -11,6 +11,7 @@ from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cachetools import TTLCache, LRUCache
+from qdrant_client import QdrantClient
 
 # Load environment variables
 load_dotenv()
@@ -148,10 +149,13 @@ async def getFunctions(function_input: FunctionInput):
     global functions_manager  # Declare functions_manager as global
     if functions_manager is None:
         functions_manager = FunctionsManager()
-        with open('./utils/functions.json', 'r') as f:
-            print("FunctionsManager: Loading from functions.json")
-            functions_json = json.load(f)
-            await functions_manager.push_functions(function_input.api_key, functions_json)
+        try:
+            functions_manager.client.get_collection(functions_manager.collection_name)
+        except:
+            with open('./utils/functions.json', 'r') as f:
+                print("FunctionsManager: Loading from functions.json")
+                functions_json = json.load(f)
+                await functions_manager.push_functions(function_input.api_key, functions_json)
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
     functioncache[function_input] = result
