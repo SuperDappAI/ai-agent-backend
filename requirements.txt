@@ -1,4 +1,4 @@
-git+https://github.com/cohere-ai/cohere-python.git#egg=cohere
+cohere
 langchain
 openai
 pandas
