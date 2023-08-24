@@ -249,7 +249,7 @@ class GenerativeAgentMemory(BaseMemory):
             # Get the documents to summarize
             documents = self.memory_retriever.base_retriever.get_documents_for_summarization()
             if len(documents) > 0:
-                await self.memory_summarizer.asummarize(documents)
+                await self.memory_summarizer.flexible_document_summarizer.asummarize(documents)
                 # upsert entire document set to qdrant against existing IDs (stored in metadata)
                 ids = [doc.metadata["id"] for doc in documents]
                 await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 

@@ -15,8 +15,6 @@ from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.retrievers.document_compressors import CohereRerank
 from langchain.embeddings import OpenAIEmbeddings
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
-from typing import Sequence
-from langchain.schema import Document
 
 class MemorySummarizer:
     flexible_document_summarizer: FlexibleDocumentSummarizer
@@ -73,6 +71,3 @@ class MemorySummarizer:
     async def save(self, api_key: str, user_id: str, outputs: Dict[str, Any]) -> List[str]:
         memory = self.load(api_key, user_id)
         await memory.save_context(outputs)
-
-    async def asummarize(self,  documents: Sequence[Document]) -> None:
-        self.flexible_document_summarizer.asummarize(documents)
