@@ -50,6 +50,6 @@ class FlexibleDocumentSummarizer:
             if self._verbose:
                 logging.warn(f"FlexibleDocumentSummarizer: _get_single_summary exception on document: {document.id} e: {e}\n{traceback.format_exc()}")
 
-    async def aupdate_documents(self,  documents: Sequence[Document]) -> None:
+    async def asummarize(self,  documents: Sequence[Document]) -> None:
         tasks = [self._get_single_summary(document) for document in documents]
         await asyncio.gather(*tasks)

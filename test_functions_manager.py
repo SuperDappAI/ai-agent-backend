@@ -1,15 +1,15 @@
 import pytest
 import os
 from unittest.mock import MagicMock, patch
-from functions_manager import FunctionsManager1, ActionItem, FunctionInput 
+from functions_manager import FunctionsManager, ActionItem, FunctionInput 
 from dotenv import load_dotenv
 from langchain.schema import Document
 
-class TestFunctionsManager1:
+class TestFunctionsManager:
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
         load_dotenv()
-        self.functions_manager = FunctionsManager1()
+        self.functions_manager = FunctionsManager()
         yield
         self.functions_manager.stop()
 
@@ -68,7 +68,7 @@ class TestFunctionsManager1:
 
     @pytest.mark.asyncio
     async def test_load(self):
-        await self.functions_manager.load()
+        await self.functions_manager.load("")
 
         assert self.functions_manager.retriever is not None
 

@@ -43,11 +43,11 @@ class TestGenerativeAgentMemory(IsolatedAsyncioTestCase):
         self.assertEqual(result, [])
 
     async def test_pause_to_reflect(self):
-        result = await self.memory.pause_to_reflect('test memory', 'user', 'conversation', datetime.datetime.now())
+        result = await self.memory.pause_to_reflect('test memory', 'conversation', datetime.datetime.now())
         self.assertEqual(result, [])
 
     async def test_save_context(self):
-        await self.memory.save_context({'query': 'query', 'llm_response': 'llm_response', 'importance': 'high', 'conversation_id': 'conversation', 'user_id': 'user', 'now_key': datetime.datetime.now(), 'payload_conversation_key': 'test conversation'})
+        await self.memory.save_context({'query': 'query', 'llm_response': 'llm_response', 'importance': 'high', 'conversation_id': 'conversation', 'now_key': datetime.datetime.now(), 'payload_conversation_key': 'test conversation'})
         # There is no return value for this method, so we're just checking it runs without errors
 
     def test_clear(self):
