@@ -11,7 +11,7 @@ from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cachetools import TTLCache, LRUCache
-from qdrant_client import QdrantClient
+from personality_resolver import PersonalityResolver, JsonPatchData, QueryFieldsInput
 
 # Load environment variables
 load_dotenv()
@@ -45,6 +45,9 @@ searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 pullmemorycache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
+# Example Usage
+resolver = PersonalityResolver()
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -58,6 +61,27 @@ LOGFILE_PATH = os.path.join(os.path.dirname(
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True)
 
+@app.post('/update_personality/')
+async def updatePersonality(personality_input: JsonPatchData):
+    user_id = personality_input.user_id
+    logging.info(f'Updating personality for user {user_id}')
+    patch_operations = personality_input.json_patch_data  # This is already a list of JsonPatchOperation objects
+
+    # Convert the list of Pydantic objects to a list of dictionaries
+    patch_operations_list = [operation.dict() for operation in patch_operations]
+
+    response, elapsed_time = resolver.apply_patch(user_id, patch_operations_list)
+    return {'response': response, 'elapsed_time': elapsed_time}
+
+@app.post('/get_personality/')
+async def getPersonality(personality_query: QueryFieldsInput):
+    logging.info(f'Get personality for user {personality_query.user_id}')
+
+    # Convert Pydantic object to dictionary and extract paths
+    query_fields_dict = personality_query.dict()
+    paths_list = query_fields_dict["paths"]
+    response, elapsed_time = resolver.get_fields(personality_query.user_id, paths_list)
+    return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):

@@ -25,3 +25,5 @@ qdrant-client
 apscheduler
 nltk
 cachetools
+jsonpatch
+pymongo
