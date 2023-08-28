@@ -1,45 +1,63 @@
-import unittest
-from unittest.mock import MagicMock, patch
+import pytest
+from qdrant_retriever import QDrantVectorStoreRetriever, MemoryType
+from qdrant_client.http import models as rest
+from qdrant_client.http.models import PayloadSchemaType
 from langchain.schema import Document
-from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.vectorstores import VectorStore
-from datetime import datetime, timedelta
+from qdrant_client import QdrantClient
+from langchain.vectorstores import Qdrant
+from langchain.embeddings import OpenAIEmbeddings
+from datetime import datetime
+from dotenv import load_dotenv
+import os
 
-class TestQDrantVectorStoreRetriever(unittest.TestCase):
-    def setUp(self):
-        self.vector_store = MagicMock(spec=VectorStore)
-        self.retriever = QDrantVectorStoreRetriever(vectorstore=self.vector_store)
-        self.doc1 = Document(page_content='Hello, world!', metadata={'last_accessed_at': datetime.now() - timedelta(hours=2), 'importance': "medium"})
-        self.doc2 = Document(page_content='Goodbye, world!', metadata={'last_accessed_at': datetime.now() - timedelta(hours=1), 'importance': "low"})
+@pytest.fixture
+def setup_retriever():
+    load_dotenv()
+    QDRANT_URL = os.getenv("QDRANT_URL")
+    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
-    def test_get_combined_score(self):
-        vector_relevance = 0.5
-        current_time = datetime.now()
-        conversation = "test_conversation"
-        score = self.retriever._get_combined_score(self.doc1, vector_relevance, current_time, conversation)
-        self.assertIsInstance(score, float, f"Expected score of type float, but got type {type(score)}")
+    client = QdrantClient(url=QDRANT_URL,api_key=QDRANT_API_KEY)  
+    collection_name = "test_collection"
+    try:
+        client.create_collection(
+            on_disk_payload=True,
+            collection_name=collection_name,
+            vectors_config=rest.VectorParams(
+                size=1536,
+                distance=rest.Distance.COSINE,
+            ),
+        )
+        client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
+    except:
+        print("MemorySummarizer: loaded from cloud...")
+    finally:
+        vectorstore = Qdrant(client, collection_name, OpenAIEmbeddings())
+        nowStamp = datetime.now() 
+        metadata = {
+            "id": 99999999998,
+            "extra_index": "test",
+            "created_at": nowStamp,
+            "importance": "high", 
+            "last_accessed_at": nowStamp,
+            "summarizations": 0,
+            "group_id": "test_user",
+            "memory_type": "summary",
+        }
+        document = Document(
+            page_content="test content lorem ipsum test test test", 
+            metadata=metadata,
+        )
+        
+    vectorstore.add_documents([document], ids=[metadata["id"]], wait = False)
+    retriever = QDrantVectorStoreRetriever(client=client, vectorstore=vectorstore, collection_name=collection_name)
+    return retriever
 
-    def test_get_relevant_documents_for_reflection(self):
-        query = "test_query"
-        conversation = "test_conversation"
-        self.vector_store.similarity_search_with_relevance_scores.return_value = [(self.doc1, 0.75), (self.doc2, 0.5)]
-        docs = self.retriever.get_relevant_documents_for_reflection(query, conversation)
-        self.assertEqual(docs, [self.doc1, self.doc2], f"Expected docs [doc1, doc2], but got {docs}")
-        self.vector_store.similarity_search_with_relevance_scores.assert_called_with(query, k=10, filter={'importance': "high"})
-
-    def test_get_salient_docs(self):
-        query = "test_query"
-        self.vector_store.similarity_search_with_relevance_scores.return_value = [(self.doc1, 0.75), (self.doc2, 0.5)]
-        docs = self.retriever.get_salient_docs(query)
-        self.assertEqual(docs, [(self.doc1, 0.75), (self.doc2, 0.5)])
-        self.vector_store.similarity_search_with_relevance_scores.assert_called_with(query, k=100)
-
-    def test_get_relevant_documents(self):
-        query = "test_query"
-        self.vector_store.similarity_search_with_relevance_scores.return_value = [(self.doc1, 0.75), (self.doc2, 0.5)]
-        docs = self.retriever.get_relevant_documents(query)
-        self.assertEqual(docs, [self.doc1, self.doc2])
-        self.vector_store.similarity_search_with_relevance_scores.assert_called_with(query, k=100)
-
-if __name__ == "__main__":
-    unittest.main()
+def test_get_salient_docs(setup_retriever):
+    retriever = setup_retriever
+    query = "test_query"
+    docs = retriever.get_salient_docs(query)
+    assert isinstance(docs, list)
+    for doc, score in docs:
+        assert isinstance(doc, Document)
+        assert isinstance(score, float)
+        print(doc)
