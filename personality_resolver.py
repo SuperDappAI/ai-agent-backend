@@ -2,6 +2,7 @@ import jsonpatch
 import time
 import logging
 import os
+import ssl
 
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
@@ -27,7 +28,7 @@ class PersonalityResolver:
         load_dotenv()  # Load environment variables
         mongopw = os.getenv("MONGODB_PW")
         uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
-        self.client = MongoClient(uri, server_api=ServerApi('1'))
+        self.client = MongoClient(uri, server_api=ServerApi('1'), ssl=True)
         # Send a ping to confirm a successful connection
         try:
             self.client.admin.command('ping')
