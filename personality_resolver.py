@@ -55,7 +55,7 @@ class PersonalityResolver:
         if doc is None:
             empty_user = {
                 "_id": user_id,
-                "Aida": {},
+                "AiDA": {},
                 "User": {}
             }
             self.collection.insert_one(empty_user)

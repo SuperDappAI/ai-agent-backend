@@ -1,3 +1,4 @@
+
 import pytest
 import os
 from unittest.mock import MagicMock, patch
@@ -12,13 +13,6 @@ class TestFunctionsManager:
         self.functions_manager = FunctionsManager()
         yield
         self.functions_manager.stop()
-
-    # @patch("qdrant_client.QdrantClient")  # replace 'your_code_file' with actual file name
-    # def test_create_new_functions_retriever(self, mock_qdrant_client):
-    #     was_created, compression_retriever = self.functions_manager.create_new_functions_retriever()
-        
-    #     assert isinstance(was_created, bool)
-    #     assert compression_retriever is not None
 
     def test_transform(self):
         data = [{"name": "test", "description": "test description"}]
@@ -56,10 +50,9 @@ class TestFunctionsManager:
 
     @pytest.mark.asyncio
     async def test_pull_functions(self):
-        function_input = FunctionInput(
+        function_input = FunctionInput(api_key=os.getenv("OPENAI_API_KEY"),
             action_items=[ActionItem(action="act", intent="int", category="cat")]
         )
-        self.functions_manager.get_retrieved_nodes = MagicMock(return_value=[])
         
         response, time_taken = await self.functions_manager.pull_functions(function_input)
         
@@ -68,9 +61,10 @@ class TestFunctionsManager:
 
     @pytest.mark.asyncio
     async def test_load(self):
-        await self.functions_manager.load("")
+        response = self.functions_manager.load(api_key=os.getenv("OPENAI_API_KEY"))
 
-        assert self.functions_manager.retriever is not None
+        assert response is not None
+        print(response) 
 
     def test_prune_functions(self):
         result = self.functions_manager.prune_functions()

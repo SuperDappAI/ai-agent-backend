@@ -4,10 +4,11 @@ from datetime import datetime
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory, MemoryType
 from langchain.llms.openai import OpenAI
 from agent_manager import AgentManager
+import os
 
 class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
     mock_llm = OpenAI() 
-    mock_retriever = AgentManager().create_new_memory_retriever()
+    mock_retriever = AgentManager().create_new_memory_retriever(api_key=os.getenv("OPENAI_API_KEY"), user_id="test1")
 
     @classmethod
     def setUpClass(cls):
@@ -46,8 +47,7 @@ class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
         result = self.agent_memory.get_conversation(conversation_id)
         self.assertIsNotNone(result)
 
-        # Call clear method
-        self.agent_memory.clear(conversation_id)        
+        self.agent_memory.clear()        
         
 if __name__ == '__main__':
     unittest.main()
