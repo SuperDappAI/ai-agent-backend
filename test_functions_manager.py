@@ -14,13 +14,6 @@ class TestFunctionsManager:
         yield
         self.functions_manager.stop()
 
-    # @patch("qdrant_client.QdrantClient")  # replace 'your_code_file' with actual file name
-    # def test_create_new_functions_retriever(self, mock_qdrant_client):
-    #     was_created, compression_retriever = self.functions_manager.create_new_functions_retriever()
-        
-    #     assert isinstance(was_created, bool)
-    #     assert compression_retriever is not None
-
     def test_transform(self):
         data = [{"name": "test", "description": "test description"}]
         category = "test_category"
