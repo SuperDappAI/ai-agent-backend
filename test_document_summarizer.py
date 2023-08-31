@@ -29,7 +29,7 @@ async def test_flexible_document_summarizer():
 
     # test for multiple documents with asummarize method
     documents = [mock_document] * 5  # replace the number with your need
-    await summarizer.flexible_document_summarizer.asummarize(documents)
+    await summarizer.asummarize(documents)
 
     # assertions
     assert mock_llm.agenerate.call_count == 6  # the method should have been called for each document
