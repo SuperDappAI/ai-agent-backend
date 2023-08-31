@@ -52,12 +52,31 @@ def setup_retriever():
     retriever = QDrantVectorStoreRetriever(client=client, vectorstore=vectorstore, collection_name=collection_name)
     return retriever
 
+# def test_get_salient_docs(setup_retriever):
+#     retriever = setup_retriever
+#     query = "test_query"
+#     docs = retriever.get_salient_docs(query)
+#     assert isinstance(docs, list)
+#     for doc, score in docs:
+#         assert isinstance(doc, Document)
+#         assert isinstance(score, float)
+#         print(doc)
+
 def test_get_salient_docs(setup_retriever):
     retriever = setup_retriever
     query = "test_query"
     docs = retriever.get_salient_docs(query)
+    
     assert isinstance(docs, list)
+    
+    assert len(docs) > 0
+
     for doc, score in docs:
         assert isinstance(doc, Document)
+        
+        assert hasattr(doc, 'page_content')
+        assert hasattr(doc, 'metadata')
+
         assert isinstance(score, float)
-        print(doc)
+        
+        assert 0.0 <= score <= 1.0
