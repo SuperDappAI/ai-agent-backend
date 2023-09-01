@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y software-properties-common
 
 RUN apt-get update \
     && apt -y upgrade \
-    && apt-get install -y curl nginx ca-certificates zip unzip git supervisor python3-pip ssl-cert\
+    && apt-get install -y curl nginx ca-certificates zip unzip git supervisor python3-pip ssl-cert telnet\
     && apt-get update \
     && apt-get -y autoremove \
     && apt-get clean \
