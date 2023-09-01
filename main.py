@@ -23,6 +23,8 @@ origins = [
     "http://localhost:5173",
     "http://localhost:8000",
     "https://python-api.chatdapp.dev",
+    "https://api.superdapp.test",
+    "https://api.chatdapp.dev",
 ]
 
 app = FastAPI()
