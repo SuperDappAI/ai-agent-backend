@@ -34,7 +34,7 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True, level=logging.INFO)
 
 
-functions_manager = None
+functions_manager = FunctionsManager()
 agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
@@ -48,13 +48,6 @@ doccache = LRUCache(maxsize=16384)
 # Example Usage
 resolver = PersonalityResolver()
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    print("Application shutdown")
-    web_manager.stop()
-    if functions_manager is not None:
-        functions_manager.stop()
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
@@ -170,16 +163,6 @@ async def getFunctions(function_input: FunctionInput):
     result = functioncache.get(function_input)
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
-    global functions_manager  # Declare functions_manager as global
-    if functions_manager is None:
-        functions_manager = FunctionsManager()
-        try:
-            functions_manager.client.get_collection(functions_manager.collection_name)
-        except:
-            with open('./utils/functions.json', 'r') as f:
-                print("FunctionsManager: Loading from functions.json")
-                functions_json = json.load(f)
-                await functions_manager.push_functions(function_input.api_key, functions_json)
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
     functioncache[function_input] = result

@@ -1,7 +1,5 @@
 import time
 import datetime
-import schedule
-import threading
 import os
 import random
 import logging
@@ -49,7 +47,6 @@ class HTMLInput(BaseModel):
 
 
 class WebManager:
-    scheduler = schedule.Scheduler()
 
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -58,12 +55,6 @@ class WebManager:
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.collection_name = "web"
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
-        self.scheduler.every(3600).seconds.do(self.prune_web)
-
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
 
     def create_new_web_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
@@ -89,18 +80,6 @@ class WebManager:
                 )
             )
             return compression_retriever
-            
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            self.scheduler.run_pending()
-            time.sleep(1)
-
-    def stop(self):
-        """Stops the scheduler thread."""
-        self.stop_event.set()
-        self.scheduler_thread.join()
 
     def extract_text_and_source_url(self, retrieved_nodes):
         result = []
@@ -141,6 +120,7 @@ class WebManager:
         start = time.time()
         response = None
         nowStamp = datetime.now().timestamp()
+        loop = asyncio.get_event_loop()
         try:
             memory = self.load(function_input.api_key)
             documents = []
@@ -165,6 +145,7 @@ class WebManager:
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
                 asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
+                loop.run_in_executor(None, self.prune_web)
         except Exception as e:
             logging.warn(f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
