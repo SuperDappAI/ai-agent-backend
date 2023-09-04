@@ -12,7 +12,6 @@ class TestFunctionsManager:
         load_dotenv()
         self.functions_manager = FunctionsManager()
         yield
-        self.functions_manager.stop()
 
     def test_transform(self):
         data = [{"name": "test", "description": "test description"}]
