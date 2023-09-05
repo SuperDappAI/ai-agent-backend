@@ -28,3 +28,4 @@ cachetools
 jsonpatch
 pymongo
 pytest
+pytest-asyncio
