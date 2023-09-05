@@ -27,3 +27,4 @@ jobs:
         run: pytest --asyncio-mode auto tests/ 
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
