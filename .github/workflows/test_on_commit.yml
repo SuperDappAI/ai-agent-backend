@@ -3,7 +3,7 @@ name: Run pytest on new commits
 on:
   push:
     branches:
-      - dev-disabled
+      - dev-test
 
 jobs:
   build:
@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout repository content
-        uses: actions/checkout@v2 # This step checks out a copy of your repository
+        uses: actions/checkout@v2 
 
       - name: Set up Python
-        uses: actions/setup-python@v2 # This step sets up a Python environment
+        uses: actions/setup-python@v2 
         with:
           python-version: 3.11 # You can specify the Python version you want here
 
@@ -24,6 +24,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run pytest
-        run: pytest --asyncio-mode auto tests/test_main.py # This step runs pytest on your tests directory
+        run: pytest --asyncio-mode auto tests/ 
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
