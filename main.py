@@ -1,6 +1,5 @@
 import os
 import logging
-import json
 
 
 from dotenv import load_dotenv
@@ -10,6 +9,7 @@ from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
+from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
 from personality_resolver import PersonalityResolver, JsonPatchData, QueryFieldsInput
 
@@ -28,6 +28,7 @@ origins = [
 ]
 
 app = FastAPI()
+app.include_router(interpreter_router, prefix="/interpreter")
 
 # Initialize logging
 LOGFILE_PATH = os.path.join(os.path.dirname(
@@ -177,9 +178,3 @@ async def clearUserMemory(clear_memory: ClearMemory):
         f'Clearing user memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
     response, elapsed_time = agent_manager.clear_conversation(clear_memory)
     return {'response': response, 'elapsed_time': elapsed_time}
-
-@app.get('/test_callback/')
-async def test_callback():
-    """Test callback endpoint."""
-    logging.info('Test callback')
-    return {'test': 'test'}
