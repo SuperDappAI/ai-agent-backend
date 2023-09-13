@@ -79,19 +79,13 @@ def create_table_if_not_exists(table_name, key_schema, attribute_definitions, re
 # Create the InvocationTable
 create_table_if_not_exists(
     'InvocationTable',
-    [
-        {'AttributeName': 'UserId', 'KeyType': 'HASH'},
-        {'AttributeName': 'InvocationId', 'KeyType': 'RANGE'}
-    ],
-    [
-        {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'InvocationId', 'AttributeType': 'S'}
-    ]
+    [{'AttributeName': 'UserId', 'KeyType': 'HASH'}],
+    [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
 )
 
 # Create the Users table
 create_table_if_not_exists(
-    'Users',
+    'UserMetrics',
     [{'AttributeName': 'UserId', 'KeyType': 'HASH'}],
     [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
 )
@@ -112,12 +106,8 @@ create_table_if_not_exists(
 # Create the AccessPoints table
 create_table_if_not_exists(
     'AccessPoints',
-    [
-        {'AttributeName': 'UserId', 'KeyType': 'HASH'}
-    ],
-    [
-        {'AttributeName': 'UserId', 'AttributeType': 'S'}
-    ]
+    [{'AttributeName': 'UserId', 'KeyType': 'HASH'}],
+    [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
 )
 
 # Function to create IAM role if it doesn't exist
@@ -300,7 +290,7 @@ import boto3
 dynamodb = boto3.resource('dynamodb')
 invocation_table = dynamodb.Table('FailureTable')
 
-def lambda_handler_success(event, context):
+def lambda_handler_failure(event, context):
     request_id = event['requestContext']['requestId']
     approximateInvokeCount = event['requestContext'].get('approximateInvokeCount', 1)  # Default to 1 if not provided
     payload = event.get('responsePayload', {})
@@ -437,7 +427,7 @@ def setup_efs_and_lambda(file_system_id, user_id):
 
 # Usage
 invocation_table = get_dynamodb_table('InvocationTable')
-user_metrics_table = get_dynamodb_table('Users')
+user_metrics_table = get_dynamodb_table('UserMetrics')
 lambda_table = get_dynamodb_table('Lambdas')
 ap_table = get_dynamodb_table('AccessPoints')
 
@@ -493,13 +483,17 @@ def validate_role(role_arn):
 # .NET Core: Assembly::Namespace.ClassName::Method (e.g., Assembly::ExampleNamespace.ExampleClass::ExampleMethod)
 # role: f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name} this is where you setup your resource access at runtime
 class CreateLambda(BaseModel):
+    # user_id is the one who is paying SUPR, we need someone responsible for paying otherwise if we use conversation_id (groups) then you 
+    # can end up in a situation where some people in the group are using more resources than others and not contributing to the cost.
+    # For that situation users can fork from the group by taking the creators context (AI + Cloud context), copying it working on his own
+    # and collaborating with tools like Git for coding to merge changes back to official group version.
     user_id: str
     conversation_id: str
-    runtime: str = None  # Make it optional
     handler: str
     s3_bucket: str
     s3_key: str
-    memory_size: int
+    runtime: str = None  # Make it optional
+    memory_size: int = None # Make it optional
     role: str = None  # Make it optional
 
 @router.post('/create_lambda')
@@ -518,12 +512,16 @@ async def create_lambda(createLambda: CreateLambda):
         # Determine the runtime
         runtime = createLambda.runtime if createLambda.runtime else 'python3.8'
         
+         # Determine the memory
+        memory_size = createLambda.memory_size if createLambda.memory_size else '128'
+        
+        
         # Create the Lambda function
         response_create = lambda_client.create_function(
             FunctionName=createLambda.s3_key,
             Runtime=runtime,
             Handler=createLambda.handler,
-            MemorySize=createLambda.memory_size,
+            MemorySize=memory_size,
             Role=role,
             Tags=createLambda.dict(),
             Code={
@@ -610,6 +608,86 @@ def clear_user_metrics(status: StatusUser):
             ReturnValues='UPDATED_NEW'
         )
         return {"response": response}
+    except Exception as e:
+        return {"error": str(e)}
+
+class DeleteLambdas(BaseModel):
+    user_id: str = None
+    conversation_id: str = None
+
+# delete all lambdas by user or user+conversation
+@router.post('/delete_lambdas')
+def delete_lambda(delete: DeleteLambdas):
+    try:
+        if delete.user_id is None and delete.conversation_id is None:
+            return {"error": "Either user_id or conversation_id must be provided."}
+
+        if delete.conversation_id:
+            if delete.user_id is None:
+                return {"error": "user_id must be provided when conversation_id is specified."}
+
+            last_evaluated_key = None
+            while True:
+                query_args = {
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('ConversationId').eq(delete.conversation_id)
+                }
+                if last_evaluated_key:
+                    query_args['ExclusiveStartKey'] = last_evaluated_key
+
+                response = lambda_table.query(**query_args)
+
+                for item in response['Items']:
+                    lambda_client.delete_function(FunctionName=item['FunctionId'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'ConversationId': item['ConversationId']})
+                    time.sleep(0.2)  # Simple rate-limiting
+
+                last_evaluated_key = response.get('LastEvaluatedKey')
+                if not last_evaluated_key:
+                    break
+
+        elif delete.user_id:
+            last_evaluated_key = None
+            while True:
+                query_args = {
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id)
+                }
+                if last_evaluated_key:
+                    query_args['ExclusiveStartKey'] = last_evaluated_key
+
+                response = lambda_table.query(**query_args)
+
+                for item in response['Items']:
+                    lambda_client.delete_function(FunctionName=item['FunctionId'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'ConversationId': item['ConversationId']})
+                    time.sleep(0.2)  # Simple rate-limiting
+
+                last_evaluated_key = response.get('LastEvaluatedKey')
+                if not last_evaluated_key:
+                    break
+
+            invocation_table.delete_item(Key={'UserId': delete.user_id})
+            user_metrics_table.delete_item(Key={'UserId': delete.user_id})
+
+            last_evaluated_key = None
+            while True:
+                query_args = {
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id)
+                }
+                if last_evaluated_key:
+                    query_args['ExclusiveStartKey'] = last_evaluated_key
+
+                response = ap_table.query(**query_args)
+
+                for item in response['Items']:
+                    efs_client.delete_access_point(AccessPointId=item['AccessPointId'])
+                    ap_table.delete_item(Key={'UserId': item['UserId']})
+                    time.sleep(0.2)  # Simple rate-limiting
+
+                last_evaluated_key = response.get('LastEvaluatedKey')
+                if not last_evaluated_key:
+                    break
+
+        return {"response": "Successfully deleted resources."}
     except Exception as e:
         return {"error": str(e)}
 
