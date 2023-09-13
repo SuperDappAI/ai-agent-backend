@@ -16,12 +16,13 @@ router = APIRouter()
 # Load environment variables
 load_dotenv()
 AWS_ACCOUNT_ID = os.getenv("AWS_ACCOUNT_ID")
-SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION")
 print(f"AWS_ACCOUNT_ID {AWS_ACCOUNT_ID}")
 # Initialize AWS SDK
 lambda_client = boto3.client('lambda')
 dynamodb = boto3.resource('dynamodb')
 iam = boto3.client('iam')
+
 # Function to create DynamoDB table if it doesn't exist
 def create_table_if_not_exists(table_name, key_schema, attribute_definitions, read_capacity=5, write_capacity=5):
     dynamodb_client = boto3.client('dynamodb')
@@ -101,10 +102,10 @@ def create_iam_role_if_not_exists(role_name, assume_role_policy_document, manage
     except Exception as e:
         print(f"An error occurred while creating the IAM role {role_name}: {e}")
 
-# Create 'code-interpreter' if it doesn't exist
-role_name = 'code-interpreter-role'
+
+executor_role_name = 'executor-role'
 create_iam_role_if_not_exists(
-    role_name,
+    executor_role_name,
     {
         'Version': '2012-10-17',
         'Statement': [{
@@ -114,10 +115,27 @@ create_iam_role_if_not_exists(
         }]
     },
     [
-       
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
     ]
 )
-
+admin_role_name = 'admin-role'
+create_iam_role_if_not_exists(
+    admin_role_name,
+    {
+        'Version': '2012-10-17',
+        'Statement': [{
+            'Action': 'sts:AssumeRole',
+            'Effect': 'Allow',
+            'Principal': {'Service': 'lambda.amazonaws.com'}
+        }]
+    },
+    [
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
+        'arn:aws:iam::aws:policy/AmazonS3FullAccess',
+        'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess',
+        'arn:aws:iam::aws:policy/AmazonSNSFullAccess',
+    ]
+)
 def create_and_attach_policy_if_needed(policy_name, policy_document, role_name):
     # List existing policies
     existing_policies = iam.list_policies(Scope='Local')['Policies']
@@ -159,7 +177,7 @@ def create_and_attach_policy_if_needed(policy_name, policy_document, role_name):
         print(f"An error occurred while attaching the policy {policy_name} to role {role_name}: {e}")
 
 # Define the permissions policy
-permissions_policy = {
+admin_permissions_policy = {
     "Version": "2012-10-17",
     "Statement": [
         {
@@ -173,31 +191,20 @@ permissions_policy = {
         }
     ]
 }
-create_and_attach_policy_if_needed('LambdaCreateAndPassRolePolicy', permissions_policy, role_name)
-# Define the role name and the new trust policy
-new_trust_policy = {
+executor_permissions_policy = {
     "Version": "2012-10-17",
     "Statement": [
         {
             "Effect": "Allow",
-            "Principal": {
-                "Service": "lambda.amazonaws.com"
-            },
-            "Action": "sts:AssumeRole"
+            "Action": [
+                "lambda:InvokeFunction",
+            ],
+            "Resource": "*"
         }
     ]
 }
-
-# Update the trust relationship
-try:
-    iam.update_assume_role_policy(
-        RoleName=role_name,
-        PolicyDocument=json.dumps(new_trust_policy)
-    )
-    print(f"Trust relationship updated successfully for role {role_name}.")
-except Exception as e:
-    print(f"An error occurred while updating the trust relationship for role {role_name}: {e}")
-    
+create_and_attach_policy_if_needed('LambdaExecutorPolicy', executor_permissions_policy, executor_role_name)
+create_and_attach_policy_if_needed('LambdaAdminPolicy', admin_permissions_policy, admin_role_name)
     
 success_code = '''
 import json
@@ -313,7 +320,7 @@ def create_lambda_function_if_not_exists(function_name, runtime, role, handler, 
 create_lambda_function_if_not_exists(
     'SuccessFunction',
     'python3.8',
-    f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{role_name}',
+    f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
     'lambda_handler_success',
     success_zip
 )
@@ -322,7 +329,7 @@ create_lambda_function_if_not_exists(
 create_lambda_function_if_not_exists(
     'FailFunction',
     'python3.8',
-    f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{role_name}',
+    f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
     'lambda_handler_fail',
     fail_zip
 )
@@ -361,24 +368,33 @@ fail_arn = get_function_arn('FailFunction')
 # Go: filename (The Go executable itself is the handler)
 # Ruby: filename.methodname (e.g., lambda_function.handler)
 # .NET Core: Assembly::Namespace.ClassName::Method (e.g., Assembly::ExampleNamespace.ExampleClass::ExampleMethod)
+# role: f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name} this is where you setup your resource access at runtime
 class CreateLambda(BaseModel):
     user_id: str
     conversation_id: str
-    runtime: str
+    runtime: str = None  # Make it optional
     handler: str
     s3_bucket: str
     s3_key: str
     memory_size: int
+    role: str = None  # Make it optional
 
 @router.post('/create_lambda')
 async def create_lambda(createLambda: CreateLambda):
     createLambda.start_time = time.perf_counter()
+    # pass in custom role or use default basic execution role
+    role = createLambda.role
+    if role is None:
+        role = f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
+    runtime = createLambda.runtime
+    if runtime is None:
+        runtime = 'python3.8'
     response_create = lambda_client.create_function(
         FunctionName=createLambda.s3_key,
-        Runtime=createLambda.runtime,
+        Runtime=runtime,
         Handler=createLambda.handler,
         MemorySize=createLambda.memory_size,
-        Role=f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{role_name}',
+        Role=role,
         Tags={
             createLambda.dict()
         },
