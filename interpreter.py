@@ -17,11 +17,42 @@ router = APIRouter()
 load_dotenv()
 AWS_ACCOUNT_ID = os.getenv("AWS_ACCOUNT_ID")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION")
-print(f"AWS_ACCOUNT_ID {AWS_ACCOUNT_ID}")
 # Initialize AWS SDK
 lambda_client = boto3.client('lambda')
 dynamodb = boto3.resource('dynamodb')
 iam = boto3.client('iam')
+efs_client = boto3.client('efs')
+
+def get_or_create_file_system(name):
+    # Describe all file systems
+    response = efs_client.describe_file_systems()
+    
+    # Check if the file system with the given name already exists
+    for file_system in response['FileSystems']:
+        if file_system['Name'] == name:
+            print(f"File system {name} already exists with ID: {file_system['FileSystemId']}")
+            return file_system['FileSystemId']
+    
+    # If it doesn't exist, create a new file system
+    print(f"Creating new file system with name: {name}")
+    response = efs_client.create_file_system(
+        CreationToken=name,  # Using name as a unique token
+        PerformanceMode='generalPurpose',
+        ThroughputMode='bursting',
+        Tags=[
+            {
+                'Key': 'Name',
+                'Value': name
+            },
+        ]
+    )
+    
+    file_system_id = response['FileSystemId']
+    print(f"Created new file system with ID: {file_system_id}")
+    return file_system_id
+
+# Usage
+file_system_id = get_or_create_file_system('SuperDappFS')
 
 # Function to create DynamoDB table if it doesn't exist
 def create_table_if_not_exists(table_name, key_schema, attribute_definitions, read_capacity=5, write_capacity=5):
@@ -54,7 +85,7 @@ create_table_if_not_exists(
     ],
     [
         {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'InvocationId', 'AttributeType': 'S'},
+        {'AttributeName': 'InvocationId', 'AttributeType': 'S'}
     ]
 )
 
@@ -70,11 +101,22 @@ create_table_if_not_exists(
     'Lambdas',
     [
         {'AttributeName': 'UserId', 'KeyType': 'HASH'},
-        {'AttributeName': 'ConversationId', 'KeyType': 'RANGE'},
+        {'AttributeName': 'ConversationId', 'KeyType': 'RANGE'}
     ],
     [
         {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'ConversationId', 'AttributeType': 'S'},
+        {'AttributeName': 'ConversationId', 'AttributeType': 'S'}
+    ]
+)
+
+# Create the AccessPoints table
+create_table_if_not_exists(
+    'AccessPoints',
+    [
+        {'AttributeName': 'UserId', 'KeyType': 'HASH'}
+    ],
+    [
+        {'AttributeName': 'UserId', 'AttributeType': 'S'}
     ]
 )
 
@@ -103,7 +145,7 @@ def create_iam_role_if_not_exists(role_name, assume_role_policy_document, manage
         print(f"An error occurred while creating the IAM role {role_name}: {e}")
 
 
-executor_role_name = 'executor-role'
+executor_role_name = 'interpreter-executor-role'
 create_iam_role_if_not_exists(
     executor_role_name,
     {
@@ -118,7 +160,7 @@ create_iam_role_if_not_exists(
         'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
     ]
 )
-admin_role_name = 'admin-role'
+admin_role_name = 'interpreter-admin-role'
 create_iam_role_if_not_exists(
     admin_role_name,
     {
@@ -198,6 +240,10 @@ executor_permissions_policy = {
             "Effect": "Allow",
             "Action": [
                 "lambda:InvokeFunction",
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientRead",
+                "elasticfilesystem:ClientRootAccess"
             ],
             "Resource": "*"
         }
@@ -215,12 +261,13 @@ invocation_table = dynamodb.Table('InvocationTable')
 
 def lambda_handler_success(event, context):
     request_id = event['requestContext']['requestId']
-    approximateInvokeCount = event['requestContext']['approximateInvokeCount']
+    approximateInvokeCount = event['requestContext'].get('approximateInvokeCount', 1)  # Default to 1 if not provided
     payload = event.get('responsePayload', {})
     conversation_id = event.get('conversation_id')
     user_id = event.get('user_id')
-    end_time = time.perf_counter()
-    elapsed_time_ms = (end_time - event.get('start_time')) * 1000
+    
+    remaining_time = context.get_remaining_time_in_millis()
+    elapsed_time = 900000 - remaining_time  # 15 minutes = 900,000 milliseconds
 
     # Write to DynamoDB
     invocation_table.put_item(
@@ -239,8 +286,8 @@ def lambda_handler_success(event, context):
         UpdateExpression='ADD InvocationCount :inc, TotalTimeSpent :time, TotalMemorySpent :memory',
         ExpressionAttributeValues={
             ':inc': approximateInvokeCount,
-            ':time': elapsed_time_ms,
-            ':memory': approximateInvokeCount*context.memory_limit_in_mb,    
+            ':time': elapsed_time,
+            ':memory': approximateInvokeCount * context.memory_limit_in_mb,
         },
         ReturnValues='UPDATED_NEW'
     )
@@ -253,14 +300,15 @@ import boto3
 dynamodb = boto3.resource('dynamodb')
 invocation_table = dynamodb.Table('FailureTable')
 
-def lambda_handler_fail(event, context):
+def lambda_handler_success(event, context):
     request_id = event['requestContext']['requestId']
-    approximateInvokeCount = event['requestContext']['approximateInvokeCount']
+    approximateInvokeCount = event['requestContext'].get('approximateInvokeCount', 1)  # Default to 1 if not provided
     payload = event.get('responsePayload', {})
     conversation_id = event.get('conversation_id')
     user_id = event.get('user_id')
-    end_time = time.perf_counter()
-    elapsed_time_ms = (end_time - event.get('start_time')) * 1000
+    
+    remaining_time = context.get_remaining_time_in_millis()
+    elapsed_time = 900000 - remaining_time  # 15 minutes = 900,000 milliseconds
 
     # Write to DynamoDB
     invocation_table.put_item(
@@ -279,8 +327,8 @@ def lambda_handler_fail(event, context):
         UpdateExpression='ADD InvocationCount :inc, TotalTimeSpent :time, TotalMemorySpent :memory',
         ExpressionAttributeValues={
             ':inc': approximateInvokeCount,
-            ':time': elapsed_time_ms,
-            ':memory': approximateInvokeCount*context.memory_limit_in_mb,    
+            ':time': elapsed_time,
+            ':memory': approximateInvokeCount * context.memory_limit_in_mb,
         },
         ReturnValues='UPDATED_NEW'
     )
@@ -318,7 +366,7 @@ def create_lambda_function_if_not_exists(function_name, runtime, role, handler, 
 
 # Create SuccessFunction if it doesn't exist
 create_lambda_function_if_not_exists(
-    'SuccessFunction',
+    'InterpreterSuccessFunction',
     'python3.8',
     f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
     'lambda_handler_success',
@@ -327,7 +375,7 @@ create_lambda_function_if_not_exists(
 
 # Create FailFunction if it doesn't exist
 create_lambda_function_if_not_exists(
-    'FailFunction',
+    'InterpreterFailFunction',
     'python3.8',
     f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
     'lambda_handler_fail',
@@ -338,18 +386,93 @@ def get_dynamodb_table(table_name):
     table = dynamodb.Table(table_name)
     return table
 
+def setup_efs_and_lambda(file_system_id, user_id):
+    # Function to check if an access point already exists in db
+    def check_access_point_exists(user_id):
+        response = ap_table.get_item(Key={'UserId': user_id})
+        if 'Item' in response:
+            return response['Item']
+        return None
+
+    # Check if the access point already exists
+    existing_access_point_id = check_access_point_exists(file_system_id, user_id)
+
+    # Create the access point if it doesn't exist
+    if existing_access_point_id is None:
+        efs_response = efs_client.create_access_point(
+            FileSystemId=file_system_id,
+            PosixUser={
+                'Uid': 1001,
+                'Gid': 1001
+            },
+            RootDirectory={
+                'Path': user_id,
+                'CreationInfo': {
+                    'OwnerUid': 1001,
+                    'OwnerGid': 1001,
+                    'Permissions': '755'
+                }
+            }
+        )
+        access_point_arn = efs_response['AccessPointArn']
+        # Update the Lambda function configuration to mount the EFS Access Point
+        lambda_response = lambda_client.update_function_configuration(
+            FunctionName=user_id,
+            FileSystemConfigs=[
+                {
+                    'Arn': access_point_arn,
+                    'LocalMountPath': '/mnt'
+                },
+            ]
+        )
+        ap_table.put_item(
+            Item={
+                'UserId': user_id,
+                'AccessPointId': existing_access_point_id,
+            }
+        )
+
+        print(f"EFS Access Point and Lambda function updated successfully. Access Point ARN: {access_point_arn}")
+
+
 # Usage
 invocation_table = get_dynamodb_table('InvocationTable')
 user_metrics_table = get_dynamodb_table('Users')
 lambda_table = get_dynamodb_table('Lambdas')
+ap_table = get_dynamodb_table('AccessPoints')
 
 def get_function_arn(function_name):
     response = lambda_client.get_function(FunctionName=function_name)
     return response['Configuration']['FunctionArn']
 
 # Usage
-success_arn = get_function_arn('SuccessFunction')
-fail_arn = get_function_arn('FailFunction')
+success_arn = get_function_arn('InterpreterSuccessFunction')
+fail_arn = get_function_arn('InterpreterFailFunction')
+
+def validate_role(role_arn):
+    role_name = role_arn.split('/')[-1]
+    
+    # Check trust relationship
+    trust_policy = iam.get_role(RoleName=role_name)['Role']['AssumeRolePolicyDocument']
+    has_lambda_service = any(
+        stmt['Action'] == 'sts:AssumeRole' and
+        stmt['Effect'] == 'Allow' and
+        stmt.get('Principal', {}).get('Service') == 'lambda.amazonaws.com'
+        for stmt in trust_policy.get('Statement', [])
+    )
+    
+    if not has_lambda_service:
+        raise ValueError("The role does not have the correct trust relationship.")
+    
+    # Check attached policies
+    attached_policies = iam.list_attached_role_policies(RoleName=role_name)['AttachedPolicies']
+    has_basic_execution = any(
+        policy['PolicyArn'] == 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        for policy in attached_policies
+    )
+    
+    if not has_basic_execution:
+        raise ValueError("The role does not have the AWSLambdaBasicExecutionRole policy attached.")
 
 # Execute Lambda function
 # Runtime:
@@ -381,50 +504,59 @@ class CreateLambda(BaseModel):
 
 @router.post('/create_lambda')
 async def create_lambda(createLambda: CreateLambda):
-    createLambda.start_time = time.perf_counter()
-    # pass in custom role or use default basic execution role
-    role = createLambda.role
-    if role is None:
-        role = f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
-    runtime = createLambda.runtime
-    if runtime is None:
-        runtime = 'python3.8'
-    response_create = lambda_client.create_function(
-        FunctionName=createLambda.s3_key,
-        Runtime=runtime,
-        Handler=createLambda.handler,
-        MemorySize=createLambda.memory_size,
-        Role=role,
-        Tags={
-            createLambda.dict()
-        },
-        Code={
-            'S3Bucket': createLambda.s3_bucket,
-            'S3Key': f'{createLambda.s3_key}.zip'
-        }
-    )
-    # Extract the ARN from the response
-    function_arn = response['FunctionArn']
+    try:
+        # If a custom role is provided, validate it
+        if createLambda.role:
+            validate_role(createLambda.role)
 
-    response = lambda_client.put_function_event_invoke_config(
-        FunctionName=function_arn,
-        DestinationConfig={
-            'OnSuccess': {
-                'Destination': success_arn
-            },
-            'OnFailure': {
-                'Destination': fail_arn
+        # Setup EFS and Lambda for the user
+        setup_efs_and_lambda(file_system_id, createLambda.user_id)
+        
+        # Determine the role
+        role = createLambda.role if createLambda.role else f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
+        
+        # Determine the runtime
+        runtime = createLambda.runtime if createLambda.runtime else 'python3.8'
+        
+        # Create the Lambda function
+        response_create = lambda_client.create_function(
+            FunctionName=createLambda.s3_key,
+            Runtime=runtime,
+            Handler=createLambda.handler,
+            MemorySize=createLambda.memory_size,
+            Role=role,
+            Tags=createLambda.dict(),
+            Code={
+                'S3Bucket': createLambda.s3_bucket,
+                'S3Key': f'{createLambda.s3_key}.zip'
             }
-        }
-    )
-    lambda_table.put_item(
-        Item={
-            'UserId': createLambda.user_id,
-            'FunctionId': createLambda.s3_key,
-            'ConversationId': createLambda.conversation_id,
-        }
-    )
-    return {"response": response_create}
+        )
+        
+        # Extract the ARN from the response
+        function_arn = response_create['FunctionArn']
+        
+        # Set the function's event invoke config
+        lambda_client.put_function_event_invoke_config(
+            FunctionName=function_arn,
+            DestinationConfig={
+                'OnSuccess': {'Destination': success_arn},
+                'OnFailure': {'Destination': fail_arn}
+            }
+        )
+        
+        # Store function metadata in DynamoDB
+        lambda_table.put_item(
+            Item={
+                'UserId': createLambda.user_id,
+                'FunctionId': createLambda.s3_key,
+                'ConversationId': createLambda.conversation_id,
+            }
+        )
+        
+        return {"response": response_create}
+    
+    except Exception as e:
+        return {"error": str(e)}
 
 class RunLambda(BaseModel):
     function_name: str
@@ -432,42 +564,54 @@ class RunLambda(BaseModel):
 
 @router.post('/run_lambda')
 def run_lambda(compute: RunLambda):
-    lambda_response = lambda_client.invoke(
-        FunctionName=compute.function_name,
-        InvocationType='Event',
-        Payload=json.dumps(compute.payload).encode('utf-8') 
-    )
-    return {"response": lambda_response}
+    try:
+        lambda_response = lambda_client.invoke(
+            FunctionName=compute.function_name,
+            InvocationType='Event',
+            Payload=json.dumps(compute.payload).encode('utf-8') 
+        )
+        return {"response": lambda_response}
+    except Exception as e:
+        return {"error": str(e)}
 
 class StatusLambda(BaseModel):
     user_id: str
 
 @router.post('/get_lambda_report')
 def get_lambda_status(status: StatusLambda):
-    response = invocation_table.get_item(Key={'UserId': status.user_id})
-    return {"response": response['Item']}
+    try:
+        response = invocation_table.get_item(Key={'UserId': status.user_id})
+        return {"response": response['Item']}
+    except Exception as e:
+        return {"error": str(e)}
 
 class StatusUser(BaseModel):
     user_id: str
 
 @router.post('/get_user_metrics')
 def get_user_metrics(status: StatusUser):
-    response = user_metrics_table.get_item(Key={'UserId': status.user_id})
-    return {"response": response['Item']}
+    try:
+        response = user_metrics_table.get_item(Key={'UserId': status.user_id})
+        return {"response": response['Item']}
+    except Exception as e:
+        return {"error": str(e)}
 
 @router.post('/clear_user_metrics')
 def clear_user_metrics(status: StatusUser):
-    response = user_metrics_table.update_item(
-        Key={
-            'UserId': status.user_id,
-        },
-        UpdateExpression='SET InvocationCount = :zero, TotalTimeSpent = :zero, TotalMemorySpent = :zero',
-        ExpressionAttributeValues={
-            ':zero': 0
-        },
-        ReturnValues='UPDATED_NEW'
-    )
-    return {"response": response}
+    try:
+        response = user_metrics_table.update_item(
+            Key={
+                'UserId': status.user_id,
+            },
+            UpdateExpression='SET InvocationCount = :zero, TotalTimeSpent = :zero, TotalMemorySpent = :zero',
+            ExpressionAttributeValues={
+                ':zero': 0
+            },
+            ReturnValues='UPDATED_NEW'
+        )
+        return {"response": response}
+    except Exception as e:
+        return {"error": str(e)}
 
 class FindLambda(BaseModel):
     user_id: str
@@ -475,12 +619,15 @@ class FindLambda(BaseModel):
 
 @router.post('/find_lambdas')
 def find_lambdas(finder: FindLambda):
-    query_params = {
-        'KeyConditionExpression': Key('UserId').eq(finder.user_id)
-    }
+    try:
+        query_params = {
+            'KeyConditionExpression': Key('UserId').eq(finder.user_id)
+        }
 
-    if finder.conversation_id:
-        query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('ConversationId').eq(finder.conversation_id)
+        if finder.conversation_id:
+            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('ConversationId').eq(finder.conversation_id)
 
-    response = lambda_table.query(**query_params)
-    return {"response": response['Items']}
+        response = lambda_table.query(**query_params)
+        return {"response": response['Items']}
+    except Exception as e:
+        return {"error": str(e)}
