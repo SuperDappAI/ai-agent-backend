@@ -8,8 +8,10 @@ import json
 import zipfile
 import io
 import time
+import pytz
 from fastapi import APIRouter
 from pydantic import BaseModel
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -17,12 +19,196 @@ router = APIRouter()
 load_dotenv()
 AWS_ACCOUNT_ID = os.getenv("AWS_ACCOUNT_ID")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION")
+executor_role_name = 'interpreter-executor-role'
+admin_role_name = 'interpreter-admin-role'
 # Initialize AWS SDK
 lambda_client = boto3.client('lambda')
 dynamodb = boto3.resource('dynamodb')
 iam = boto3.client('iam')
 efs_client = boto3.client('efs')
+sts_client = boto3.client("sts")
 
+credentials = None
+expiration = None
+def update_clients_with_credentials(creds):
+    global lambda_client, dynamodb, efs_client
+    lambda_client = boto3.client('lambda',  
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken']
+    )
+    dynamodb = boto3.resource('dynamodb',  
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken']
+    )
+    efs_client = boto3.client('efs',  
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken']
+    )
+
+def get_credentials():
+    global credentials, expiration
+
+    utc = pytz.UTC
+
+    # Convert current time to offset-aware datetime in UTC
+    current_time_utc = datetime.now().replace(tzinfo=utc)
+
+    # Check if credentials are None or expired
+    if credentials is None or current_time_utc >= expiration - timedelta(minutes=5):
+        # Assume the role
+        assumed_role_object = sts_client.assume_role(
+            RoleArn=f"arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}",
+            RoleSessionName="AssumeRoleSession"
+        )
+
+        # Extract temporary credentials and expiration time
+        credentials = assumed_role_object['Credentials']
+        expiration = credentials['Expiration']
+
+        # Convert expiration to offset-aware datetime in UTC
+        expiration = expiration.replace(tzinfo=utc)
+
+        # Update the global boto3 client objects
+        update_clients_with_credentials(credentials)
+
+
+# Function to create IAM role if it doesn't exist
+def create_iam_role_if_not_exists(role_name, assume_role_policy_document, managed_policies):
+    existing_roles = iam.list_roles()['Roles']
+    if any(role['RoleName'] == role_name for role in existing_roles):
+        print(f"IAM role {role_name} already exists.")
+        return
+
+    try:
+        iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=json.dumps(assume_role_policy_document)
+        )
+        print(f"IAM role {role_name} created successfully.")
+
+        # Attach the policies
+        for policy_arn in managed_policies:
+            iam.attach_role_policy(
+                RoleName=role_name,
+                PolicyArn=policy_arn
+            )
+        print(f"Policies attached to IAM role {role_name} successfully.")
+    except Exception as e:
+        print(f"An error occurred while creating the IAM role {role_name}: {e}")
+
+
+create_iam_role_if_not_exists(
+    executor_role_name,
+    {
+        'Version': '2012-10-17',
+        'Statement': [{
+            'Action': 'sts:AssumeRole',
+            'Effect': 'Allow',
+            'Principal': {'Service': 'lambda.amazonaws.com'}
+        }]
+    },
+    [
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    ]
+)
+create_iam_role_if_not_exists(
+    admin_role_name,
+    {
+        'Version': '2012-10-17',
+        'Statement': [{
+            'Action': 'sts:AssumeRole',
+            'Effect': 'Allow',
+            'Principal': {'Service': 'lambda.amazonaws.com'}
+        }]
+    },
+    [
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
+        'arn:aws:iam::aws:policy/AmazonS3FullAccess',
+        'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess',
+        'arn:aws:iam::aws:policy/AmazonSNSFullAccess',
+    ]
+)
+
+def create_and_attach_policy_if_needed(policy_name, policy_document, role_name):
+    # List existing policies
+    existing_policies = iam.list_policies(Scope='Local')['Policies']
+
+    # Check if the policy already exists
+    policy_arn = None
+    for policy in existing_policies:
+        if policy['PolicyName'] == policy_name:
+            policy_arn = policy['Arn']
+            print(f"Policy {policy_name} already exists.")
+            break
+
+    if policy_arn is None:
+        try:
+            # Create the policy
+            create_policy_response = iam.create_policy(
+                PolicyName=policy_name,
+                PolicyDocument=json.dumps(policy_document)
+            )
+            policy_arn = create_policy_response['Policy']['Arn']
+            print(f"Policy {policy_name} created successfully.")
+        except Exception as e:
+            print(f"An error occurred while creating the policy {policy_name}: {e}")
+
+    # Check if the policy is already attached to the role
+    attached_policies = iam.list_attached_role_policies(RoleName=role_name)['AttachedPolicies']
+    if any(attached_policy['PolicyName'] == policy_name for attached_policy in attached_policies):
+        print(f"Policy {policy_name} is already attached to role {role_name}.")
+        return
+
+    # Attach the policy to the role
+    try:
+        iam.attach_role_policy(
+            RoleName=role_name,
+            PolicyArn=policy_arn
+        )
+        print(f"Policy {policy_name} attached to role {role_name} successfully.")
+    except Exception as e:
+        print(f"An error occurred while attaching the policy {policy_name} to role {role_name}: {e}")
+
+# Define the permissions policy
+admin_permissions_policy = {
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "lambda:CreateFunction",
+                "lambda:InvokeFunction",
+                "iam:PassRole",
+                "elasticfilesystem:DescribeFileSystems",
+                "lambda:GetFunction"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+executor_permissions_policy = {
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "lambda:InvokeFunction",
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientRead",
+                "elasticfilesystem:ClientRootAccess"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+create_and_attach_policy_if_needed('LambdaExecutorPolicy', executor_permissions_policy, executor_role_name)
+create_and_attach_policy_if_needed('LambdaAdminPolicy', admin_permissions_policy, admin_role_name)
+
+get_credentials()
 def get_or_create_file_system(name):
     # Describe all file systems
     response = efs_client.describe_file_systems()
@@ -110,144 +296,13 @@ create_table_if_not_exists(
     [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
 )
 
-# Function to create IAM role if it doesn't exist
-def create_iam_role_if_not_exists(role_name, assume_role_policy_document, managed_policies):
-    existing_roles = iam.list_roles()['Roles']
-    if any(role['RoleName'] == role_name for role in existing_roles):
-        print(f"IAM role {role_name} already exists.")
-        return
-
-    try:
-        iam.create_role(
-            RoleName=role_name,
-            AssumeRolePolicyDocument=json.dumps(assume_role_policy_document)
-        )
-        print(f"IAM role {role_name} created successfully.")
-
-        # Attach the policies
-        for policy_arn in managed_policies:
-            iam.attach_role_policy(
-                RoleName=role_name,
-                PolicyArn=policy_arn
-            )
-        print(f"Policies attached to IAM role {role_name} successfully.")
-    except Exception as e:
-        print(f"An error occurred while creating the IAM role {role_name}: {e}")
-
-
-executor_role_name = 'interpreter-executor-role'
-create_iam_role_if_not_exists(
-    executor_role_name,
-    {
-        'Version': '2012-10-17',
-        'Statement': [{
-            'Action': 'sts:AssumeRole',
-            'Effect': 'Allow',
-            'Principal': {'Service': 'lambda.amazonaws.com'}
-        }]
-    },
-    [
-        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
-    ]
-)
-admin_role_name = 'interpreter-admin-role'
-create_iam_role_if_not_exists(
-    admin_role_name,
-    {
-        'Version': '2012-10-17',
-        'Statement': [{
-            'Action': 'sts:AssumeRole',
-            'Effect': 'Allow',
-            'Principal': {'Service': 'lambda.amazonaws.com'}
-        }]
-    },
-    [
-        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-        'arn:aws:iam::aws:policy/AmazonS3FullAccess',
-        'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess',
-        'arn:aws:iam::aws:policy/AmazonSNSFullAccess',
-    ]
-)
-def create_and_attach_policy_if_needed(policy_name, policy_document, role_name):
-    # List existing policies
-    existing_policies = iam.list_policies(Scope='Local')['Policies']
-
-    # Check if the policy already exists
-    policy_arn = None
-    for policy in existing_policies:
-        if policy['PolicyName'] == policy_name:
-            policy_arn = policy['Arn']
-            print(f"Policy {policy_name} already exists.")
-            break
-
-    if policy_arn is None:
-        try:
-            # Create the policy
-            create_policy_response = iam.create_policy(
-                PolicyName=policy_name,
-                PolicyDocument=json.dumps(policy_document)
-            )
-            policy_arn = create_policy_response['Policy']['Arn']
-            print(f"Policy {policy_name} created successfully.")
-        except Exception as e:
-            print(f"An error occurred while creating the policy {policy_name}: {e}")
-
-    # Check if the policy is already attached to the role
-    attached_policies = iam.list_attached_role_policies(RoleName=role_name)['AttachedPolicies']
-    if any(attached_policy['PolicyName'] == policy_name for attached_policy in attached_policies):
-        print(f"Policy {policy_name} is already attached to role {role_name}.")
-        return
-
-    # Attach the policy to the role
-    try:
-        iam.attach_role_policy(
-            RoleName=role_name,
-            PolicyArn=policy_arn
-        )
-        print(f"Policy {policy_name} attached to role {role_name} successfully.")
-    except Exception as e:
-        print(f"An error occurred while attaching the policy {policy_name} to role {role_name}: {e}")
-
-# Define the permissions policy
-admin_permissions_policy = {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "lambda:CreateFunction",
-                "lambda:InvokeFunction",
-                "iam:PassRole"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-executor_permissions_policy = {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "lambda:InvokeFunction",
-                "elasticfilesystem:ClientMount",
-                "elasticfilesystem:ClientWrite",
-                "elasticfilesystem:ClientRead",
-                "elasticfilesystem:ClientRootAccess"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-create_and_attach_policy_if_needed('LambdaExecutorPolicy', executor_permissions_policy, executor_role_name)
-create_and_attach_policy_if_needed('LambdaAdminPolicy', admin_permissions_policy, admin_role_name)
-    
 success_code = '''
 import json
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
 invocation_table = dynamodb.Table('InvocationTable')
+user_metrics_table = dynamodb.Table('UserMetrics')
 
 def lambda_handler_success(event, context):
     request_id = event['requestContext']['requestId']
@@ -288,7 +343,8 @@ import json
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
-invocation_table = dynamodb.Table('FailureTable')
+invocation_table = dynamodb.Table('InvocationTable')
+user_metrics_table = dynamodb.Table('UserMetrics')
 
 def lambda_handler_failure(event, context):
     request_id = event['requestContext']['requestId']
@@ -359,7 +415,7 @@ create_lambda_function_if_not_exists(
     'InterpreterSuccessFunction',
     'python3.8',
     f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
-    'lambda_handler_success',
+    'success_function.lambda_handler_success',
     success_zip
 )
 
@@ -368,7 +424,7 @@ create_lambda_function_if_not_exists(
     'InterpreterFailFunction',
     'python3.8',
     f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
-    'lambda_handler_fail',
+    'fail_function.lambda_handler_fail',
     fail_zip
 )
 
@@ -499,6 +555,7 @@ class CreateLambda(BaseModel):
 @router.post('/create_lambda')
 async def create_lambda(createLambda: CreateLambda):
     try:
+        get_credentials()
         # If a custom role is provided, validate it
         if createLambda.role:
             validate_role(createLambda.role)
@@ -563,6 +620,7 @@ class RunLambda(BaseModel):
 @router.post('/run_lambda')
 def run_lambda(compute: RunLambda):
     try:
+        get_credentials()
         lambda_response = lambda_client.invoke(
             FunctionName=compute.function_name,
             InvocationType='Event',
@@ -578,8 +636,10 @@ class StatusLambda(BaseModel):
 @router.post('/get_lambda_report')
 def get_lambda_status(status: StatusLambda):
     try:
+        get_credentials()
         response = invocation_table.get_item(Key={'UserId': status.user_id})
-        return {"response": response['Item']}
+        response = response['Item'] if 'Item' in response else "Not found"
+        return {"response": response}
     except Exception as e:
         return {"error": str(e)}
 
@@ -589,14 +649,17 @@ class StatusUser(BaseModel):
 @router.post('/get_user_metrics')
 def get_user_metrics(status: StatusUser):
     try:
+        get_credentials()
         response = user_metrics_table.get_item(Key={'UserId': status.user_id})
-        return {"response": response['Item']}
+        response = response['Item'] if 'Item' in response else "Not found"
+        return {"response": response}
     except Exception as e:
         return {"error": str(e)}
 
 @router.post('/clear_user_metrics')
 def clear_user_metrics(status: StatusUser):
     try:
+        get_credentials()
         response = user_metrics_table.update_item(
             Key={
                 'UserId': status.user_id,
@@ -619,6 +682,7 @@ class DeleteLambdas(BaseModel):
 @router.post('/delete_lambdas')
 def delete_lambda(delete: DeleteLambdas):
     try:
+        get_credentials()
         if delete.user_id is None and delete.conversation_id is None:
             return {"error": "Either user_id or conversation_id must be provided."}
 
@@ -686,7 +750,6 @@ def delete_lambda(delete: DeleteLambdas):
                 last_evaluated_key = response.get('LastEvaluatedKey')
                 if not last_evaluated_key:
                     break
-
         return {"response": "Successfully deleted resources."}
     except Exception as e:
         return {"error": str(e)}
@@ -698,6 +761,7 @@ class FindLambda(BaseModel):
 @router.post('/find_lambdas')
 def find_lambdas(finder: FindLambda):
     try:
+        get_credentials()
         query_params = {
             'KeyConditionExpression': Key('UserId').eq(finder.user_id)
         }
@@ -706,6 +770,7 @@ def find_lambdas(finder: FindLambda):
             query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('ConversationId').eq(finder.conversation_id)
 
         response = lambda_table.query(**query_params)
-        return {"response": response['Items']}
+        response = response['Item'] if 'Item' in response else "Not found"
+        return {"response": response}
     except Exception as e:
         return {"error": str(e)}
