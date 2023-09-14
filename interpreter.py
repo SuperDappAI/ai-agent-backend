@@ -390,11 +390,11 @@ create_table_if_not_exists(
     'Lambdas',
     [
         {'AttributeName': 'UserId', 'KeyType': 'HASH'},
-        {'AttributeName': 'FunctionId', 'KeyType': 'RANGE'}
+        {'AttributeName': 'S3Key', 'KeyType': 'RANGE'}
     ],
     [
         {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'FunctionId', 'AttributeType': 'S'}
+        {'AttributeName': 'S3Key', 'AttributeType': 'S'}
     ]
 )
 
@@ -417,14 +417,14 @@ with zipfile.ZipFile(fail_buffer, 'w') as z:
     z.write('fail_function.py')
 fail_zip = fail_buffer.getvalue()
 # Function to create Lambda function if it doesn't exist
-def create_lambda_function_if_not_exists(function_id, runtime, role, handler, zip_file):
+def create_lambda_function_if_not_exists(s3_key, runtime, role, handler, zip_file):
     try:
-        lambda_client.get_function(FunctionName=function_id)
-        print(f"Lambda function {function_id} already exists.")
+        lambda_client.get_function(FunctionName=s3_key)
+        print(f"Lambda function {s3_key} already exists.")
     except lambda_client.exceptions.ResourceNotFoundException:
         try:
             lambda_client.create_function(
-                FunctionName=function_id,
+                FunctionName=s3_key,
                 Runtime=runtime,
                 Role=role,
                 Handler=handler,
@@ -432,9 +432,9 @@ def create_lambda_function_if_not_exists(function_id, runtime, role, handler, zi
                     'ZipFile': zip_file
                 }
             )
-            print(f"Lambda function {function_id} created successfully.")
+            print(f"Lambda function {s3_key} created successfully.")
         except Exception as e:
-            print(f"An error occurred while creating the Lambda function {function_id}: {e}")
+            print(f"An error occurred while creating the Lambda function {s3_key}: {e}")
 
 # Create SuccessFunction if it doesn't exist
 create_lambda_function_if_not_exists(
@@ -543,8 +543,8 @@ user_metrics_table = get_dynamodb_table('UserMetrics')
 lambda_table = get_dynamodb_table('Lambdas')
 ap_table = get_dynamodb_table('AccessPoints')
 
-def get_function_arn(function_id):
-    response = lambda_client.get_function(FunctionName=function_id)
+def get_function_arn(s3_key):
+    response = lambda_client.get_function(FunctionName=s3_key)
     return response['Configuration']['FunctionArn']
 
 # Usage
@@ -665,7 +665,7 @@ async def create_lambda(createLambda: CreateLambda):
             }
         )
         
-        return {"response": {"ARN": function_arn, "FunctionId": createLambda.s3_key}}
+        return {"response": "success"}
     
     except Exception as e:
         return {"error": str(e)}
@@ -673,7 +673,7 @@ async def create_lambda(createLambda: CreateLambda):
 class RunLambda(BaseModel):
     user_id: str
     conversation_id: str
-    function_id: str
+    s3_key: str
     payload: dict = None
 
 @router.post('/run_lambda')
@@ -691,7 +691,7 @@ def run_lambda(compute: RunLambda):
             full_payload['payload'] = compute.payload
         
         lambda_response = lambda_client.invoke(
-            FunctionName=compute.function_id,
+            FunctionName=compute.s3_key,
             InvocationType='Event',
             Payload=json.dumps(full_payload).encode('utf-8') 
         )
@@ -759,24 +759,24 @@ def clear_user_metrics(status: StatusUser):
 
 class DeleteLambdas(BaseModel):
     user_id: str = None
-    function_id: str = None
+    s3_key: str = None
 
 # delete all lambdas by user or user+function
 @router.post('/delete_lambdas')
 def delete_lambda(delete: DeleteLambdas):
     try:
         get_credentials()
-        if delete.user_id is None and delete.function_id is None:
-            return {"error": "Either user_id or function_id must be provided."}
+        if delete.user_id is None and delete.s3_key is None:
+            return {"error": "Either user_id or s3_key must be provided."}
 
-        if delete.function_id:
+        if delete.s3_key:
             if delete.user_id is None:
-                return {"error": "user_id must be provided when function_id is specified."}
+                return {"error": "user_id must be provided when s3_key is specified."}
 
             last_evaluated_key = None
             while True:
                 query_args = {
-                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('FunctionId').eq(delete.function_id)
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('S3Key').eq(delete.s3_key)
                 }
                 if last_evaluated_key:
                     query_args['ExclusiveStartKey'] = last_evaluated_key
@@ -784,8 +784,8 @@ def delete_lambda(delete: DeleteLambdas):
                 response = lambda_table.query(**query_args)
 
                 for item in response['Items']:
-                    lambda_client.delete_function(FunctionName=item['FunctionId'])
-                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionId': item['FunctionId']})
+                    lambda_client.delete_function(FunctionName=item['S3Key'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'S3Key': item['S3Key']})
                     time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
@@ -804,8 +804,8 @@ def delete_lambda(delete: DeleteLambdas):
                 response = lambda_table.query(**query_args)
 
                 for item in response['Items']:
-                    lambda_client.delete_function(FunctionName=item['FunctionId'])
-                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionId': item['FunctionId']})
+                    lambda_client.delete_function(FunctionName=item['S3Key'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'S3Key': item['S3Key']})
                     time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
@@ -855,7 +855,7 @@ def delete_lambda(delete: DeleteLambdas):
 
 class FindLambda(BaseModel):
     user_id: str
-    function_id: str = None  # Make it optional
+    s3_key: str = None  # Make it optional
 
 @router.post('/find_lambdas')
 def find_lambdas(finder: FindLambda):
@@ -865,8 +865,8 @@ def find_lambdas(finder: FindLambda):
             'KeyConditionExpression': Key('UserId').eq(finder.user_id)
         }
 
-        if finder.function_id:
-            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('FunctionId').eq(finder.function_id)
+        if finder.s3_key:
+            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('S3Key').eq(finder.s3_key)
 
         response = lambda_table.query(**query_params)
         response = response['Items'] if 'Items' in response else "Not found"
