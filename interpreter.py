@@ -390,11 +390,11 @@ create_table_if_not_exists(
     'Lambdas',
     [
         {'AttributeName': 'UserId', 'KeyType': 'HASH'},
-        {'AttributeName': 'FunctionName', 'KeyType': 'RANGE'}
+        {'AttributeName': 'FunctionId', 'KeyType': 'RANGE'}
     ],
     [
         {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'FunctionName', 'AttributeType': 'S'}
+        {'AttributeName': 'FunctionId', 'AttributeType': 'S'}
     ]
 )
 
@@ -417,14 +417,14 @@ with zipfile.ZipFile(fail_buffer, 'w') as z:
     z.write('fail_function.py')
 fail_zip = fail_buffer.getvalue()
 # Function to create Lambda function if it doesn't exist
-def create_lambda_function_if_not_exists(function_name, runtime, role, handler, zip_file):
+def create_lambda_function_if_not_exists(function_id, runtime, role, handler, zip_file):
     try:
-        lambda_client.get_function(FunctionName=function_name)
-        print(f"Lambda function {function_name} already exists.")
+        lambda_client.get_function(FunctionName=function_id)
+        print(f"Lambda function {function_id} already exists.")
     except lambda_client.exceptions.ResourceNotFoundException:
         try:
             lambda_client.create_function(
-                FunctionName=function_name,
+                FunctionName=function_id,
                 Runtime=runtime,
                 Role=role,
                 Handler=handler,
@@ -432,9 +432,9 @@ def create_lambda_function_if_not_exists(function_name, runtime, role, handler, 
                     'ZipFile': zip_file
                 }
             )
-            print(f"Lambda function {function_name} created successfully.")
+            print(f"Lambda function {function_id} created successfully.")
         except Exception as e:
-            print(f"An error occurred while creating the Lambda function {function_name}: {e}")
+            print(f"An error occurred while creating the Lambda function {function_id}: {e}")
 
 # Create SuccessFunction if it doesn't exist
 create_lambda_function_if_not_exists(
@@ -543,8 +543,8 @@ user_metrics_table = get_dynamodb_table('UserMetrics')
 lambda_table = get_dynamodb_table('Lambdas')
 ap_table = get_dynamodb_table('AccessPoints')
 
-def get_function_arn(function_name):
-    response = lambda_client.get_function(FunctionName=function_name)
+def get_function_arn(function_id):
+    response = lambda_client.get_function(FunctionName=function_id)
     return response['Configuration']['FunctionArn']
 
 # Usage
@@ -595,7 +595,7 @@ get_credentials()
 # Go: filename (The Go executable itself is the handler)
 # Ruby: filename.methodname (e.g., lambda_function.handler)
 # .NET Core: Assembly::Namespace.ClassName::Method (e.g., Assembly::ExampleNamespace.ExampleClass::ExampleMethod)
-# role: f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name} this is where you setup your resource access at runtime
+# aws_role_arn: f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name} this is where you setup your resource access at runtime
 class CreateLambda(BaseModel):
     # user_id is the one who is paying SUPR, we need someone responsible for paying otherwise if we use conversation_id (groups) then you 
     # can end up in a situation where some people in the group are using more resources than others and not contributing to the cost.
@@ -608,7 +608,7 @@ class CreateLambda(BaseModel):
     s3_key: str
     runtime: str = None  # Make it optional
     memory_size: int = None # Make it optional
-    role: str = None  # Make it optional
+    aws_role_arn: str = None  # Make it optional
 
 @router.post('/create_lambda')
 async def create_lambda(createLambda: CreateLambda):
@@ -619,7 +619,7 @@ async def create_lambda(createLambda: CreateLambda):
             validate_role(createLambda.role)
         
         # Determine the role
-        role = createLambda.role if createLambda.role else f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
+        aws_role_arn = createLambda.raws_role_arnole if createLambda.aws_role_arn else f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
         
         # Determine the runtime
         runtime = createLambda.runtime if createLambda.runtime else 'python3.8'
@@ -633,7 +633,7 @@ async def create_lambda(createLambda: CreateLambda):
             Runtime=runtime,
             Handler=createLambda.handler,
             MemorySize=memory_size,
-            Role=role,
+            Role=aws_role_arn,
             Code={
                 'S3Bucket': createLambda.s3_bucket,
                 'S3Key': f'{createLambda.s3_key}.zip'
@@ -665,7 +665,7 @@ async def create_lambda(createLambda: CreateLambda):
             }
         )
         
-        return {"response": {"ARN": function_arn, "FunctionName": createLambda.s3_key}}
+        return {"response": {"ARN": function_arn, "FunctionId": createLambda.s3_key}}
     
     except Exception as e:
         return {"error": str(e)}
@@ -673,7 +673,7 @@ async def create_lambda(createLambda: CreateLambda):
 class RunLambda(BaseModel):
     user_id: str
     conversation_id: str
-    function_name: str
+    function_id: str
     payload: dict = None
 
 @router.post('/run_lambda')
@@ -691,7 +691,7 @@ def run_lambda(compute: RunLambda):
             full_payload['payload'] = compute.payload
         
         lambda_response = lambda_client.invoke(
-            FunctionName=compute.function_name,
+            FunctionName=compute.function_id,
             InvocationType='Event',
             Payload=json.dumps(full_payload).encode('utf-8') 
         )
@@ -776,7 +776,7 @@ def delete_lambda(delete: DeleteLambdas):
             last_evaluated_key = None
             while True:
                 query_args = {
-                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('FunctionName').eq(delete.function_id)
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('FunctionId').eq(delete.function_id)
                 }
                 if last_evaluated_key:
                     query_args['ExclusiveStartKey'] = last_evaluated_key
@@ -784,8 +784,8 @@ def delete_lambda(delete: DeleteLambdas):
                 response = lambda_table.query(**query_args)
 
                 for item in response['Items']:
-                    lambda_client.delete_function(FunctionName=item['FunctionName'])
-                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionName': item['FunctionName']})
+                    lambda_client.delete_function(FunctionName=item['FunctionId'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionId': item['FunctionId']})
                     time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
@@ -804,8 +804,8 @@ def delete_lambda(delete: DeleteLambdas):
                 response = lambda_table.query(**query_args)
 
                 for item in response['Items']:
-                    lambda_client.delete_function(FunctionName=item['FunctionName'])
-                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionName': item['FunctionName']})
+                    lambda_client.delete_function(FunctionName=item['FunctionId'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionId': item['FunctionId']})
                     time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
@@ -866,7 +866,7 @@ def find_lambdas(finder: FindLambda):
         }
 
         if finder.function_id:
-            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('function_id').eq(finder.function_id)
+            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('FunctionId').eq(finder.function_id)
 
         response = lambda_table.query(**query_params)
         response = response['Items'] if 'Items' in response else "Not found"
