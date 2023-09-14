@@ -12,6 +12,7 @@ import pytz
 from fastapi import APIRouter
 from pydantic import BaseModel
 from datetime import datetime, timedelta
+from botocore.exceptions import ClientError
 
 router = APIRouter()
 
@@ -26,12 +27,14 @@ lambda_client = boto3.client('lambda')
 dynamodb = boto3.resource('dynamodb')
 iam = boto3.client('iam')
 efs_client = boto3.client('efs')
-sts_client = boto3.client("sts")
+ec2 = boto3.resource('ec2')
 
 credentials = None
 expiration = None
+subnet_ids = []
+security_group_ids = []
 def update_clients_with_credentials(creds):
-    global lambda_client, dynamodb, efs_client
+    global lambda_client, dynamodb, efs_client, ec2
     lambda_client = boto3.client('lambda',  
         aws_access_key_id=creds['AccessKeyId'],
         aws_secret_access_key=creds['SecretAccessKey'],
@@ -47,10 +50,15 @@ def update_clients_with_credentials(creds):
         aws_secret_access_key=creds['SecretAccessKey'],
         aws_session_token=creds['SessionToken']
     )
+    ec2 = boto3.resource('ec2',  
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken']
+    )
 
 def get_credentials():
     global credentials, expiration
-
+    sts_client = boto3.client("sts")
     utc = pytz.UTC
 
     # Convert current time to offset-aware datetime in UTC
@@ -111,7 +119,8 @@ create_iam_role_if_not_exists(
         }]
     },
     [
-        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole',
     ]
 )
 create_iam_role_if_not_exists(
@@ -122,6 +131,10 @@ create_iam_role_if_not_exists(
             'Action': 'sts:AssumeRole',
             'Effect': 'Allow',
             'Principal': {'Service': 'lambda.amazonaws.com'}
+        },{
+            'Action': 'sts:AssumeRole',
+            'Effect': 'Allow',
+            'Principal': {'AWS': f'arn:aws:iam::{AWS_ACCOUNT_ID}:root'}
         }]
     },
     [
@@ -181,8 +194,13 @@ admin_permissions_policy = {
             "Action": [
                 "lambda:CreateFunction",
                 "lambda:InvokeFunction",
+                "lambda:UpdateFunctionConfiguration",
+                "lambda:TagResource",
+                "lambda:PutFunctionEventInvokeConfig",
+                "elasticfilesystem:CreateAccessPoint",
+                "elasticfilesystem:DescribeAccessPoints",
+                "elasticfilesystem:DescribeMountTargets",
                 "iam:PassRole",
-                "elasticfilesystem:DescribeFileSystems",
                 "lambda:GetFunction"
             ],
             "Resource": "*"
@@ -199,7 +217,10 @@ executor_permissions_policy = {
                 "elasticfilesystem:ClientMount",
                 "elasticfilesystem:ClientWrite",
                 "elasticfilesystem:ClientRead",
-                "elasticfilesystem:ClientRootAccess"
+                "elasticfilesystem:ClientRootAccess",
+                "ec2:CreateNetworkInterface",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DeleteNetworkInterface"
             ],
             "Resource": "*"
         }
@@ -208,15 +229,96 @@ executor_permissions_policy = {
 create_and_attach_policy_if_needed('LambdaExecutorPolicy', executor_permissions_policy, executor_role_name)
 create_and_attach_policy_if_needed('LambdaAdminPolicy', admin_permissions_policy, admin_role_name)
 
-get_credentials()
-def get_or_create_file_system(name):
-    # Describe all file systems
-    response = efs_client.describe_file_systems()
+
+def create_vpc_if_not_exists():
+
+    # Check if VPC exists with the desired CIDR block
+    vpcs = list(ec2.vpcs.filter(Filters=[{'Name': 'cidr', 'Values': ['10.45.64.0/18']}]))
+
+    if vpcs:
+        print(f"VPC already exists with CIDR block 10.45.64.0/18: {vpcs[0].id}")
+        return vpcs[0].id
+
+    # Create VPC
+    vpc = ec2.create_vpc(CidrBlock='10.45.64.0/18')
+    vpc.wait_until_available()
+    print(f"Created VPC with ID: {vpc.id}")
+
+    # Create a subnet
+    subnet = vpc.create_subnet(CidrBlock='10.45.64.0/24')
+    print(f"Created subnet with ID: {subnet.id}")
+
+    # Create a security group
+    security_group = ec2.create_security_group(
+        GroupName='EFS-SG',
+        Description='Security Group for EFS',
+        VpcId=vpc.id
+    )
+    print(f"Created security group with ID: {security_group.id}")
+
+    return vpc.id
+
+def create_or_get_mount_targets(file_system_id):
+    # Initialize EFS and EC2 clients
+    global subnet_ids, security_group_ids
+    ec2_client = boto3.client('ec2')
     
+    # List existing mount targets
+    response = efs_client.describe_mount_targets(FileSystemId=file_system_id)
+    existing_mount_targets = response['MountTargets']
+    
+    # Fetch the VPC ID from the first mount target (assuming all are in the same VPC)
+    vpc_id = existing_mount_targets[0]['VpcId'] if existing_mount_targets else None
+    
+    # If VPC ID is not found
+    if not vpc_id:
+        vpc_id = create_vpc_if_not_exists()
+    
+    # List all subnets in the VPC
+    subnets = ec2_client.describe_subnets(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
+    subnet_ids = [subnet['SubnetId'] for subnet in subnets['Subnets']]
+    
+    # List all security groups in the VPC
+    security_groups = ec2_client.describe_security_groups(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
+    security_group_ids = [sg['GroupId'] for sg in security_groups['SecurityGroups']]
+    
+    # Check if mount targets already exist for the specified subnets
+    existing_subnets = [mt['SubnetId'] for mt in existing_mount_targets]
+    
+    # Create mount targets for missing subnets
+    for subnet_id in subnet_ids:
+        if subnet_id not in existing_subnets:
+            print(f"Creating mount target in subnet {subnet_id}")
+            efs_client.create_mount_target(
+                FileSystemId=file_system_id,
+                SubnetId=subnet_id,
+                SecurityGroups=security_group_ids
+            )
+        else:
+            print(f"Mount target already exists in subnet {subnet_id}")
+
+def get_or_create_file_system(name):
+    max_retries = 5  # Set the maximum number of retries
+    sleep_interval = 0.2  # Set the sleep interval in seconds
+    response = None
+    for _ in range(max_retries):
+        try:
+            # Describe all file systems
+            response = efs_client.describe_file_systems()
+            break
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'AccessDeniedException':
+                print(f"Access denied. Retrying in {sleep_interval} seconds...")
+                time.sleep(sleep_interval)
+            else:
+                # If the exception is not 'AccessDeniedException', re-raise it
+                raise
+
     # Check if the file system with the given name already exists
     for file_system in response['FileSystems']:
         if file_system['Name'] == name:
             print(f"File system {name} already exists with ID: {file_system['FileSystemId']}")
+            create_or_get_mount_targets(file_system['FileSystemId'])
             return file_system['FileSystemId']
     
     # If it doesn't exist, create a new file system
@@ -234,6 +336,7 @@ def get_or_create_file_system(name):
     )
     
     file_system_id = response['FileSystemId']
+    create_or_get_mount_targets(file_system_id)
     print(f"Created new file system with ID: {file_system_id}")
     return file_system_id
 
@@ -265,8 +368,14 @@ def create_table_if_not_exists(table_name, key_schema, attribute_definitions, re
 # Create the InvocationTable
 create_table_if_not_exists(
     'InvocationTable',
-    [{'AttributeName': 'UserId', 'KeyType': 'HASH'}],
-    [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
+    [
+        {'AttributeName': 'UserId', 'KeyType': 'HASH'},
+        {'AttributeName': 'InvocationId', 'KeyType': 'RANGE'}
+    ],
+    [
+        {'AttributeName': 'UserId', 'AttributeType': 'S'},
+        {'AttributeName': 'InvocationId', 'AttributeType': 'S'}
+    ]
 )
 
 # Create the Users table
@@ -281,11 +390,11 @@ create_table_if_not_exists(
     'Lambdas',
     [
         {'AttributeName': 'UserId', 'KeyType': 'HASH'},
-        {'AttributeName': 'ConversationId', 'KeyType': 'RANGE'}
+        {'AttributeName': 'FunctionName', 'KeyType': 'RANGE'}
     ],
     [
         {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'ConversationId', 'AttributeType': 'S'}
+        {'AttributeName': 'FunctionName', 'AttributeType': 'S'}
     ]
 )
 
@@ -296,99 +405,16 @@ create_table_if_not_exists(
     [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
 )
 
-success_code = '''
-import json
-import boto3
-
-dynamodb = boto3.resource('dynamodb')
-invocation_table = dynamodb.Table('InvocationTable')
-user_metrics_table = dynamodb.Table('UserMetrics')
-
-def lambda_handler_success(event, context):
-    request_id = event['requestContext']['requestId']
-    approximateInvokeCount = event['requestContext'].get('approximateInvokeCount', 1)  # Default to 1 if not provided
-    payload = event.get('responsePayload', {})
-    conversation_id = event.get('conversation_id')
-    user_id = event.get('user_id')
-    
-    remaining_time = context.get_remaining_time_in_millis()
-    elapsed_time = 900000 - remaining_time  # 15 minutes = 900,000 milliseconds
-
-    # Write to DynamoDB
-    invocation_table.put_item(
-        Item={
-            'UserId': user_id,
-            'InvocationId': request_id,
-            'ConversationId': conversation_id,
-            'Payload': json.dumps(payload),
-            'Status': 'Success'
-        }
-    )
-    user_metrics_table.update_item(
-        Key={
-            'UserId': user_id,
-        },
-        UpdateExpression='ADD InvocationCount :inc, TotalTimeSpent :time, TotalMemorySpent :memory',
-        ExpressionAttributeValues={
-            ':inc': approximateInvokeCount,
-            ':time': elapsed_time,
-            ':memory': approximateInvokeCount * context.memory_limit_in_mb,
-        },
-        ReturnValues='UPDATED_NEW'
-    )
-'''
-
-fail_code = '''
-import json
-import boto3
-
-dynamodb = boto3.resource('dynamodb')
-invocation_table = dynamodb.Table('InvocationTable')
-user_metrics_table = dynamodb.Table('UserMetrics')
-
-def lambda_handler_failure(event, context):
-    request_id = event['requestContext']['requestId']
-    approximateInvokeCount = event['requestContext'].get('approximateInvokeCount', 1)  # Default to 1 if not provided
-    payload = event.get('responsePayload', {})
-    conversation_id = event.get('conversation_id')
-    user_id = event.get('user_id')
-    
-    remaining_time = context.get_remaining_time_in_millis()
-    elapsed_time = 900000 - remaining_time  # 15 minutes = 900,000 milliseconds
-
-    # Write to DynamoDB
-    invocation_table.put_item(
-        Item={
-            'UserId': user_id,
-            'InvocationId': request_id,
-            'ConversationId': conversation_id,
-            'Payload': json.dumps(payload),
-            'Status': 'Failure'
-        }
-    )
-    user_metrics_table.update_item(
-        Key={
-            'UserId': user_id,
-        },
-        UpdateExpression='ADD InvocationCount :inc, TotalTimeSpent :time, TotalMemorySpent :memory',
-        ExpressionAttributeValues={
-            ':inc': approximateInvokeCount,
-            ':time': elapsed_time,
-            ':memory': approximateInvokeCount * context.memory_limit_in_mb,
-        },
-        ReturnValues='UPDATED_NEW'
-    )
-'''
 # Create ZIP file in-memory for the success function
 success_buffer = io.BytesIO()
 with zipfile.ZipFile(success_buffer, 'w') as z:
-    z.writestr('success_function.py', success_code)
+    z.write('success_function.py')
 success_zip = success_buffer.getvalue()
 
 # Create ZIP file in-memory for the fail function
 fail_buffer = io.BytesIO()
 with zipfile.ZipFile(fail_buffer, 'w') as z:
-    z.writestr('fail_function.py', fail_code)
+    z.write('fail_function.py')
 fail_zip = fail_buffer.getvalue()
 # Function to create Lambda function if it doesn't exist
 def create_lambda_function_if_not_exists(function_name, runtime, role, handler, zip_file):
@@ -432,7 +458,18 @@ def get_dynamodb_table(table_name):
     table = dynamodb.Table(table_name)
     return table
 
-def setup_efs_and_lambda(file_system_id, user_id):
+def wait_for_access_point_to_be_available(efs_client, access_point_id, max_retries=5, sleep_interval=0.2):
+    for _ in range(max_retries):
+        response = efs_client.describe_access_points(
+            AccessPointId=access_point_id
+        )
+        if response['AccessPoints'][0]['LifeCycleState'] == 'available':
+            return True
+        time.sleep(sleep_interval)
+    print("Max retries reached. Access point is still not available.")
+    return False
+
+def setup_efs_and_lambda(file_system_id, user_id, function_arn):
     # Function to check if an access point already exists in db
     def check_access_point_exists(user_id):
         response = ap_table.get_item(Key={'UserId': user_id})
@@ -441,7 +478,7 @@ def setup_efs_and_lambda(file_system_id, user_id):
         return None
 
     # Check if the access point already exists
-    existing_access_point_id = check_access_point_exists(file_system_id, user_id)
+    existing_access_point_id = check_access_point_exists(user_id)
 
     # Create the access point if it doesn't exist
     if existing_access_point_id is None:
@@ -452,7 +489,7 @@ def setup_efs_and_lambda(file_system_id, user_id):
                 'Gid': 1001
             },
             RootDirectory={
-                'Path': user_id,
+                'Path': f'/{user_id}',
                 'CreationInfo': {
                     'OwnerUid': 1001,
                     'OwnerGid': 1001,
@@ -461,16 +498,26 @@ def setup_efs_and_lambda(file_system_id, user_id):
             }
         )
         access_point_arn = efs_response['AccessPointArn']
+        access_point_id = efs_response['AccessPointId']
         # Update the Lambda function configuration to mount the EFS Access Point
-        lambda_response = lambda_client.update_function_configuration(
-            FunctionName=user_id,
-            FileSystemConfigs=[
-                {
-                    'Arn': access_point_arn,
-                    'LocalMountPath': '/mnt'
-                },
-            ]
-        )
+        # Wait for the access point to become available
+        if wait_for_access_point_to_be_available(efs_client, access_point_id):
+            # Now update the Lambda function configuration
+            lambda_response = lambda_client.update_function_configuration(
+                FunctionName=function_arn,
+                FileSystemConfigs=[
+                    {
+                        'Arn': access_point_arn,
+                        'LocalMountPath': '/mnt/efs'
+                    },
+                ],
+                VpcConfig={
+                    'SubnetIds': subnet_ids,
+                    'SecurityGroupIds': security_group_ids,
+                }
+            )
+        else:
+            print("Failed to update function configuration. Access point is not available.")
         ap_table.put_item(
             Item={
                 'UserId': user_id,
@@ -478,8 +525,17 @@ def setup_efs_and_lambda(file_system_id, user_id):
             }
         )
 
-        print(f"EFS Access Point and Lambda function updated successfully. Access Point ARN: {access_point_arn}")
-
+def setup_efs_and_lambda_with_retry(file_system_id, user_id, function_arn, retries=5, delay=0.2):
+    for i in range(retries):
+        try:
+            setup_efs_and_lambda(file_system_id, user_id, function_arn)
+            return
+        except Exception as e:
+            if "Function not found" in str(e):
+                time.sleep(delay)  # Wait for a few seconds before retrying
+            else:
+                raise e  # If it's another exception, raise it immediately
+    raise Exception("Failed to setup EFS and Lambda after {} retries".format(retries))
 
 # Usage
 invocation_table = get_dynamodb_table('InvocationTable')
@@ -520,6 +576,8 @@ def validate_role(role_arn):
     if not has_basic_execution:
         raise ValueError("The role does not have the AWSLambdaBasicExecutionRole policy attached.")
 
+get_credentials()
+
 # Execute Lambda function
 # Runtime:
 # Python: python3.8, python3.7, python3.6, python2.7
@@ -559,9 +617,6 @@ async def create_lambda(createLambda: CreateLambda):
         # If a custom role is provided, validate it
         if createLambda.role:
             validate_role(createLambda.role)
-
-        # Setup EFS and Lambda for the user
-        setup_efs_and_lambda(file_system_id, createLambda.user_id)
         
         # Determine the role
         role = createLambda.role if createLambda.role else f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
@@ -570,8 +625,7 @@ async def create_lambda(createLambda: CreateLambda):
         runtime = createLambda.runtime if createLambda.runtime else 'python3.8'
         
          # Determine the memory
-        memory_size = createLambda.memory_size if createLambda.memory_size else '128'
-        
+        memory_size = createLambda.memory_size if createLambda.memory_size else 128
         
         # Create the Lambda function
         response_create = lambda_client.create_function(
@@ -580,15 +634,17 @@ async def create_lambda(createLambda: CreateLambda):
             Handler=createLambda.handler,
             MemorySize=memory_size,
             Role=role,
-            Tags=createLambda.dict(),
             Code={
                 'S3Bucket': createLambda.s3_bucket,
                 'S3Key': f'{createLambda.s3_key}.zip'
-            }
+            },
         )
         
         # Extract the ARN from the response
         function_arn = response_create['FunctionArn']
+        
+        # Setup EFS and Lambda for the user
+        setup_efs_and_lambda_with_retry(file_system_id, createLambda.user_id, function_arn)
         
         # Set the function's event invoke config
         lambda_client.put_function_event_invoke_config(
@@ -598,47 +654,74 @@ async def create_lambda(createLambda: CreateLambda):
                 'OnFailure': {'Destination': fail_arn}
             }
         )
+
         
         # Store function metadata in DynamoDB
         lambda_table.put_item(
             Item={
                 'UserId': createLambda.user_id,
-                'FunctionId': createLambda.s3_key,
+                'FunctionName': createLambda.s3_key,
                 'ConversationId': createLambda.conversation_id,
             }
         )
         
-        return {"response": response_create}
+        return {"response": {"ARN": function_arn, "FunctionName": createLambda.s3_key}}
     
     except Exception as e:
         return {"error": str(e)}
 
 class RunLambda(BaseModel):
+    user_id: str
+    conversation_id: str
     function_name: str
-    payload: dict
+    payload: dict = None
 
 @router.post('/run_lambda')
 def run_lambda(compute: RunLambda):
     try:
         get_credentials()
+        # Structure the payload
+        full_payload = {
+            'user_id': compute.user_id,
+            'conversation_id': compute.conversation_id,
+            'start_time': time.time_ns() // 1000000
+        }
+        
+        if compute.payload is not None:
+            full_payload['payload'] = compute.payload
+        
         lambda_response = lambda_client.invoke(
             FunctionName=compute.function_name,
             InvocationType='Event',
-            Payload=json.dumps(compute.payload).encode('utf-8') 
+            Payload=json.dumps(full_payload).encode('utf-8') 
         )
+        lambda_response = lambda_response if lambda_response['StatusCode'] != 202 else {"InvocationId": lambda_response['ResponseMetadata']['RequestId']}
         return {"response": lambda_response}
     except Exception as e:
         return {"error": str(e)}
 
 class StatusLambda(BaseModel):
     user_id: str
+    invocation_id: str = None
 
 @router.post('/get_lambda_report')
 def get_lambda_status(status: StatusLambda):
     try:
         get_credentials()
-        response = invocation_table.get_item(Key={'UserId': status.user_id})
-        response = response['Item'] if 'Item' in response else "Not found"
+        query_params = {
+            'KeyConditionExpression': Key('UserId').eq(status.user_id)
+        }
+
+        if status.invocation_id:
+            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('InvocationId').eq(status.invocation_id)
+
+        response = invocation_table.query(**query_params)
+        response = response['Items'] if 'Items' in response else "Not found"
+        
+        for idx, item in enumerate(response):
+            if idx > 0:
+                time.sleep(0.05)  # Simple rate-limiting
+            invocation_table.delete_item(Key={'UserId': item['UserId'], 'InvocationId': item['InvocationId']})
         return {"response": response}
     except Exception as e:
         return {"error": str(e)}
@@ -660,40 +743,40 @@ def get_user_metrics(status: StatusUser):
 def clear_user_metrics(status: StatusUser):
     try:
         get_credentials()
-        response = user_metrics_table.update_item(
+        user_metrics_table.update_item(
             Key={
                 'UserId': status.user_id,
             },
-            UpdateExpression='SET InvocationCount = :zero, TotalTimeSpent = :zero, TotalMemorySpent = :zero',
+            UpdateExpression='SET InvocationCount = :zero, TotalTimeSpentMS = :zero, TotalMemorySpentMB = :zero',
             ExpressionAttributeValues={
                 ':zero': 0
             },
             ReturnValues='UPDATED_NEW'
         )
-        return {"response": response}
+        return {"response": "success"}
     except Exception as e:
         return {"error": str(e)}
 
 class DeleteLambdas(BaseModel):
     user_id: str = None
-    conversation_id: str = None
+    function_id: str = None
 
-# delete all lambdas by user or user+conversation
+# delete all lambdas by user or user+function
 @router.post('/delete_lambdas')
 def delete_lambda(delete: DeleteLambdas):
     try:
         get_credentials()
-        if delete.user_id is None and delete.conversation_id is None:
-            return {"error": "Either user_id or conversation_id must be provided."}
+        if delete.user_id is None and delete.function_id is None:
+            return {"error": "Either user_id or function_id must be provided."}
 
-        if delete.conversation_id:
+        if delete.function_id:
             if delete.user_id is None:
-                return {"error": "user_id must be provided when conversation_id is specified."}
+                return {"error": "user_id must be provided when function_id is specified."}
 
             last_evaluated_key = None
             while True:
                 query_args = {
-                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('ConversationId').eq(delete.conversation_id)
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id) & Key('FunctionName').eq(delete.function_id)
                 }
                 if last_evaluated_key:
                     query_args['ExclusiveStartKey'] = last_evaluated_key
@@ -701,9 +784,9 @@ def delete_lambda(delete: DeleteLambdas):
                 response = lambda_table.query(**query_args)
 
                 for item in response['Items']:
-                    lambda_client.delete_function(FunctionName=item['FunctionId'])
-                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'ConversationId': item['ConversationId']})
-                    time.sleep(0.2)  # Simple rate-limiting
+                    lambda_client.delete_function(FunctionName=item['FunctionName'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionName': item['FunctionName']})
+                    time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
                 if not last_evaluated_key:
@@ -721,15 +804,31 @@ def delete_lambda(delete: DeleteLambdas):
                 response = lambda_table.query(**query_args)
 
                 for item in response['Items']:
-                    lambda_client.delete_function(FunctionName=item['FunctionId'])
-                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'ConversationId': item['ConversationId']})
-                    time.sleep(0.2)  # Simple rate-limiting
+                    lambda_client.delete_function(FunctionName=item['FunctionName'])
+                    lambda_table.delete_item(Key={'UserId': item['UserId'], 'FunctionName': item['FunctionName']})
+                    time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
                 if not last_evaluated_key:
                     break
 
-            invocation_table.delete_item(Key={'UserId': delete.user_id})
+            while True:
+                query_args = {
+                    'KeyConditionExpression': Key('UserId').eq(delete.user_id)
+                }
+                if last_evaluated_key:
+                    query_args['ExclusiveStartKey'] = last_evaluated_key
+
+                response = lambda_table.query(**query_args)
+
+                for item in response['Items']:
+                    invocation_table.delete_item(Key={'UserId': item['UserId'], 'InvocationId': item['InvocationId']})
+                    time.sleep(0.05)  # Simple rate-limiting
+
+                last_evaluated_key = response.get('LastEvaluatedKey')
+                if not last_evaluated_key:
+                    break
+                
             user_metrics_table.delete_item(Key={'UserId': delete.user_id})
 
             last_evaluated_key = None
@@ -745,7 +844,7 @@ def delete_lambda(delete: DeleteLambdas):
                 for item in response['Items']:
                     efs_client.delete_access_point(AccessPointId=item['AccessPointId'])
                     ap_table.delete_item(Key={'UserId': item['UserId']})
-                    time.sleep(0.2)  # Simple rate-limiting
+                    time.sleep(0.05)  # Simple rate-limiting
 
                 last_evaluated_key = response.get('LastEvaluatedKey')
                 if not last_evaluated_key:
@@ -756,7 +855,7 @@ def delete_lambda(delete: DeleteLambdas):
 
 class FindLambda(BaseModel):
     user_id: str
-    conversation_id: str = None  # Make it optional
+    function_id: str = None  # Make it optional
 
 @router.post('/find_lambdas')
 def find_lambdas(finder: FindLambda):
@@ -766,11 +865,11 @@ def find_lambdas(finder: FindLambda):
             'KeyConditionExpression': Key('UserId').eq(finder.user_id)
         }
 
-        if finder.conversation_id:
-            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('ConversationId').eq(finder.conversation_id)
+        if finder.function_id:
+            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('function_id').eq(finder.function_id)
 
         response = lambda_table.query(**query_params)
-        response = response['Item'] if 'Item' in response else "Not found"
+        response = response['Items'] if 'Items' in response else "Not found"
         return {"response": response}
     except Exception as e:
         return {"error": str(e)}
