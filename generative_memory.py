@@ -92,50 +92,50 @@ class GenerativeAgentMemory(BaseMemory):
         self, conversation: str, personality,
     ) -> List[str]:
         """Generate 'personality updates', based on pertinent memories."""
-        prompt = PromptTemplate.from_template(
-            "Personality:\n"
-            "---\n"
-            "{personality}\n"
-            "---\n"
-            "You're a top-tier personality interpreter. Your task is to read the conversation and the given personality, then suggest adjustments to attributes.\n"
-            "Personality is in context of the user and is useful across conversations; are provided in context of every exchange with AI. Things like name/nickname, moods, goals, tasks, accomplishments are common examples for users personality attributes.\n"
-            "List inferred personality update topics, keeping them broad yet meaningful.\n"
-            "Skip updates for code-related or non-conversational exchanges.\n"
-            "Only include conversation-relevant changes. If unsure, return an empty array.\n"
-            "First, identify up to 3 broad changes. Then, provide an array of JSON patch commands ('add', 'remove', 'replace'). Format:  '/traits/-' to add, '/traits/[some_integer]' to remove/replace at specific index.\n"
-            "The personality schema is not static, you may adjust it as needed. Add/remove fields/subfields at your descretion. 'Tasks' schema should remain intact as we depend on the structure defined.\n"
-            "Be aware of token limits, calculate the token count for personality above and estimated changes with the outputted list and try to keep the total size up to 1000 tokens, remove redundant attributes if needed. Tasks and goals are highest priority.\n"
-            "Importantly, triple check that you format the output correctly (use given examples for reference).\n"
-            "Avoid duplicating previous adjustments.\n\n"
-            "Conversation: {conversation}\n\n"
-            "Examples: \n"
-            "- Description: Nothing found\n"
-            "Output: []\n"
-            "- Description: Addressing multiple changes\n"
-            'Output: [{"op": "add", "path": "/traits/-", "value": "adventurous"},{"op": "remove", "path": "/traits/1"},{"op": "replace", "path": "/traits/0", "value": "meticulous"}]\n'
-            "- Description: Updating task and subtask\n"
-            'Output: [{"op": "add", "path": "/tasks/-", "value": {"task": "New Task", "active": false},{"op": "add", "path": "/tasks/0/subtasks/-", "value": {"subtask": "New Subtask", "active": false},{"op": "replace", "path": "/tasks/0/active", "value": true},{"op": "replace", "path": "/tasks/0/subtasks/0/active", "value": true}]\n'
-            "- Description: Multiple updates in various areas\n"
-            'Output: [{"op": "add", "path": "/achievements/-", "value": "New Achievement"},{"op": "add", "path": "/expertise/-", "value": "New Skill"},{"op": "replace", "path": "/mood_feelings/0", "value": "content"}]\n'
-            "- Description: Changing privacy settings\n"
-            'Output: [{"op": "replace", "path": "/privacy/data_sharing/personal", "value": true}]\n'
-            "- Description: Adding a new nickname\n"
-            'Output: [{"op": "add", "path": "/name_nickname/-", "value": "JohnDoe"}]\n'
-            "- Description: Removing a goal\n"
-            'Output: [{"op": "remove", "path": "/goals/0"}]\n'
-            "- Description: Changing mood and feelings\n"
-            'Output: [{"op": "replace", "path": "/mood_feelings/0", "value": "sad"}]\n'
-            "- Description: Adding new expertise\n"
-            'Output: [{"op": "add", "path": "/expertise/-", "value": "Data Science"}]\n'
-            "- Description: Removing an occupation\n"
-            'Output: [{"op": "remove", "path": "/occupations/0"}]\n'
-            "- Description: Adding facts and opinions\n"
-            'Output: [{"op": "add", "path": "/facts_opinions/-", "value": "The earth is round"}]\n'
-        )
+        template_text = """
+        EXISTING PERSONALITY:
+        ---
+        {personality}
+        ---
+        You're a top-tier personality interpreter. Your task is to read the DIALOG between the user and AiDA, an AI companion. Your goal is to infer updates to the user's personality attributes based solely on this DIALOG. Do not use the EXISTING PERSONALITY as a basis for these updates; it is provided merely for context.
+
+        1. Identify and list up to 3 update topics that can be inferred from the DIALOG alone. Make sure these topics are broad but meaningful. Share these topics as part of your response.
+        Update Topics: <topics>
+
+        2. Provide a list of JSONPatch operations (OPS) to update the user's personality attributes. Use the following format:
+        - 'add': '/traits/-'
+        - 'remove' or 'replace': '/traits/[index]'
+
+        Note: 
+        - The '-' symbol should ONLY be used with 'add' to indicate appending to an array.
+        - Indexes are 0-based.
+        - Use 'replace' only for changing a current value at a specified index.
+        - Avoid duplicated OPS or attributes. Make sure the new personality contains unique attributes.
+        
+        Be mindful of token limits; the updated personality should not exceed 1000 tokens. You may need to remove redundant attributes to meet this requirement.
+
+        Example OPS outputs:
+        - Description: Updating nickname and occupation based on DIALOG
+        OPS: [{{"op": "add", "path": "/name_nicknames/-", "value": "Jag"}}, {{"op": "add", "path": "/occupations/-", "value": "Engineer"}}]
+
+        DIALOG: {conversation}
+        """
+        prompt = PromptTemplate.from_template(template_text)
+
         result = self.chain(prompt).run(
             personality=json.dumps(personality), conversation=conversation
         )
-        return result
+        print(f'result {result}')
+        # Find the array in the output string using a regular expression
+        array_match = re.search(r'OPS: (\[.*\])', result)
+        array_json = []
+        if array_match:
+            array_str = array_match.group(1)
+            # Parse the array string as JSON
+            array_json = json.loads(array_str)
+        else:
+            print("No array found in the output")
+        return array_json
 
     async def pause_to_reflect(self, memory_content: str, conversation_id: str) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""

@@ -1,11 +1,11 @@
-import jsonpatch
-import time
+
 import logging
 import os
 
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
+from jsonpatch import JsonPatch, JsonPatchException
 
 class PersonalityResolver:
     def __init__(self):
@@ -31,26 +31,34 @@ class PersonalityResolver:
     def create_default_personality(self, user_id):
         # Default personality schema
         default_personality = {
-            'name_nickname': [],
-            'traits': [],
-            'achievements': [],
-            'mood_feelings': [],
-            'goals': [],
+            'name_nicknames': ["user name"],
+            'traits': ["curious"],
+            'achievements': ["became a superdapp user"],
+            'mood_feelings': ["happy"],
+            'goals': ["onboard to superdapp"],
             'tasks': [
                 {
-                    'task': '',
-                    'active': False,
+                    'task': 'onboard user to superdapp',
+                    'active': True,
                     'subtasks': [
                         {
-                            'subtask': '',
+                            'subtask': 'find out user preferences, google calendar or calendly link',
+                            'active': True
+                        },
+                        {
+                            'subtask': 'Setup web3 wallet',
+                            'active': False
+                        },
+                        {
+                            'subtask': 'See if user wants to pay SUPR to use code interpreter or social groups',
                             'active': False
                         }
                     ]
                 }
             ],
-            'facts_opinions': [],
-            'expertise': [],
-            'occupations': [],
+            'facts_opinions': ["superdapp is awesome!"],
+            'interests': ["AI", "machine learning"],
+            'occupations': ["engineer"],
             'privacy': {
                 'data_sharing': {
                     'anonymous': True,
@@ -58,10 +66,10 @@ class PersonalityResolver:
                     'history': False
                 },
                 'engagement': {
-                    'contact': ['text', 'voice'],
+                    'contact_methods': ['text', 'voice', 'video'],
                     'DND': {
                         'enabled': False,
-                        'times': ['22:00-06:00']
+                        'times': '22:00-06:00'
                     }
                 }
             }
@@ -70,7 +78,7 @@ class PersonalityResolver:
         # Insert the default personality into the collection
         self.collection.insert_one({
             '_id': user_id,
-            'personality': default_personality
+            **default_personality
         })
         
         return default_personality
@@ -85,34 +93,33 @@ class PersonalityResolver:
                     if key not in temp_doc:
                         next_key = keys[i + 1]
                         if next_key == "-":
-                            temp_doc[key] = []
+                            return "Error: Attempting to append to a non-existent list."
                         else:
-                            temp_doc[key] = {}
+                            return f"Error: Key '{key}' does not exist in the document."
                     temp_doc = temp_doc[key]
 
-                # Create the final nested key if it doesn't exist
+                    # Check type and validity
+                    if isinstance(temp_doc, list) and not keys[i + 1].isdigit() and keys[i + 1] != '-':
+                        return 'Error: List indices must be integers or slices, not str'
+                    elif isinstance(temp_doc, dict) and keys[i + 1].isdigit():
+                        return 'Error: Dictionary keys must be strings, not integers'
+
+                # Check the final nested key
                 last_key = keys[-1]
-                if isinstance(temp_doc, list):
-                    if last_key == "-":
-                        # Append a None value at the end of the list
-                        temp_doc.append(None)
-                    else:
-                        # Insert a None value at the specified index, assuming the index is an integer
-                        index = int(last_key)
-                        while len(temp_doc) <= index:
-                            temp_doc.append(None)
-                else: # Assume it's a dictionary
-                    if last_key not in temp_doc and last_key != "-":
-                        temp_doc[last_key] = None
+                if isinstance(temp_doc, list) and not last_key.isdigit() and last_key != '-':
+                    return 'Error: List indices must be integers or "-", not str'
+                elif isinstance(temp_doc, dict) and last_key.isdigit():
+                    return 'Error: Dictionary keys must be strings, not integers'
 
-
+        # Apply the patch
         try:
-            patch = jsonpatch.JsonPatch(patch_data)
+            patch = JsonPatch(patch_data)
             modified_doc = patch.apply(doc)
-        except jsonpatch.JsonPatchException as e:
+        except JsonPatchException as e:
             return f"fail: {e}"
 
+        # Update the database
         update_result = self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
         if update_result.modified_count == 0:
-            logging.Warn("No documents were updated.")
+            logging.warn("No documents were updated.")
         return "success"
