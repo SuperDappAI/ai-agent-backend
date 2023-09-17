@@ -93,31 +93,31 @@ class GenerativeAgentMemory(BaseMemory):
     ) -> List[str]:
         """Generate 'personality updates', based on pertinent memories."""
         template_text = """
-        EXISTING PERSONALITY:
-        ---
-        {personality}
-        ---
-        You're a top-tier personality interpreter. Your task is to read the DIALOG between the user and AiDA, an AI companion. Your goal is to infer updates to the user's personality attributes based solely on this DIALOG. Do not use the EXISTING PERSONALITY as a basis for these updates; it is provided merely for context.
+        You're a top-tier personality interpreter. Take EXISTING PERSONALITY and assess DIALOG to infer case-insensitive unique personality attributes. Only include important personality attributes. Things that are likely referenced in future conversations with the user and useful to provide context.
 
-        1. Identify and list up to 3 update topics that can be inferred from the DIALOG alone. Make sure these topics are broad but meaningful. Share these topics as part of your response.
-        Update Topics: <topics>
-
-        2. Provide a list of JSONPatch operations (OPS) to update the user's personality attributes. Use the following format:
+        1. Provide a list of JSONPatch operations (OPS) to update the user's personality attributes. Follow the format below:
         - 'add': '/traits/-'
         - 'remove' or 'replace': '/traits/[index]'
 
-        Note: 
-        - The '-' symbol should ONLY be used with 'add' to indicate appending to an array.
+        Note:
+        - OPS values must not exist already in existing personality.
+        - Use the '-' symbol ONLY with 'add' to indicate appending to an array.
         - Indexes are 0-based.
+        - If EXISTING PERSONALITY does not include a field you are looking for you can create it.
+        - Only include OP If EXISTING PERSONALITY does not already have it.
         - Use 'replace' only for changing a current value at a specified index.
-        - Avoid duplicated OPS or attributes. Make sure the new personality contains unique attributes.
-        
-        Be mindful of token limits; the updated personality should not exceed 1000 tokens. You may need to remove redundant attributes to meet this requirement.
+        - Avoid duplicates.
+        - Must be confident in each OP to include it.
 
-        Example OPS outputs:
-        - Description: Updating nickname and occupation based on DIALOG
-        OPS: [{{"op": "add", "path": "/name_nicknames/-", "value": "Jag"}}, {{"op": "add", "path": "/occupations/-", "value": "Engineer"}}]
+        Be mindful of token limits; the updated personality should not exceed 1000 tokens. Remove redundant attributes if needed to meet this requirement.
 
+        Examples of OPS outputs are provided below only for guidance.
+          OPS: []
+          OPS: [{{"op": "add", "path": "/traits/-", "value": "adventurous"}},{{"op": "remove", "path": "/traits/1"}},{{"op": "replace", "path": "/traits/0", "value": "meticulous"}}]
+          OPS: [{{"op": "add", "path": "/tasks/-", "value": {{"task": "New Task", "active": false}}}},{{"op": "add", "path": "/tasks/0/subtasks/-", "value": {{"subtask": "New Subtask", "active": false}}}},{{"op": "replace", "path": "/tasks/0/active", "value": true}},{{"op": "replace", "path": "/tasks/0/subtasks/0/active", "value": true}}]
+          OPS: [{{"op": "add", "path": "/achievements/-", "value": "New Achievement"}},{{"op": "add", "path": "/expertise/-", "value": "New Skill"}},{{"op": "replace", "path": "/mood_feelings/0", "value": "content"}}]
+
+        EXISTING PERSONALITY: {personality}
         DIALOG: {conversation}
         """
         prompt = PromptTemplate.from_template(template_text)

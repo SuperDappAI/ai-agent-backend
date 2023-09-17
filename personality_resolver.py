@@ -83,6 +83,18 @@ class PersonalityResolver:
         
         return default_personality
 
+    def check_for_nested_duplicates(self, value, target):
+        if isinstance(target, list):
+            if isinstance(value, dict) and "subtask" in value:
+                return any(value["subtask"] == existing_value.get("subtask", None) for existing_value in target)
+            else:
+                return value in target
+        elif isinstance(target, dict):
+            return any(self.check_for_nested_duplicates(value, sub_value) for sub_value in target.values())
+        else:
+            return False
+
+
     def apply_patch(self, user_id, doc, patch_data):
         # Make sure keys exist before applying patch
         for patch in patch_data:
@@ -97,20 +109,28 @@ class PersonalityResolver:
                         else:
                             return f"Error: Key '{key}' does not exist in the document."
                     temp_doc = temp_doc[key]
-
+                    
+                    # Check for duplicates
+                    if patch["op"] == "add":
+                        if self.check_for_nested_duplicates(patch["value"], temp_doc):
+                            return "Error: Nested duplicate value."
+                    
                     # Check type and validity
                     if isinstance(temp_doc, list) and not keys[i + 1].isdigit() and keys[i + 1] != '-':
                         return 'Error: List indices must be integers or slices, not str'
                     elif isinstance(temp_doc, dict) and keys[i + 1].isdigit():
                         return 'Error: Dictionary keys must be strings, not integers'
-
+                
                 # Check the final nested key
                 last_key = keys[-1]
-                if isinstance(temp_doc, list) and not last_key.isdigit() and last_key != '-':
+                if isinstance(temp_doc, list) and last_key.isdigit():
+                    if int(last_key) >= len(temp_doc):
+                        return f"Error: Key '{last_key}' does not exist in the document."
+                elif isinstance(temp_doc, list) and last_key != '-':
                     return 'Error: List indices must be integers or "-", not str'
                 elif isinstance(temp_doc, dict) and last_key.isdigit():
                     return 'Error: Dictionary keys must be strings, not integers'
-
+        
         # Apply the patch
         try:
             patch = JsonPatch(patch_data)
