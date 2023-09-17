@@ -26,7 +26,10 @@ class PersonalityResolver:
         doc = self.collection.find_one({"_id": user_id})
         if doc is None:
             return self.create_default_personality(user_id)
-        return doc
+        # Filter out empty fields or fields with empty lists
+        filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
+
+        return filtered_doc
 
     def create_default_personality(self, user_id):
         # Default personality schema
