@@ -16,13 +16,11 @@ from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
 from qdrant_client.http import models as rest
 from memory_summarizer import MemorySummarizer
-from personality_resolver import PersonalityResolver
 
 logger = logging.getLogger(__name__)
     
 class GenerativeAgentMemory(BaseMemory):
     """Memory for the generative agent."""
-    personality_resolver: PersonalityResolver
     llm: BaseLanguageModel
     """The core language model."""
     memory_retriever: ContextualCompressionRetriever
@@ -88,55 +86,6 @@ class GenerativeAgentMemory(BaseMemory):
         )
         return self._parse_list(result)
 
-    def _get_json_patch_commands(
-        self, conversation: str, personality,
-    ) -> List[str]:
-        """Generate 'personality updates', based on pertinent memories."""
-        template_text = """
-        You're a top-tier personality interpreter. Take EXISTING PERSONALITY and assess DIALOG to infer case-insensitive unique personality attributes. Only include important personality attributes. Things that are likely referenced in future conversations with the user and useful to provide context.
-
-        1. Provide a list of JSONPatch operations (OPS) to update the user's personality attributes. Follow the format below:
-        - 'add': '/traits/-'
-        - 'remove' or 'replace': '/traits/[index]'
-
-        Note:
-        - OPS values must not exist already in existing personality.
-        - Use the '-' symbol ONLY with 'add' to indicate appending to an array.
-        - Indexes are 0-based.
-        - If EXISTING PERSONALITY does not include a field you are looking for you can create it.
-        - Only include OP If EXISTING PERSONALITY does not already have it.
-        - Use 'replace' only for changing a current value at a specified index.
-        - Avoid duplicates.
-        - Must be confident in each OP to include it.
-
-        Be mindful of token limits; the updated personality should not exceed 1000 tokens. Remove redundant attributes if needed to meet this requirement.
-
-        Examples of OPS outputs are provided below only for guidance.
-          OPS: []
-          OPS: [{{"op": "add", "path": "/traits/-", "value": "adventurous"}},{{"op": "remove", "path": "/traits/1"}},{{"op": "replace", "path": "/traits/0", "value": "meticulous"}}]
-          OPS: [{{"op": "add", "path": "/tasks/-", "value": {{"task": "New Task", "active": false}}}},{{"op": "add", "path": "/tasks/0/subtasks/-", "value": {{"subtask": "New Subtask", "active": false}}}},{{"op": "replace", "path": "/tasks/0/active", "value": true}},{{"op": "replace", "path": "/tasks/0/subtasks/0/active", "value": true}}]
-          OPS: [{{"op": "add", "path": "/achievements/-", "value": "New Achievement"}},{{"op": "add", "path": "/expertise/-", "value": "New Skill"}},{{"op": "replace", "path": "/mood_feelings/0", "value": "content"}}]
-
-        EXISTING PERSONALITY: {personality}
-        DIALOG: {conversation}
-        """
-        prompt = PromptTemplate.from_template(template_text)
-
-        result = self.chain(prompt).run(
-            personality=json.dumps(personality), conversation=conversation
-        )
-        print(f'result {result}')
-        # Find the array in the output string using a regular expression
-        array_match = re.search(r'OPS: (\[.*\])', result)
-        array_json = []
-        if array_match:
-            array_str = array_match.group(1)
-            # Parse the array string as JSON
-            array_json = json.loads(array_str)
-        else:
-            print("No array found in the output")
-        return array_json
-
     async def pause_to_reflect(self, memory_content: str, conversation_id: str) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
         if self.verbose:
@@ -153,23 +102,6 @@ class GenerativeAgentMemory(BaseMemory):
                 new_insights.extend(insights)
                 return new_insights
         return []
-
-    async def update_personality(self, memory_content: str, user_id: str):
-        """Reflect on recent observations and generate 'insights'."""
-        if self.verbose:
-            logger.info("AiDA is trying to update personality")
-        doc = self.personality_resolver.get_personality(user_id)
-        if doc is None:
-            logger.warn(f"get_personality got empty doc")
-            return
-        patch_commands = self._get_json_patch_commands(memory_content, doc)
-        print(f'patch_commands {patch_commands}')
-        if len(patch_commands) > 0:
-            response = self.personality_resolver.apply_patch(user_id, doc, patch_commands)
-            if response != "success":
-                logger.warn(f"personality_resolver patch application failed: {response}")
-            else:
-                logger.warn(f"update_personality success!")
 
     async def add_memories(
         self, qa: List[str], conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
