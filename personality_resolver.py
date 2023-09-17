@@ -6,21 +6,6 @@ import os
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from typing import List, Optional
-
-class JsonPatchOperation(BaseModel):
-    op: str
-    path: str
-    value: Optional[str] = None
-
-class JsonPatchData(BaseModel):
-    user_id: str
-    json_patch_data: List[JsonPatchOperation]
-
-class QueryFieldsInput(BaseModel):
-    user_id: str
-    paths: List[str] = Field(..., description="List of JSON Pointer paths to fetch")
 
 class PersonalityResolver:
     def __init__(self):
@@ -37,29 +22,60 @@ class PersonalityResolver:
         self.db = self.client['PersonalityDB']
         self.collection = self.db['Personality']
 
-    def json_pointer_to_dot_notation(self, json_pointer):
-        # Remove the leading slash and replace remaining slashes with dots
-        return json_pointer.lstrip('/').replace('/', '.')
-
-    def get_fields(self, user_id, fields):
-        start = time.time()
-        # Convert JSON Pointer paths to MongoDB dot-notation paths
-        dot_notation_fields = {self.json_pointer_to_dot_notation(field): 1 for field in fields}
-        doc = self.collection.find_one({"_id": user_id}, projection=dot_notation_fields)
-        end = time.time()
-        return doc, end - start
-
-    def apply_patch(self, user_id, patch_data):
-        start = time.time()
+    def get_personality(self, user_id):
         doc = self.collection.find_one({"_id": user_id})
         if doc is None:
-            empty_user = {
-                "_id": user_id,
-                "AiDA": {},
-                "User": {}
+            return self.create_default_personality(user_id)
+        return doc
+
+    def create_default_personality(self, user_id):
+        # Default personality schema
+        default_personality = {
+            'name_nickname': [],
+            'traits': [],
+            'achievements': [],
+            'mood_feelings': [],
+            'goals': [],
+            'tasks': [
+                {
+                    'task': '',
+                    'active': False,
+                    'subtasks': [
+                        {
+                            'subtask': '',
+                            'active': False
+                        }
+                    ]
+                }
+            ],
+            'facts_opinions': [],
+            'expertise': [],
+            'occupations': [],
+            'privacy': {
+                'data_sharing': {
+                    'anonymous': True,
+                    'personal': False,
+                    'history': False
+                },
+                'engagement': {
+                    'contact': ['text', 'voice'],
+                    'DND': {
+                        'enabled': False,
+                        'times': ['22:00-06:00']
+                    }
+                }
             }
-            self.collection.insert_one(empty_user)
-            doc = empty_user
+        }
+        
+        # Insert the default personality into the collection
+        self.collection.insert_one({
+            '_id': user_id,
+            'personality': default_personality
+        })
+        
+        return default_personality
+
+    def apply_patch(self, user_id, doc, patch_data):
         # Make sure keys exist before applying patch
         for patch in patch_data:
             if patch["op"] in ["add", "replace"]:
@@ -94,14 +110,9 @@ class PersonalityResolver:
             patch = jsonpatch.JsonPatch(patch_data)
             modified_doc = patch.apply(doc)
         except jsonpatch.JsonPatchException as e:
-            logging.Warn(f"JSON Patch failed: {e}")
-            end = time.time()
-            return "fail", end - start
+            return f"fail: {e}"
 
         update_result = self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
         if update_result.modified_count == 0:
             logging.Warn("No documents were updated.")
-        end = time.time()
-        logging.info(
-            f"PersonalityResolver: apply_patch operation took {end - start} seconds")
-        return "success", end - start
+        return "success"

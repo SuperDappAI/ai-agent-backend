@@ -16,12 +16,13 @@ from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
 from qdrant_client.http import models as rest
 from memory_summarizer import MemorySummarizer
+from personality_resolver import PersonalityResolver
 
 logger = logging.getLogger(__name__)
     
 class GenerativeAgentMemory(BaseMemory):
     """Memory for the generative agent."""
-
+    personality_resolver: PersonalityResolver
     llm: BaseLanguageModel
     """The core language model."""
     memory_retriever: ContextualCompressionRetriever
@@ -87,6 +88,55 @@ class GenerativeAgentMemory(BaseMemory):
         )
         return self._parse_list(result)
 
+    def _get_json_patch_commands(
+        self, conversation: str, personality,
+    ) -> List[str]:
+        """Generate 'personality updates', based on pertinent memories."""
+        prompt = PromptTemplate.from_template(
+            "Personality:\n"
+            "---\n"
+            "{personality}\n"
+            "---\n"
+            "You're a top-tier personality interpreter. Your task is to read the conversation and the given personality, then suggest adjustments to attributes.\n"
+            "Personality is in context of the user and is useful across conversations; are provided in context of every exchange with AI. Things like name/nickname, moods, goals, tasks, accomplishments are common examples for users personality attributes.\n"
+            "List inferred personality update topics, keeping them broad yet meaningful.\n"
+            "Skip updates for code-related or non-conversational exchanges.\n"
+            "Only include conversation-relevant changes. If unsure, return an empty array.\n"
+            "First, identify up to 3 broad changes. Then, provide an array of JSON patch commands ('add', 'remove', 'replace'). Format:  '/traits/-' to add, '/traits/[some_integer]' to remove/replace at specific index.\n"
+            "The personality schema is not static, you may adjust it as needed. Add/remove fields/subfields at your descretion. 'Tasks' schema should remain intact as we depend on the structure defined.\n"
+            "Be aware of token limits, calculate the token count for personality above and estimated changes with the outputted list and try to keep the total size up to 1000 tokens, remove redundant attributes if needed. Tasks and goals are highest priority.\n"
+            "Importantly, triple check that you format the output correctly (use given examples for reference).\n"
+            "Avoid duplicating previous adjustments.\n\n"
+            "Conversation: {conversation}\n\n"
+            "Examples: \n"
+            "- Description: Nothing found\n"
+            "Output: []\n"
+            "- Description: Addressing multiple changes\n"
+            'Output: [{"op": "add", "path": "/traits/-", "value": "adventurous"},{"op": "remove", "path": "/traits/1"},{"op": "replace", "path": "/traits/0", "value": "meticulous"}]\n'
+            "- Description: Updating task and subtask\n"
+            'Output: [{"op": "add", "path": "/tasks/-", "value": {"task": "New Task", "active": false},{"op": "add", "path": "/tasks/0/subtasks/-", "value": {"subtask": "New Subtask", "active": false},{"op": "replace", "path": "/tasks/0/active", "value": true},{"op": "replace", "path": "/tasks/0/subtasks/0/active", "value": true}]\n'
+            "- Description: Multiple updates in various areas\n"
+            'Output: [{"op": "add", "path": "/achievements/-", "value": "New Achievement"},{"op": "add", "path": "/expertise/-", "value": "New Skill"},{"op": "replace", "path": "/mood_feelings/0", "value": "content"}]\n'
+            "- Description: Changing privacy settings\n"
+            'Output: [{"op": "replace", "path": "/privacy/data_sharing/personal", "value": true}]\n'
+            "- Description: Adding a new nickname\n"
+            'Output: [{"op": "add", "path": "/name_nickname/-", "value": "JohnDoe"}]\n'
+            "- Description: Removing a goal\n"
+            'Output: [{"op": "remove", "path": "/goals/0"}]\n'
+            "- Description: Changing mood and feelings\n"
+            'Output: [{"op": "replace", "path": "/mood_feelings/0", "value": "sad"}]\n'
+            "- Description: Adding new expertise\n"
+            'Output: [{"op": "add", "path": "/expertise/-", "value": "Data Science"}]\n'
+            "- Description: Removing an occupation\n"
+            'Output: [{"op": "remove", "path": "/occupations/0"}]\n'
+            "- Description: Adding facts and opinions\n"
+            'Output: [{"op": "add", "path": "/facts_opinions/-", "value": "The earth is round"}]\n'
+        )
+        result = self.chain(prompt).run(
+            personality=json.dumps(personality), conversation=conversation
+        )
+        return result
+
     async def pause_to_reflect(self, memory_content: str, conversation_id: str) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
         if self.verbose:
@@ -103,6 +153,23 @@ class GenerativeAgentMemory(BaseMemory):
                 new_insights.extend(insights)
                 return new_insights
         return []
+
+    async def update_personality(self, memory_content: str, user_id: str):
+        """Reflect on recent observations and generate 'insights'."""
+        if self.verbose:
+            logger.info("AiDA is trying to update personality")
+        doc = self.personality_resolver.get_personality(user_id)
+        if doc is None:
+            logger.warn(f"get_personality got empty doc")
+            return
+        patch_commands = self._get_json_patch_commands(memory_content, doc)
+        print(f'patch_commands {patch_commands}')
+        if len(patch_commands) > 0:
+            response = self.personality_resolver.apply_patch(user_id, doc, patch_commands)
+            if response != "success":
+                logger.warn(f"personality_resolver patch application failed: {response}")
+            else:
+                logger.warn(f"update_personality success!")
 
     async def add_memories(
         self, qa: List[str], conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
@@ -235,7 +302,7 @@ class GenerativeAgentMemory(BaseMemory):
         user_id = outputs.get("user_id")
         api_key = outputs.get("api_key")
         if query:
-            qa = {"user": query, "me": aida}
+            qa = {"user": query, "AiDA": aida}
             await self.memory_summarizer.save(api_key, user_id, outputs)
             return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []

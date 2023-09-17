@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 
 
 from dotenv import load_dotenv
@@ -11,8 +12,11 @@ from functions_manager import FunctionsManager, FunctionInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
-from personality_resolver import PersonalityResolver, JsonPatchData, QueryFieldsInput
+from pydantic import BaseModel
 
+class QueryPersonalityInput(BaseModel):
+    user_id: str
+    
 # Load environment variables
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -48,36 +52,19 @@ searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 pullmemorycache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
-# Example Usage
-resolver = PersonalityResolver()
-
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True)
 
-@app.post('/update_personality/')
-async def updatePersonality(personality_input: JsonPatchData):
-    user_id = personality_input.user_id
-    logging.info(f'Updating personality for user {user_id}')
-    patch_operations = personality_input.json_patch_data  # This is already a list of JsonPatchOperation objects
-
-    # Convert the list of Pydantic objects to a list of dictionaries
-    patch_operations_list = [operation.dict() for operation in patch_operations]
-
-    response, elapsed_time = resolver.apply_patch(user_id, patch_operations_list)
-    return {'response': response, 'elapsed_time': elapsed_time}
-
 @app.post('/get_personality/')
-async def getPersonality(personality_query: QueryFieldsInput):
+async def getPersonality(personality_query: QueryPersonalityInput):
     logging.info(f'Get personality for user {personality_query.user_id}')
-
-    # Convert Pydantic object to dictionary and extract paths
-    query_fields_dict = personality_query.dict()
-    paths_list = query_fields_dict["paths"]
-    response, elapsed_time = resolver.get_fields(personality_query.user_id, paths_list)
-    return {'response': response, 'elapsed_time': elapsed_time}
+    start = time.time()
+    response = agent_manager.personality_resolver.get_personality(personality_query.user_id)
+    end = time.time()
+    return {'response': response, 'elapsed_time': end - start}
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):
