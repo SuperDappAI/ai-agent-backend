@@ -27,3 +27,7 @@ nltk
 cachetools
 jsonpatch
 pymongo
+pytest
+pytest-asyncio
+boto3
+aioboto3

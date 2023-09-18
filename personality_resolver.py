@@ -1,26 +1,11 @@
-import jsonpatch
-import time
+
 import logging
 import os
 
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from typing import List, Optional
-
-class JsonPatchOperation(BaseModel):
-    op: str
-    path: str
-    value: Optional[str] = None
-
-class JsonPatchData(BaseModel):
-    user_id: str
-    json_patch_data: List[JsonPatchOperation]
-
-class QueryFieldsInput(BaseModel):
-    user_id: str
-    paths: List[str] = Field(..., description="List of JSON Pointer paths to fetch")
+from jsonpatch import JsonPatch, JsonPatchException
 
 class PersonalityResolver:
     def __init__(self):
@@ -37,71 +22,131 @@ class PersonalityResolver:
         self.db = self.client['PersonalityDB']
         self.collection = self.db['Personality']
 
-    def json_pointer_to_dot_notation(self, json_pointer):
-        # Remove the leading slash and replace remaining slashes with dots
-        return json_pointer.lstrip('/').replace('/', '.')
-
-    def get_fields(self, user_id, fields):
-        start = time.time()
-        # Convert JSON Pointer paths to MongoDB dot-notation paths
-        dot_notation_fields = {self.json_pointer_to_dot_notation(field): 1 for field in fields}
-        doc = self.collection.find_one({"_id": user_id}, projection=dot_notation_fields)
-        end = time.time()
-        return doc, end - start
-
-    def apply_patch(self, user_id, patch_data):
-        start = time.time()
+    def get_personality(self, user_id):
         doc = self.collection.find_one({"_id": user_id})
         if doc is None:
-            empty_user = {
-                "_id": user_id,
-                "AiDA": {},
-                "User": {}
+            return self.create_default_personality(user_id)
+        # Filter out empty fields or fields with empty lists
+        filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
+
+        return filtered_doc
+
+    def create_default_personality(self, user_id):
+        # Default personality schema
+        default_personality = {
+            'name_nicknames': ["user name"],
+            'traits': ["curious"],
+            'achievements': ["became a superdapp user"],
+            'mood_feelings': ["happy"],
+            'goals': ["onboard to superdapp"],
+            'tasks': [
+                {'id': 'task_0', 'description': 'onboard user to superdapp'},
+                {'id': 'task_1', 'description': 'set up tutorials'},
+            ],
+            'subtasks': [
+                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'find out user preferences, google calendar or calendly link'},
+                {'id': 'subtask_1', 'task_id': 'task_0', 'description': 'Setup web3 wallet'},
+                {'id': 'subtask_2', 'task_id': 'task_0', 'description': 'See if user wants to pay SUPR to use code interpreter or social groups'},
+                {'id': 'subtask_3', 'task_id': 'task_1', 'description': 'Reference docs in regards to tutorials on superdapp'},
+            ],
+            'active_task_id': 'task_0',
+            'active_subtask_id': 'subtask_0',
+            'facts_opinions': ["superdapp is awesome!"],
+            'interests': ["AI", "machine learning"],
+            'skills': ["hockey", "building legos"],
+            'occupations': ["engineer"],
+            'privacy': {
+                'data_sharing': {
+                    'anonymous': True,
+                    'personal': False,
+                    'history': False
+                },
+                'engagement': {
+                    'contact_methods': ['text', 'voice', 'video'],
+                    'DND': {
+                        'enabled': False,
+                        'times': '22:00-06:00'
+                    }
+                }
             }
-            self.collection.insert_one(empty_user)
-            doc = empty_user
+        }
+        
+        # Insert the default personality into the collection
+        self.collection.insert_one({
+            '_id': user_id,
+            **default_personality
+        })
+        
+        return default_personality
+
+    def check_for_nested_duplicates(self, value, target):
+        if isinstance(target, list):
+            res = value in target
+            return res
+        elif isinstance(target, dict):
+            return any(self.check_for_nested_duplicates(value, sub_value) for sub_value in target.values())
+        else:
+            return False
+
+
+    def apply_patch(self, user_id, doc, patch_data):
         # Make sure keys exist before applying patch
         for patch in patch_data:
             if patch["op"] in ["add", "replace"]:
                 keys = patch["path"].lstrip('/').split('/')
                 temp_doc = doc
                 for i, key in enumerate(keys[:-1]):
-                    if key not in temp_doc:
-                        next_key = keys[i + 1]
-                        if next_key == "-":
-                            temp_doc[key] = []
-                        else:
-                            temp_doc[key] = {}
-                    temp_doc = temp_doc[key]
+                    if isinstance(temp_doc, list):
+                        if key == "-":
+                            if patch["op"] != "add":
+                                return f"Error: '-' can only be used with 'add' operation. Patch {patch}"
+                        elif not (0 <= int(key) < len(temp_doc)):
+                            return f"Error: Key '{key}' does not exist in the document. Patch {patch}"
+                        temp_doc = temp_doc[int(key)]
+                    elif isinstance(temp_doc, dict):
+                        if key not in temp_doc:
+                            next_key = keys[i + 1]
+                            if patch["op"] == "add":
+                                if next_key == "-":
+                                    temp_doc[key] = []  # Create a new list if one does not exist
+                                else:
+                                    return f"Error: Cannot add a non-existing key without appending. Patch {patch}"
+                            else:  # for 'replace' and other ops
+                                return f"Error: Key '{key}' does not exist in the document. Patch {patch}"
+                        temp_doc = temp_doc[key]
 
-                # Create the final nested key if it doesn't exist
+                    # Check for nested duplicates
+                    if patch["op"] == "add":
+                        if self.check_for_nested_duplicates(patch["value"], temp_doc):
+                            logging.warn(f"Duplicate patch {patch}, skipping...")
+                            continue
+                    # Check type and validity
+                    if isinstance(temp_doc, list) and not keys[i + 1].isdigit() and keys[i + 1] != '-':
+                        return f'Error: List indices must be integers or slices, not str. Patch {patch}'
+                    elif isinstance(temp_doc, dict) and keys[i + 1].isdigit():
+                        return f'Error: Dictionary keys must be strings, not integers. Patch {patch}'
+
+                # Check the final nested key
                 last_key = keys[-1]
-                if isinstance(temp_doc, list):
-                    if last_key == "-":
-                        # Append a None value at the end of the list
-                        temp_doc.append(None)
-                    else:
-                        # Insert a None value at the specified index, assuming the index is an integer
-                        index = int(last_key)
-                        while len(temp_doc) <= index:
-                            temp_doc.append(None)
-                else: # Assume it's a dictionary
-                    if last_key not in temp_doc and last_key != "-":
-                        temp_doc[last_key] = None
+                if isinstance(temp_doc, list) and last_key.isdigit():
+                    if int(last_key) >= len(temp_doc):
+                        return f"Error: Key '{last_key}' does not exist in the document. Patch {patch}"
+                elif isinstance(temp_doc, list) and last_key != '-':
+                    return f'Error: List indices must be integers or "-", not str. Patch {patch}'
+                elif isinstance(temp_doc, dict) and last_key.isdigit():
+                    return f'Error: Dictionary keys must be strings, not integers. Patch {patch}'
 
-
+        # Apply the patch
         try:
-            patch = jsonpatch.JsonPatch(patch_data)
+            patch = JsonPatch(patch_data)
             modified_doc = patch.apply(doc)
-        except jsonpatch.JsonPatchException as e:
-            logging.Warn(f"JSON Patch failed: {e}")
-            end = time.time()
-            return "fail", end - start
+        except JsonPatchException as e:
+            return f"fail: {e}"
+        except Exception as e:
+            return f"An unknown exception occurred: {e}"
 
+        # Update the database
         update_result = self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
         if update_result.modified_count == 0:
-            logging.Warn("No documents were updated.")
-        end = time.time()
-        logging.info(
-            f"PersonalityResolver: apply_patch operation took {end - start} seconds")
-        return "success", end - start
+            logging.warn("No documents were updated.")
+        return "success"

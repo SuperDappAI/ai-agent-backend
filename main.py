@@ -1,6 +1,6 @@
 import os
 import logging
-import json
+import time
 
 
 from dotenv import load_dotenv
@@ -10,8 +10,14 @@ from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
+# from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
-from personality_resolver import PersonalityResolver, JsonPatchData, QueryFieldsInput
+from pydantic import BaseModel
+
+
+class QueryPersonalityInput(BaseModel):
+    user_id: str
+
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +34,7 @@ origins = [
 ]
 
 app = FastAPI()
+# app.include_router(interpreter_router, prefix="/interpreter")
 
 # Initialize logging
 LOGFILE_PATH = os.path.join(os.path.dirname(
@@ -36,7 +43,7 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True, level=logging.INFO)
 
 
-functions_manager = None
+functions_manager = FunctionsManager()
 agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
@@ -47,43 +54,22 @@ searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 pullmemorycache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
-# Example Usage
-resolver = PersonalityResolver()
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    print("Application shutdown")
-    web_manager.stop()
-    if functions_manager is not None:
-        functions_manager.stop()
-    
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True)
 
-@app.post('/update_personality/')
-async def updatePersonality(personality_input: JsonPatchData):
-    user_id = personality_input.user_id
-    logging.info(f'Updating personality for user {user_id}')
-    patch_operations = personality_input.json_patch_data  # This is already a list of JsonPatchOperation objects
-
-    # Convert the list of Pydantic objects to a list of dictionaries
-    patch_operations_list = [operation.dict() for operation in patch_operations]
-
-    response, elapsed_time = resolver.apply_patch(user_id, patch_operations_list)
-    return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/get_personality/')
-async def getPersonality(personality_query: QueryFieldsInput):
+async def getPersonality(personality_query: QueryPersonalityInput):
     logging.info(f'Get personality for user {personality_query.user_id}')
+    start = time.time()
+    response = agent_manager.personality_resolver.get_personality(
+        personality_query.user_id)
+    end = time.time()
+    return {'response': response, 'elapsed_time': end - start}
 
-    # Convert Pydantic object to dictionary and extract paths
-    query_fields_dict = personality_query.dict()
-    paths_list = query_fields_dict["paths"]
-    response, elapsed_time = resolver.get_fields(personality_query.user_id, paths_list)
-    return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):
@@ -97,12 +83,15 @@ async def writeQueryPlan(query_input: QueryPlanInput):
     queryplancache[query_input] = response
     return {'response': response, 'elapsed_time': elapsed_time}
 
+
 @app.post('/push_memory/')
 async def writeMemoryForUser(memory_output: MemoryOutput):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user (importance: {memory_output.importance}) for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
+    logging.info(
+        f'Writing memory for user (importance: {memory_output.importance}) for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
     elapsed_time = await agent_manager.push_memory(memory_output)
     return {'elapsed_time': elapsed_time}
+
 
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
@@ -110,10 +99,12 @@ async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     result = pullmemorycache.get(memory_input)
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
-    logging.info(f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
+    logging.info(
+        f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
     memories, elapsed_time = agent_manager.pull_memory(memory_input)
     pullmemorycache[memory_input] = memories
     return {'response': memories, 'elapsed_time': elapsed_time}
+
 
 @app.post('/semantic_search_html/')
 async def semanticSearchHTML(function_input: HTMLInput):
@@ -126,6 +117,7 @@ async def semanticSearchHTML(function_input: HTMLInput):
     searchhtmlcache[function_input] = results
     return {'response': results, 'elapsed_time': elapsed_time}
 
+
 @app.post('/is_html_search_cached/')
 async def isHTMLSearchCached(cache_html: CacheHTML):
     """Endpoint to check if HTML content is cached."""
@@ -137,12 +129,14 @@ async def isHTMLSearchCached(cache_html: CacheHTML):
     searchhtmlcache[cache_html.hash] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
+
 @app.post('/add_doc/')
 async def addDoc(function_input: DocAddInput):
     """Endpoint to conduct add HTML document for doc portal."""
     logging.info('add to Doc Portal')
     results, elapsed_time = await doc_manager.add_doc(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
+
 
 @app.post('/is_doc_cached/')
 async def isDocCached(cache_html: CacheDoc):
@@ -155,6 +149,7 @@ async def isDocCached(cache_html: CacheDoc):
     doccache[cache_html.source_url] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
+
 @app.post('/search_doc/')
 async def semanticSearchDoc(function_input: DocSearchInput):
     """Endpoint to conduct a semantic search in doc portal."""
@@ -166,26 +161,18 @@ async def semanticSearchDoc(function_input: DocSearchInput):
     doccache[function_input] = results
     return {'response': results, 'elapsed_time': elapsed_time}
 
+
 @app.post('/get_functions/')
 async def getFunctions(function_input: FunctionInput):
     """Endpoint to get functions based on provided input."""
     result = functioncache.get(function_input)
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
-    global functions_manager  # Declare functions_manager as global
-    if functions_manager is None:
-        functions_manager = FunctionsManager()
-        try:
-            functions_manager.client.get_collection(functions_manager.collection_name)
-        except:
-            with open('./utils/functions.json', 'r') as f:
-                print("FunctionsManager: Loading from functions.json")
-                functions_json = json.load(f)
-                await functions_manager.push_functions(function_input.api_key, functions_json)
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
     functioncache[function_input] = result
     return {'response': result, 'elapsed_time': elapsed_time}
+
 
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
@@ -194,9 +181,3 @@ async def clearUserMemory(clear_memory: ClearMemory):
         f'Clearing user memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
     response, elapsed_time = agent_manager.clear_conversation(clear_memory)
     return {'response': response, 'elapsed_time': elapsed_time}
-
-@app.get('/test_callback/')
-async def test_callback():
-    """Test callback endpoint."""
-    logging.info('Test callback')
-    return {'test': 'test'}

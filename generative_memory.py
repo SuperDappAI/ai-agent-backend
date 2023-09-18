@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
     
 class GenerativeAgentMemory(BaseMemory):
     """Memory for the generative agent."""
-
     llm: BaseLanguageModel
     """The core language model."""
     memory_retriever: ContextualCompressionRetriever
@@ -235,7 +234,7 @@ class GenerativeAgentMemory(BaseMemory):
         user_id = outputs.get("user_id")
         api_key = outputs.get("api_key")
         if query:
-            qa = {"user": query, "me": aida}
+            qa = {"user": query, "AiDA": aida}
             await self.memory_summarizer.save(api_key, user_id, outputs)
             return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []

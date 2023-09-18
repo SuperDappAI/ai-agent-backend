@@ -1,9 +1,7 @@
 import time
 import tiktoken
-import schedule
 import json
 import asyncio
-import threading
 import os
 import random
 import logging
@@ -52,7 +50,6 @@ class FunctionInput(BaseModel):
         return hash(str(self))
 
 class FunctionsManager:
-    scheduler = schedule.Scheduler()
 
     def __init__(self):
         load_dotenv()  # Load environment variables
@@ -63,24 +60,8 @@ class FunctionsManager:
         self.max_length_allowed = 512
         self.collection_name = "functions"
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
-        self.scheduler.every(2).weeks.do(self.prune_functions)
-
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            self.scheduler.run_pending()
-            time.sleep(1)
-
-    def stop(self):
-        """Stops the scheduler thread."""
-        self.stop_event.set()
-        self.scheduler_thread.join()
-
+        self.inited = False
+        
     def create_new_functions_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
         # create collection if it doesn't exist (if it exists it will fall into finally)
@@ -168,8 +149,18 @@ class FunctionsManager:
     async def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
+        if self.inited is False:
+            try:
+                self.client.get_collection(self.collection_name)
+            except:
+                with open('./utils/functions.json', 'r') as f:
+                    print("FunctionsManager: Loading from functions.json")
+                    functions_json = json.load(f)
+                    await self.push_functions(function_input.api_key, functions_json)
+            self.inited = True
         memory = self.load(function_input.api_key)
         response = []
+        loop = asyncio.get_event_loop()
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
@@ -183,6 +174,7 @@ class FunctionsManager:
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
                     asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+                    loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
