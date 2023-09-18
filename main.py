@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
-from functions_manager import FunctionsManager, FunctionInput
+from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
@@ -156,6 +156,34 @@ async def getFunctions(function_input: FunctionInput):
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
     functioncache[function_input] = result
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/push_functions/')
+async def pushFunctions(function_output: FunctionOutput):
+    """Endpoint to push functions based on provided functions."""
+    logging.info(f'Adding functions: {function_output.functions}')
+    functions = {}
+    function_types = ['information_retrieval', 'communication', 'data_processing', 'sensory_perception']
+
+    for function_item in function_output.functions:
+        function_item.category = function_item.category.lower().replace(' ', '_')
+        if function_item.category not in function_types:
+            return {'response': f'Invalid category for function {function_item.name}, must be one of {function_types}'}
+
+        # Initialize category list if not already done
+        if function_item.category not in functions:
+            functions[function_item.category] = []
+
+        # Append the new function to the category
+        new_function = {
+            'name': function_item.name,
+            'description': function_item.description
+        }
+
+        functions[function_item.category].append(new_function)
+
+    # Push the functions
+    result, elapsed_time = await functions_manager.push_functions(function_output.user_id, function_output.api_key, functions)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/clear_conversation/')

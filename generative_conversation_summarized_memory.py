@@ -65,9 +65,6 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         else:
             return None
 
-    # if we are dealing with important conscious thoughts then we can create personality and goals/subgoals (intentions)
-    # add into global memory as well with learnings that can apply into AiDAs personality (traits, mood, feelings) and goals/subgoals
-    # as well as users personality and goals (what AiDA thinks of the user and the goals/subgoals)  
     async def add_memory(
         self, memory_content: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:

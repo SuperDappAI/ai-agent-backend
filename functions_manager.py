@@ -21,7 +21,7 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
-
+from qdrant_client.http.models import PayloadSchemaType
 
 class ActionItem(BaseModel):
     action: str
@@ -38,17 +38,32 @@ class ActionItem(BaseModel):
 
 class FunctionInput(BaseModel):
     api_key: str
+    user_id: str = None
     action_items: List[ActionItem] = Field(..., example=[
                                            {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
     def __str__(self):
-        return self.api_key + str(self.action_items)
+        if self.user_id:
+            return self.api_key + str(self.action_items) + self.user_id
+        else:
+            return self.api_key + str(self.action_items)
 
     def __eq__(self,other):
-        return self.api_key == other.api_key and self.action_items == other.action_items
+        return self.api_key == other.api_key and self.action_items == other.action_items and self.user_id == other.user_id
 
     def __hash__(self):
         return hash(str(self))
 
+class FunctionItem(BaseModel):
+    name: str
+    description: str
+    category: str
+
+class FunctionOutput(BaseModel):
+    api_key: str
+    user_id: str = None
+    functions: List[FunctionItem] = Field(..., example=[
+                                           {"name": "name_example", "description": "description_example", "category": "category_example"}])
+    
 class FunctionsManager:
 
     def __init__(self):
@@ -66,7 +81,6 @@ class FunctionsManager:
         """Create a new vector store retriever unique to the agent."""
         # create collection if it doesn't exist (if it exists it will fall into finally)
         try:
-            print("creating collection")
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=rest.VectorParams(
@@ -74,7 +88,7 @@ class FunctionsManager:
                     distance=rest.Distance.COSINE,
                 ),
             )
-            print("creating collection done")
+            self.client.create_payload_index(self.collection_name, "metadata.user_id", field_schema=PayloadSchemaType.KEYWORD)
         except:
             logging.info(f"FunctionsManager: loaded from cloud...")
         finally:
@@ -89,7 +103,7 @@ class FunctionsManager:
             )
             return compression_retriever
 
-    def transform(self, data, category):
+    def transform(self, user_id, data, category):
         """Transforms function data for a specific category."""
         now = datetime.now().timestamp()
         result = []
@@ -103,6 +117,7 @@ class FunctionsManager:
                 continue
             metadata = {
                 "id":  random.randint(0, 2**32 - 1),
+                "user_id": user_id,
                 "extra_index": category,
                 "last_accessed_at": now,
             }
@@ -156,7 +171,7 @@ class FunctionsManager:
                 with open('./utils/functions.json', 'r') as f:
                     print("FunctionsManager: Loading from functions.json")
                     functions_json = json.load(f)
-                    await self.push_functions(function_input.api_key, functions_json)
+                    await self.push_functions(function_input.user_id, function_input.api_key, functions_json)
             self.inited = True
         memory = self.load(function_input.api_key)
         response = []
@@ -165,7 +180,7 @@ class FunctionsManager:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                 documents = self.get_retrieved_nodes(memory,
-                    query, action_item.category)
+                    query, action_item.category, function_input.user_id)
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
@@ -183,10 +198,33 @@ class FunctionsManager:
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str):
+    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
         kwargs = {}
         if len(category) > 0:
-            kwargs = {"extra_index": category}
+            kwargs["extra_index"] = category
+        # if user provided then look for null or direct matches, otherwise look for null so it matches public functions
+        if user_id:
+            filter = rest.Filter(
+                should=[
+                    rest.FieldCondition(
+                        key="metadata.user_id",
+                        match=rest.MatchValue(value=user_id),
+                    ),
+                    rest.IsNullCondition(
+                        is_null=rest.PayloadField(key="metadata.user_id")
+                    )
+                ]
+            )
+            kwargs["user_filter"] = filter
+        else:
+            filter = rest.Filter(
+                should=[
+                    rest.IsNullCondition(
+                        is_null=rest.PayloadField(key="metadata.user_id")
+                    )
+                ]
+            )
+            kwargs["user_filter"] = filter
         return memory.get_relevant_documents(query_str, **kwargs)
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
@@ -199,7 +237,7 @@ class FunctionsManager:
             f"FunctionsManager: Load operation took {end - start} seconds")
         return memory
 
-    async def push_functions(self, api_key: str, functions):
+    async def push_functions(self, user_id: str, api_key: str, functions):
         """Update the current index with new functions."""
         start = time.time()
         tokens = None
@@ -218,7 +256,7 @@ class FunctionsManager:
             for func_type in function_types:
                 if func_type in functions:
                     transformed_functions = self.transform(
-                        functions[func_type], func_type.replace('_', ' ').title())
+                        user_id, functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
             ids = [doc.metadata["id"] for doc in all_docs]
             await memory.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
