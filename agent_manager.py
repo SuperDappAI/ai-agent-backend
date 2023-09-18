@@ -113,7 +113,7 @@ class AgentManager:
 
     def create_memory(self, api_key: str, user_id: str):
         return GenerativeAgentMemory(
-            llm=OpenAI(openai_api_key=api_key),
+            llm=OpenAI(openai_api_key=api_key, model="gpt-3.5-turbo-instruct"),
             memory_retriever=self.create_new_memory_retriever(api_key, user_id),
             memory_summarizer=MemorySummarizer(flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose
