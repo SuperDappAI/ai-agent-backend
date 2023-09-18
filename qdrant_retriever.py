@@ -27,9 +27,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     vectorstore: Qdrant
     """The vectorstore to store documents and determine salience."""
 
-    extra_index_penalty: float = Field(default=0.1)
+    extra_index_penalty: float = float(0.1)
     
-    subconscious_memory_penalty: float = Field(default=0.05)
+    subconscious_memory_penalty: float = float(0.05)
     """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
     _max_summarizations: int = int(20)
@@ -130,6 +130,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         """Return documents that are relevant to the query."""
         current_time = datetime.now().timestamp()
         extra_index = kwargs.pop("extra_index", None)
+        user_filter = kwargs.pop("user_filter", None)
+        if user_filter:
+            kwargs.update({"filter": user_filter})
         docs_and_scores = self.get_salient_docs(query, **kwargs)
         rescored_docs = [
             (doc, self._get_combined_score(doc, relevance, extra_index))
