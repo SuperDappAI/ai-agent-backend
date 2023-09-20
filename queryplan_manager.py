@@ -13,15 +13,6 @@ class QueryPlanInput(BaseModel):
     query: str
     user_id: str
 
-    def __str__(self):
-        return self.api_key + self.query + self.user_id
-
-    def __eq__(self,other):
-        return self.api_key == other.api_key and self.query == other.user_id and self.query == other.user_id
-
-    def __hash__(self):
-        return hash(str(self))
-
 class QueryPlanManager:
     def __init__(self):
         CoTClassifyPrompt = {"Rationale": "This type is for complex queries that require a step-by-step logical reasoning process. It's ideal for solving puzzles, mathematical problems, or any query that demands a rigorous logical approach.",
@@ -52,6 +43,7 @@ class QueryPlanManager:
                 }
             ]
         }
+        CoT = "Role: Logical Reasoning. 1. Understand the user's query and personality schema for logical reasoning. 2. Use 'getInformationFromMemory' for relevant historical context. 3. Execute 'webSearch' for extra information or resources. 4. Run 'getExternalFunctions' for external code or tools. 5. Apply Chain of Thought Prompting for problem breakdown. 6. Determine the need for new lambda code. 7. Evaluate hypotheses and probabilities. 8. Use Tree of Thought Prompting for initial problem reassessment. 9. Validate each step for logical coherence. 10. Test and validate solutions, possibly via lambdas. 11. Repeat steps 5-10 for a final solution. 12. If solved, assess need for lambda execution to display autonomy. 13. Lastly, validate the solution comprehensively, create and store lambdas if user wishes."
         CodeClassifyPrompt = {"Rationale": "This type is for queries related to coding, algorithms, or technical issues. While it may involve logical reasoning, the focus is more on the technical aspects.",
                              "Classification Guidelines": "If the query asks for code, discusses algorithms, or involves technical jargon, it falls under this category."}
         CodeClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in CodeClassifyPrompt.items())
@@ -80,6 +72,7 @@ class QueryPlanManager:
                 },
             ]
         }
+        Code = "Role: Coding. 1. Interpret user's technical query. 2. Apply Chain of Code Prompting for task breakdown. 3. Identify query elements. 4. Use functions to access memory if needed. 5. Run 'getExternalFunctions' for external code. 6. Use 'webSearch' for relevant info and URLs. 7. Draft a solution plan. 8. Ask if you should create lambda and run any user-provided code. 9. Offer code snippets, explanations, and justifications. 10. Run code upon user agreement. 11. Utilize user's personality schema for communication. 12. Tailor solution to user's interests and skills. 13. Deliver a technically sound solution. 14. Ensure solution meets user requirements. 15. Learn from user interactions to enhance AI. 16. Consider user's achievements and goals in solutions. 17. Thank user and seek feedback for improvement."
         QAClassifyPrompt = {"Rationale": "This type is for straightforward questions that require a simple answer without the need for extensive reasoning or elaboration.",
                              "Classification Guidelines": "If the query asks for a fact, a definition, or a simple explanation, it falls under this category."}
         QAClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in QAClassifyPrompt.items())
@@ -112,6 +105,7 @@ class QueryPlanManager:
                 },
             ]
         }
+        QA = "Role: Question/Answer. 1. Understand user's query for concise, accurate answers. 2. Use 'gatherUserInput' for additional user info if needed. 3. Run 'getInformationFromMemory' for relevant historical context. 4. Apply 'webSearch' and semantic URL lookup for more info. 5. Use 'getExternalFunctions' for helpful external code. 6. Draft hypothetical answers. 7. Conduct a final 'webSearch' to refine answer. 8. Respond in specified format with gathered info. 9. For onboarding queries, use 'gatherUserInput' for preferences and relevant links. 10. Use 'getSuperdappDocs' for onboarding details. 11. Fetch onboarding tools with 'getExternalFunctions'. 12. Update personality context by responding such that inference will update personality schema for preference or schedule queries. 13. Respond in specified format with necessary info."
         ConversationClassifyPrompt = {"Rationale": "This is the default type that is for queries that are more conversational in nature and do not require a specific format or structure.",
                              "Classification Guidelines": "If the query is open-ended, opinion-based, or conversational, it falls under this category."}
         ConversationClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in ConversationClassifyPrompt.items())
@@ -143,6 +137,7 @@ class QueryPlanManager:
                 },
             ]
         }
+        Emotion = "Role: Empathy. Define query and available functions. 2. Use 'gatherUserInput' for user query details. 3. Run 'getInformationFromMemory' for historical context from personality schema. 4. Apply 'webSearch' for extra query-related info. 5. Assess need to update personality schema via response crafting for inference. 6. Analyze info for an appropriate response considering traits, mood, and goals. 7. Update personality schema for mood changes post-response. 8. Provide a compassionate, supportive response. 9. Update personality schema for trait or interest changes post-response. 10. Check user's privacy settings and respect DND times and preferred contact methods. 11. Use 'webSearch' again for extra resources if needed. 12. Finalize personality schema updates post-query. 13. End query planning."
         CreativeClassifyPrompt = {"Rationale": "This type is for queries that ask for creative output, like writing a poem, story, or generating art.",
                              "Classification Guidelines": "If the query asks for a creative piece of content, it falls under this category."}
         CreativeClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in CreativeClassifyPrompt.items())
@@ -179,6 +174,7 @@ class QueryPlanManager:
                 },
             ]
         }
+        Creative = "Role: Creative. 1. Retrieve user's creative query. 2. Use 'gatherUserInput' for extra details. 3. Run 'getInformationFromMemory' for past user context. 4. Apply 'webSearch' for relevant info or inspiration. 5. Fetch external tools with 'getExternalFunctions'. 6. Identify relevant traits from user's personality schema. 7. Update personality attributes via crafted response for inference. 8. Choose content format based on user traits. 9. Generate necessary lambda code, ask for library upload. 10. Use 'gatherUserInput' for content feedback. 11. Revise content per user feedback. 12. Update personality post-feedback. 13. Present final content in chosen format. 14. Update personality post-reaction. 15. Fulfill creative request optimally."
         EducationalClassifyPrompt = {"Rationale": "This type is for queries that seek educational information or a tutorial on how to do something.",
                              "Classification Guidelines": "If the query asks for a step-by-step guide, tutorial, or educational explanation, it falls under this category."}
         EducationalClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in EducationalClassifyPrompt.items())
@@ -215,6 +211,7 @@ class QueryPlanManager:
                 },
             ]
         }
+        Education = "Role: Education. 1. Store user query via 'gatherUserInput'. 2. Recall relevant context with 'getInformationFromMemory'. 3. Search additional info via 'webSearch'. 4. Fetch useful tools with 'getExternalFunctions'. 5. Create and run lambda code tailored to query. 6. Update personality schema with new (active)tasks/subtasks/goals via crafted response. 7. Track progress and plan next educational steps via schema. 8. Gather preferred learning style, update schema. 9. Fetch educational resources with 'getExternalFunctions'. 10. Generate interactive learning via lambda code. 11. Update schema with new goals or achievements. 12. Get user feedback and adjust process. 13. Update mood in schema via response inference. 14. Ask if query is resolved or needs further explanation. 15. Update schema with new skills or interests. 16. Ask for continued learning or new topic. 17. Update schema with new tasks or subtasks. 18. Inquire preferred content delivery, update schema. 19. Update privacy settings in schema. 20. Gather final feedback for improvement. 21. Update schema with final accomplishments. 22. Create summary via lambda code. 23. Update final mood in schema. 24. Ask to save educational journey. 25. Update schema with final goals. 26. Generate personalized report via code. 27. Update schema with final tasks. 28. Ask for continued use or other features. 29. Update schema with final interests. 30. Create farewell message via lambda code."
         FactualClassifyPrompt = {"Rationale": "This type is for queries that require a detailed, factual answer based on research or data.",
                              "Classification Guidelines": "If the query asks for detailed information that requires research or data-backed answers, it falls under this category."}
         FactualClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in FactualClassifyPrompt.items())
@@ -247,6 +244,7 @@ class QueryPlanManager:
                 },
             ]
         }
+        Factual = "Role: Research. 1. Understand query and purpose. 2. Gather additional details via 'gatherUserInput'. 3. Search the internet for relevant info with 'webSearch'. 4. Fetch useful external tools via 'getExternalFunctions'. 5. Recall historical context using 'getInformationFromMemory'. 6. Create lambda code if needed. 7. Use personality schema to understand user preferences. 8. Search for relevant sources/citations via 'webSearch'. 9. Fetch external tools for fact-checking via 'getExternalFunctions'. 10. Create lambda code if necessary. 11. Search for supporting data/stats via 'webSearch'. 12. Fetch tools for data analysis via 'getExternalFunctions'. 13. Create lambda code if necessary. 14. Search for articles/research papers with 'webSearch'. 15. Fetch additional research tools via 'getExternalFunctions'. 16. Create lambda code if necessary. 17. Compile comprehensive, data-backed response. 18. Search for images/visuals via 'webSearch'. 19. Fetch visual aid tools via 'getExternalFunctions'. 20. Create lambda code if necessary. 21. Search for relevant videos/multimedia via 'webSearch'. 22. Fetch multimedia tools via 'getExternalFunctions'. 23. Create lambda code if necessary. 24. Search for examples/case studies via 'webSearch'. 25. Fetch case study tools via 'getExternalFunctions'. 26. Create lambda code if necessary. 27. Tailor response to user's interests via personality schema. 28. Search for feedback/reviews via 'webSearch'. 29. Fetch tools for gathering feedback via 'getExternalFunctions'. 30. Create lambda code if necessary. 31. Present final, sourced, accurate response to user."
         classify_template_str = (
             "Classify the following user query into one of the categories based on the guidelines (only output role ie: LogicGPT):\n\n"
             "LogicGPT\n"
@@ -269,17 +267,14 @@ class QueryPlanManager:
         )
         self.classify_template = PromptTemplate.from_template(classify_template_str)
         self.classify_prompts = {
-            "LogicGPT": CoTPrompt,
-            "CodeGPT": CodePrompt,
-            "InfoGPT": QAPrompt,
-            "EmpathyGPT": EmotionPrompt,
-            "CreativeGPT": CreativePrompt,
-            "EduGPT": EducationalPrompt,
-            "ResearchGPT": FactualPrompt
+            "LogicGPT": CoT,
+            "CodeGPT": Code,
+            "InfoGPT": QA,
+            "EmpathyGPT": Emotion,
+            "CreativeGPT": Creative,
+            "EduGPT": Education,
+            "ResearchGPT": Factual
         }
-    def parseQueryPlan(self, text: str):
-        steps = [v for v in re.split("\n\s*\d+\. ", text)[1:]]
-        return steps
 
     def parseClassification(self, text: str):
         if text in self.classify_prompts:
@@ -288,11 +283,6 @@ class QueryPlanManager:
 
     def chain(self, prompt: PromptTemplate) -> LLMChain:
         return LLMChain(llm=self.llm, prompt=prompt, verbose=False)
-
-    def post_process_plan(self, plan):
-        plan = re.sub(r"(?i)use the function 'createAndRunCode'", "Assess if you should create and run code through a lambda", plan)
-        plan = re.sub(r"(?i)use the function 'updatePersonality'", "Use ability to update personality through your response context", plan)
-        return plan
 
     def classify(self, query_input: QueryPlanInput):
         response = self.chain(self.classify_template).run(query=query_input.query)
@@ -304,36 +294,27 @@ class QueryPlanManager:
      
     def query_plan(self, personality_resolver, query_input: QueryPlanInput):
         start = time.time()
-        content_dict = {
-            "role": "You are a query planning assistant for a personal companion AI. You are given the user's query, user personality schema and available functions. Your role is to help the companion AI by devising a detailed plan. Break the problem down into manageable parts using functions, as many times as necessary. Start your plan with the header 'Plan:', followed by a numbered list of steps. the final step should almost always be 'Given the above steps taken, please respond to the users original question'. At the end of your plan, say '<END_OF_PLAN>'.",
-        }
-        # Convert the dictionary to a string template
-        template_str = (
-            f"{content_dict['role']}\n\n"
-            "Query and functions:\n"
-            "{query}\n\n"
-            "Personality Schema:\n"
-            "{schema}\n\n"
-            "RULES:\n"
-            "1. ONLY include steps directly related to the user's query. Do not go beyond the scope of the query.\n"
-            "2. ALWAYS start the step with \"Use the function 'X'\" where X is the function name.\n"
-        )
-
-
-        # Create a PromptTemplate object
-        prompt_template = PromptTemplate.from_template(template_str)
-
-        self.llm = OpenAI(model='gpt-3.5-turbo-instruct', temperature=0, openai_api_key=query_input.api_key)
+        self.llm = OpenAI(model='gpt-3.5-turbo-instruct', temperature=0, max_tokens=8, openai_api_key=query_input.api_key)
         role = self.classify(query_input)
         if role is None:
             end = time.time()
             return "No plan needed", {end - start}
-        response = self.chain(prompt_template).run(
-            query=role,
-            schema=json.dumps(personality_resolver.get_schema()))
-        response = self.parseQueryPlan(response)
-        processed_response = [self.post_process_plan(step) for step in response]
+        # content_dict = {
+        #     "role": "You are a query planning assistant for a personal companion AI. You are given the user's query, user personality schema and available functions. Your role is to help the companion AI by devising a detailed plan. Break the problem down into manageable parts using functions, as many times as necessary. Your plan should have a numbered list of steps.",
+        # }
+        # template_str = (
+        #     f"{content_dict['role']}\n\n"
+        #     "Query and functions:\n"
+        #     "{query}\n\n"
+        #     "Personality Schema:\n"
+        #     "{schema}\n\n"
+        # )
+        # prompt_template = PromptTemplate.from_template(template_str)
+        # response = self.chain(prompt_template).run(
+        #     query=role,
+        #     schema=json.dumps(personality_resolver.get_schema()))
+        
         end = time.time()
         logging.info(
             f"QueryPlanManager: query_plan operation took {end - start} seconds")
-        return processed_response, {end - start}
+        return role, {end - start}

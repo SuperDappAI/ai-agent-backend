@@ -54,7 +54,7 @@ class MemorySummarizer:
             
     def create_summarized_memory(self, api_key: str, user_id:str):
         return GenerativeAgentConversationSummarizedMemory(
-            llm=OpenAI(openai_api_key=api_key, temperature=0, model="gpt-3.5-turbo-instruct"),
+            llm=OpenAI(openai_api_key=api_key, temperature=0, max_tokens=2048, model="gpt-3.5-turbo-instruct"),
             memory_retriever=self.create_new_conversation_summarizer(api_key, user_id),
             verbose=self.agent_manager.verbose
         )

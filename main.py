@@ -68,14 +68,14 @@ async def getPersonality(personality_query: QueryPersonalityInput):
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):
-    result = queryplancache.get(query_input)
+    result = queryplancache.get(query_input.query)
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Writing query plan for query {query_input.query}')
     response, elapsed_time = queryplan_manager.query_plan(agent_manager.personality_resolver, query_input)
     logging.info('Elapsed time for operation: %s',
                  elapsed_time)  # log the elapsed time
-    queryplancache[query_input] = response
+    queryplancache[query_input.query] = response
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/push_memory/')
