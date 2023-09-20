@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 
 
 from dotenv import load_dotenv
@@ -7,12 +8,15 @@ from fastapi import FastAPI
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
-from functions_manager import FunctionsManager, FunctionInput
+from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
-from personality_resolver import PersonalityResolver, JsonPatchData, QueryFieldsInput
+from pydantic import BaseModel
 
+class QueryPersonalityInput(BaseModel):
+    user_id: str
+    
 # Load environment variables
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -48,47 +52,30 @@ searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 pullmemorycache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
-# Example Usage
-resolver = PersonalityResolver()
-
     
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(name)s - %(message)s', force=True)
 
-@app.post('/update_personality/')
-async def updatePersonality(personality_input: JsonPatchData):
-    user_id = personality_input.user_id
-    logging.info(f'Updating personality for user {user_id}')
-    patch_operations = personality_input.json_patch_data  # This is already a list of JsonPatchOperation objects
-
-    # Convert the list of Pydantic objects to a list of dictionaries
-    patch_operations_list = [operation.dict() for operation in patch_operations]
-
-    response, elapsed_time = resolver.apply_patch(user_id, patch_operations_list)
-    return {'response': response, 'elapsed_time': elapsed_time}
-
 @app.post('/get_personality/')
-async def getPersonality(personality_query: QueryFieldsInput):
+async def getPersonality(personality_query: QueryPersonalityInput):
     logging.info(f'Get personality for user {personality_query.user_id}')
-
-    # Convert Pydantic object to dictionary and extract paths
-    query_fields_dict = personality_query.dict()
-    paths_list = query_fields_dict["paths"]
-    response, elapsed_time = resolver.get_fields(personality_query.user_id, paths_list)
-    return {'response': response, 'elapsed_time': elapsed_time}
+    start = time.time()
+    response = agent_manager.personality_resolver.get_personality(personality_query.user_id)
+    end = time.time()
+    return {'response': response, 'elapsed_time': end - start}
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):
-    result = queryplancache.get(query_input)
+    result = queryplancache.get(query_input.query)
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Writing query plan for query {query_input.query}')
-    response, elapsed_time = queryplan_manager.query_plan(query_input)
+    response, elapsed_time = queryplan_manager.query_plan(agent_manager.personality_resolver, query_input)
     logging.info('Elapsed time for operation: %s',
                  elapsed_time)  # log the elapsed time
-    queryplancache[query_input] = response
+    queryplancache[query_input.query] = response
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/push_memory/')
@@ -169,6 +156,34 @@ async def getFunctions(function_input: FunctionInput):
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
     functioncache[function_input] = result
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/push_functions/')
+async def pushFunctions(function_output: FunctionOutput):
+    """Endpoint to push functions based on provided functions."""
+    logging.info(f'Adding functions: {function_output.functions}')
+    functions = {}
+    function_types = ['information_retrieval', 'communication', 'data_processing', 'sensory_perception']
+
+    for function_item in function_output.functions:
+        function_item.category = function_item.category.lower().replace(' ', '_')
+        if function_item.category not in function_types:
+            return {'response': f'Invalid category for function {function_item.name}, must be one of {function_types}'}
+
+        # Initialize category list if not already done
+        if function_item.category not in functions:
+            functions[function_item.category] = []
+
+        # Append the new function to the category
+        new_function = {
+            'name': function_item.name,
+            'description': function_item.description
+        }
+
+        functions[function_item.category].append(new_function)
+
+    # Push the functions
+    result, elapsed_time = await functions_manager.push_functions(function_output.user_id, function_output.api_key, functions)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/clear_conversation/')

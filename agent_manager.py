@@ -24,6 +24,8 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import Document
 from datetime import datetime, timedelta
 from typing import Any, Dict
+from personality_resolver import PersonalityResolver
+from personality_updater import PersonalityUpdater
 
 class MemoryInput(BaseModel):
     api_key: str
@@ -60,14 +62,18 @@ class AgentManager:
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.verbose = True
+        self.personality_resolver = PersonalityResolver()
+        self.personality_updater = PersonalityUpdater(self.personality_resolver, self.verbose)
 
     async def push_memory(self, memory_output: MemoryOutput):
         """Add new memory to the current index for a specific user."""
         start = time.time()
         memory = self.load(memory_output.api_key, memory_output.user_id)
         try:
+            convoJson = json.dumps({"user": memory_output.query, "AiDA": memory_output.llm_response})
             if memory_output.importance == "high":
-                asyncio.create_task(memory.pause_to_reflect(json.dumps({"user": memory_output.query, "me": memory_output.llm_response}), memory_output.conversation_id))
+                asyncio.create_task(memory.pause_to_reflect(convoJson, memory_output.conversation_id))
+            asyncio.create_task(self.personality_updater.update_personality(ChatOpenAI(openai_api_key=memory_output.api_key, model="gpt-3.5-turbo", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
             # this will save to user memory and also incrementally summarize memory in seperate summary collection
             asyncio.create_task(memory.save_context(memory_output.dict()))
             # decay memory by summarizing it continiously until max_summarizations then prune
@@ -107,7 +113,7 @@ class AgentManager:
 
     def create_memory(self, api_key: str, user_id: str):
         return GenerativeAgentMemory(
-            llm=OpenAI(openai_api_key=api_key),
+            llm=OpenAI(openai_api_key=api_key, model="gpt-3.5-turbo-instruct", max_tokens=1024),
             memory_retriever=self.create_new_memory_retriever(api_key, user_id),
             memory_summarizer=MemorySummarizer(flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose

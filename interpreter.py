@@ -9,6 +9,7 @@ import zipfile
 import io
 import time
 import pytz
+import aioboto3
 from fastapi import APIRouter
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -198,6 +199,7 @@ admin_permissions_policy = {
                 "lambda:TagResource",
                 "lambda:PutFunctionEventInvokeConfig",
                 "elasticfilesystem:CreateAccessPoint",
+                "elasticfilesystem:DeleteAccessPoint",
                 "elasticfilesystem:DescribeAccessPoints",
                 "elasticfilesystem:DescribeMountTargets",
                 "iam:PassRole",
@@ -365,19 +367,6 @@ def create_table_if_not_exists(table_name, key_schema, attribute_definitions, re
     else:
         print(f"Table {table_name} already exists.")
 
-# Create the InvocationTable
-create_table_if_not_exists(
-    'InvocationTable',
-    [
-        {'AttributeName': 'UserId', 'KeyType': 'HASH'},
-        {'AttributeName': 'InvocationId', 'KeyType': 'RANGE'}
-    ],
-    [
-        {'AttributeName': 'UserId', 'AttributeType': 'S'},
-        {'AttributeName': 'InvocationId', 'AttributeType': 'S'}
-    ]
-)
-
 # Create the Users table
 create_table_if_not_exists(
     'UserMetrics',
@@ -403,55 +392,6 @@ create_table_if_not_exists(
     'AccessPoints',
     [{'AttributeName': 'UserId', 'KeyType': 'HASH'}],
     [{'AttributeName': 'UserId', 'AttributeType': 'S'}]
-)
-
-# Create ZIP file in-memory for the success function
-success_buffer = io.BytesIO()
-with zipfile.ZipFile(success_buffer, 'w') as z:
-    z.write('success_function.py')
-success_zip = success_buffer.getvalue()
-
-# Create ZIP file in-memory for the fail function
-fail_buffer = io.BytesIO()
-with zipfile.ZipFile(fail_buffer, 'w') as z:
-    z.write('fail_function.py')
-fail_zip = fail_buffer.getvalue()
-# Function to create Lambda function if it doesn't exist
-def create_lambda_function_if_not_exists(s3_key, runtime, role, handler, zip_file):
-    try:
-        lambda_client.get_function(FunctionName=s3_key)
-        print(f"Lambda function {s3_key} already exists.")
-    except lambda_client.exceptions.ResourceNotFoundException:
-        try:
-            lambda_client.create_function(
-                FunctionName=s3_key,
-                Runtime=runtime,
-                Role=role,
-                Handler=handler,
-                Code={
-                    'ZipFile': zip_file
-                }
-            )
-            print(f"Lambda function {s3_key} created successfully.")
-        except Exception as e:
-            print(f"An error occurred while creating the Lambda function {s3_key}: {e}")
-
-# Create SuccessFunction if it doesn't exist
-create_lambda_function_if_not_exists(
-    'InterpreterSuccessFunction',
-    'python3.8',
-    f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
-    'success_function.lambda_handler_success',
-    success_zip
-)
-
-# Create FailFunction if it doesn't exist
-create_lambda_function_if_not_exists(
-    'InterpreterFailFunction',
-    'python3.8',
-    f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{admin_role_name}',
-    'fail_function.lambda_handler_fail',
-    fail_zip
 )
 
 def get_dynamodb_table(table_name):
@@ -498,12 +438,12 @@ def setup_efs_and_lambda(file_system_id, user_id, function_arn):
             }
         )
         access_point_arn = efs_response['AccessPointArn']
-        access_point_id = efs_response['AccessPointId']
+        existing_access_point_id = efs_response['AccessPointId']
         # Update the Lambda function configuration to mount the EFS Access Point
         # Wait for the access point to become available
-        if wait_for_access_point_to_be_available(efs_client, access_point_id):
+        if wait_for_access_point_to_be_available(efs_client, existing_access_point_id):
             # Now update the Lambda function configuration
-            lambda_response = lambda_client.update_function_configuration(
+            lambda_client.update_function_configuration(
                 FunctionName=function_arn,
                 FileSystemConfigs=[
                     {
@@ -538,18 +478,9 @@ def setup_efs_and_lambda_with_retry(file_system_id, user_id, function_arn, retri
     raise Exception("Failed to setup EFS and Lambda after {} retries".format(retries))
 
 # Usage
-invocation_table = get_dynamodb_table('InvocationTable')
 user_metrics_table = get_dynamodb_table('UserMetrics')
 lambda_table = get_dynamodb_table('Lambdas')
 ap_table = get_dynamodb_table('AccessPoints')
-
-def get_function_arn(s3_key):
-    response = lambda_client.get_function(FunctionName=s3_key)
-    return response['Configuration']['FunctionArn']
-
-# Usage
-success_arn = get_function_arn('InterpreterSuccessFunction')
-fail_arn = get_function_arn('InterpreterFailFunction')
 
 def validate_role(role_arn):
     role_name = role_arn.split('/')[-1]
@@ -615,18 +546,18 @@ async def create_lambda(createLambda: CreateLambda):
     try:
         get_credentials()
         # If a custom role is provided, validate it
-        if createLambda.role:
-            validate_role(createLambda.role)
+        if createLambda.aws_role_arn:
+            validate_role(createLambda.aws_role_arn)
         
         # Determine the role
-        aws_role_arn = createLambda.raws_role_arnole if createLambda.aws_role_arn else f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
+        aws_role_arn = createLambda.aws_role_arn if createLambda.aws_role_arn else f'arn:aws:iam::{AWS_ACCOUNT_ID}:role/{executor_role_name}'
         
         # Determine the runtime
         runtime = createLambda.runtime if createLambda.runtime else 'python3.8'
-        
+
          # Determine the memory
         memory_size = createLambda.memory_size if createLambda.memory_size else 128
-        
+
         # Create the Lambda function
         response_create = lambda_client.create_function(
             FunctionName=createLambda.s3_key,
@@ -639,29 +570,20 @@ async def create_lambda(createLambda: CreateLambda):
                 'S3Key': f'{createLambda.s3_key}.zip'
             },
         )
-        
+
         # Extract the ARN from the response
         function_arn = response_create['FunctionArn']
         
         # Setup EFS and Lambda for the user
         setup_efs_and_lambda_with_retry(file_system_id, createLambda.user_id, function_arn)
         
-        # Set the function's event invoke config
-        lambda_client.put_function_event_invoke_config(
-            FunctionName=function_arn,
-            DestinationConfig={
-                'OnSuccess': {'Destination': success_arn},
-                'OnFailure': {'Destination': fail_arn}
-            }
-        )
-
-        
         # Store function metadata in DynamoDB
         lambda_table.put_item(
             Item={
                 'UserId': createLambda.user_id,
-                'FunctionName': createLambda.s3_key,
+                'S3Key': createLambda.s3_key,
                 'ConversationId': createLambda.conversation_id,
+                'MemorySize': memory_size,
             }
         )
         
@@ -676,53 +598,58 @@ class RunLambda(BaseModel):
     s3_key: str
     payload: dict = None
 
-@router.post('/run_lambda')
-def run_lambda(compute: RunLambda):
-    try:
-        get_credentials()
-        # Structure the payload
-        full_payload = {
-            'user_id': compute.user_id,
-            'conversation_id': compute.conversation_id,
-            'start_time': time.time_ns() // 1000000
-        }
-        
-        if compute.payload is not None:
-            full_payload['payload'] = compute.payload
-        
-        lambda_response = lambda_client.invoke(
-            FunctionName=compute.s3_key,
-            InvocationType='Event',
-            Payload=json.dumps(full_payload).encode('utf-8') 
+async def invoke_lambda_async(s3_key, payload):
+    session = aioboto3.Session()
+    async with session.client('lambda', aws_access_key_id=credentials['AccessKeyId'], aws_secret_access_key=credentials['SecretAccessKey'], aws_session_token=credentials['SessionToken']) as lambda_client:
+        lambda_response = await lambda_client.invoke(
+            FunctionName=s3_key,
+            InvocationType='RequestResponse',
+            Payload=payload
         )
-        lambda_response = lambda_response if lambda_response['StatusCode'] != 202 else {"InvocationId": lambda_response['ResponseMetadata']['RequestId']}
-        return {"response": lambda_response}
-    except Exception as e:
-        return {"error": str(e)}
+        return lambda_response
 
-class StatusLambda(BaseModel):
-    user_id: str
-    invocation_id: str = None
-
-@router.post('/get_lambda_report')
-def get_lambda_status(status: StatusLambda):
+@router.post('/run_lambda')
+async def run_lambda(compute: RunLambda):
     try:
         get_credentials()
-        query_params = {
-            'KeyConditionExpression': Key('UserId').eq(status.user_id)
+        query_args = {
+            'KeyConditionExpression': Key('UserId').eq(compute.user_id) & Key('S3Key').eq(compute.s3_key)
         }
-
-        if status.invocation_id:
-            query_params['KeyConditionExpression'] = query_params['KeyConditionExpression'] & Key('InvocationId').eq(status.invocation_id)
-
-        response = invocation_table.query(**query_params)
-        response = response['Items'] if 'Items' in response else "Not found"
+        response = lambda_table.query(**query_args)
+        response = response['Items'] if 'Items' in response else None
+        if response is None or len(response) == 0:
+            return {"error": "Lambda not found, did you create it with createLambda?"}
         
-        for idx, item in enumerate(response):
-            if idx > 0:
-                time.sleep(0.05)  # Simple rate-limiting
-            invocation_table.delete_item(Key={'UserId': item['UserId'], 'InvocationId': item['InvocationId']})
-        return {"response": response}
+        memory_size = response[0]['MemorySize']
+        approximateInvokeCount = 1
+        
+        payload = json.dumps(compute.payload).encode('utf-8')
+        
+        start_time = time.time_ns() // 1000000
+        lambda_response = await invoke_lambda_async(compute.s3_key, payload)
+        
+        if lambda_response is None:
+            return {"error": "Lambda not executed properly"}
+        if lambda_response['StatusCode'] == 200:
+            approximateInvokeCount += lambda_response['ResponseMetadata']['RetryAttempts']
+            end_time = time.time_ns() // 1000000
+            elapsed_time = end_time - start_time
+            user_metrics_table.update_item(
+                Key={
+                    'UserId': compute.user_id,
+                },
+                UpdateExpression='ADD InvocationCount :inc, TotalTimeSpentMS :time, TotalMemorySpentMB :memory',
+                ExpressionAttributeValues={
+                    ':inc': approximateInvokeCount,
+                    ':time': elapsed_time,
+                    ':memory': approximateInvokeCount * memory_size,
+                },
+                ReturnValues='UPDATED_NEW'
+            )
+            payload = json.loads(await lambda_response['Payload'].read())
+            return {"response": payload}
+        else:
+            return {"response": lambda_response}
     except Exception as e:
         return {"error": str(e)}
 
@@ -730,7 +657,7 @@ class StatusUser(BaseModel):
     user_id: str
 
 @router.post('/get_user_metrics')
-def get_user_metrics(status: StatusUser):
+async def get_user_metrics(status: StatusUser):
     try:
         get_credentials()
         response = user_metrics_table.get_item(Key={'UserId': status.user_id})
@@ -740,7 +667,7 @@ def get_user_metrics(status: StatusUser):
         return {"error": str(e)}
 
 @router.post('/clear_user_metrics')
-def clear_user_metrics(status: StatusUser):
+async def clear_user_metrics(status: StatusUser):
     try:
         get_credentials()
         user_metrics_table.update_item(
@@ -763,7 +690,7 @@ class DeleteLambdas(BaseModel):
 
 # delete all lambdas by user or user+function
 @router.post('/delete_lambdas')
-def delete_lambda(delete: DeleteLambdas):
+async def delete_lambda(delete: DeleteLambdas):
     try:
         get_credentials()
         if delete.user_id is None and delete.s3_key is None:
@@ -811,23 +738,6 @@ def delete_lambda(delete: DeleteLambdas):
                 last_evaluated_key = response.get('LastEvaluatedKey')
                 if not last_evaluated_key:
                     break
-
-            while True:
-                query_args = {
-                    'KeyConditionExpression': Key('UserId').eq(delete.user_id)
-                }
-                if last_evaluated_key:
-                    query_args['ExclusiveStartKey'] = last_evaluated_key
-
-                response = lambda_table.query(**query_args)
-
-                for item in response['Items']:
-                    invocation_table.delete_item(Key={'UserId': item['UserId'], 'InvocationId': item['InvocationId']})
-                    time.sleep(0.05)  # Simple rate-limiting
-
-                last_evaluated_key = response.get('LastEvaluatedKey')
-                if not last_evaluated_key:
-                    break
                 
             user_metrics_table.delete_item(Key={'UserId': delete.user_id})
 
@@ -858,7 +768,7 @@ class FindLambda(BaseModel):
     s3_key: str = None  # Make it optional
 
 @router.post('/find_lambdas')
-def find_lambdas(finder: FindLambda):
+async def find_lambdas(finder: FindLambda):
     try:
         get_credentials()
         query_params = {
