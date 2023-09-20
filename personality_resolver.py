@@ -31,6 +31,42 @@ class PersonalityResolver:
 
         return filtered_doc
 
+    def get_schema(self):
+        schema = {
+            'name_nicknames': [],
+            'traits': [],
+            'achievements': [],
+            'mood_feelings': [],
+            'goals': [],
+            'tasks': [
+                {'id': 'task_0', 'description': 'onboard user to superdapp'},
+            ],
+            'subtasks': [
+                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'find out user preferences, google calendar or calendly link'},
+            ],
+            'active_task_id': 'task_0',
+            'active_subtask_id': 'subtask_0',
+            'facts_opinions': [],
+            'interests': [],
+            'skills': [],
+            'occupations': [],
+            'privacy': {
+                'data_sharing': {
+                    'anonymous': True,
+                    'personal': False,
+                    'history': False
+                },
+                'engagement': {
+                    'contact_methods': ['text', 'voice', 'video'],
+                    'DND': {
+                        'enabled': False,
+                        'times': '22:00-06:00'
+                    }
+                }
+            }
+        }
+        return schema
+
     def create_default_personality(self, user_id):
         # Default personality schema
         default_personality = {

@@ -72,7 +72,7 @@ async def writeQueryPlan(query_input: QueryPlanInput):
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Writing query plan for query {query_input.query}')
-    response, elapsed_time = queryplan_manager.query_plan(query_input)
+    response, elapsed_time = queryplan_manager.query_plan(agent_manager.personality_resolver, query_input)
     logging.info('Elapsed time for operation: %s',
                  elapsed_time)  # log the elapsed time
     queryplancache[query_input] = response
