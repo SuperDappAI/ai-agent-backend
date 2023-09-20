@@ -52,8 +52,7 @@ class PersonalityResolver:
             'occupations': [],
             'privacy': {
                 'data_sharing': {
-                    'anonymous': True,
-                    'personal': False,
+                    'preferences': True,
                     'history': False
                 },
                 'engagement': {
@@ -93,8 +92,7 @@ class PersonalityResolver:
             'occupations': ["engineer"],
             'privacy': {
                 'data_sharing': {
-                    'anonymous': True,
-                    'personal': False,
+                    'preferences': True,
                     'history': False
                 },
                 'engagement': {
