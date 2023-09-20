@@ -75,8 +75,6 @@ class PersonalityUpdater:
                 array_str = array_str.replace("True", "true").replace("False", "false")
                 # Parse the array string as JSON
                 array_json = json.loads(array_str)
-            else:
-                print("No array found in the output")
         except Exception as e:
             if self._verbose:
                 logging.warn(f"PersonalityUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
