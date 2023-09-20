@@ -85,8 +85,6 @@ class PersonalityUpdater:
 
     async def update_personality(self, llm: ChatOpenAI, user: str, ai: str, user_id: str):
         """Reflect on recent observations and generate 'insights'."""
-        if self._verbose:
-            logging.info("AiDA is trying to update personality")
         doc = self._personality_resolver.get_personality(user_id)
         if doc is None:
             logging.warn(f"get_personality got empty doc")
@@ -97,6 +95,8 @@ class PersonalityUpdater:
                     AIMessage(content=ai)]]
         patch_commands = await self._get_json_patch_commands(messages, llm)
         if len(patch_commands) > 0:
+            if self._verbose:
+                logging.info("AiDA is trying to update personality")
             response = self._personality_resolver.apply_patch(user_id, doc, patch_commands)
             if response != "success":
                 summary_prompt = SystemPrompt(doc, "2. You have been given human feedback that your changes were not accepted due to syntax, you are to carefully analyze and respond with the correct OPS")
