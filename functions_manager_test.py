@@ -46,8 +46,9 @@ class TestFunctionsManager(unittest.TestCase):
 
     def test_transform(self):
         fm = FunctionsManager()
+        user_id = "2"
         data = [{"name": "test_name", "description": "test_description"}]
-        result = fm.transform(data, "test_category")
+        result = fm.transform(user_id, data, "test_category")
         expected_result = [{"name": "test_name", "description": "test_description", "category": "test_category"}]
         self.assertEqual(result, expected_result)
         fm.stop()

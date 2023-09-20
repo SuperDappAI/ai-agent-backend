@@ -16,8 +16,9 @@ class TestFunctionsManager:
     def test_transform(self):
         data = [{"name": "test", "description": "test description"}]
         category = "test_category"
+        user_id = "2"
 
-        transformed = self.functions_manager.transform(data, category)
+        transformed = self.functions_manager.transform(user_id, data, category)
         
         assert isinstance(transformed, list)
         assert all(isinstance(doc, Document) for doc in transformed)
