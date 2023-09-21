@@ -31,8 +31,8 @@ class SystemPrompt:
         - Skip updates for code-related or non-conversational exchanges
         - Feel free to make new field names or add to PREFERENCES schema.
         - Use 'replace' ONLY for changing an existing value at a specified index.
-        - Tasks and subtasks are now managed through their IDs. Make sure to cross-reference them appropriately.
-        - Only one active task or subtask is allowed at a time.
+        - Tasks and subtasks are managed through their IDs. Make sure to cross-reference them appropriately.
+        - Only one active task or subtask is allowed at a time. Ensure active_task_id exists within tasks and active_subtask_id exists within subtasks.
         - Use proper JSONPatch formatting.
         - Returning empty list is perfectly reasonable
         - Must be confident that each OP relates to the conversation meaningfully (or to reduce preferences size) to include it.
