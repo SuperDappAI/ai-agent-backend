@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import asyncio
 
 
 from dotenv import load_dotenv
@@ -62,7 +63,10 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
 async def getPersonality(personality_query: QueryPersonalityInput):
     logging.info(f'Get personality for user {personality_query.user_id}')
     start = time.time()
-    response = agent_manager.personality_resolver.get_personality(personality_query.user_id)
+    response = await agent_manager.personality_resolver.get_personality(personality_query.user_id)
+    if response is None:
+        asyncio.create_task(agent_manager.personality_resolver.create_default_personality(personality_query.user_id))
+        response = agent_manager.personality_resolver.default_personality
     end = time.time()
     return {'response': response, 'elapsed_time': end - start}
 
