@@ -2,7 +2,7 @@
 import logging
 import os
 
-from pymongo.mongo_client import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 from jsonpatch import JsonPatch, JsonPatchException
@@ -12,7 +12,7 @@ class PersonalityResolver:
         load_dotenv()  # Load environment variables
         mongopw = os.getenv("MONGODB_PW")
         uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
-        self.client = MongoClient(uri, server_api=ServerApi('1'))
+        self.client = AsyncIOMotorClient(uri, server_api=ServerApi('1'))
         # Send a ping to confirm a successful connection
         try:
             self.client.admin.command('ping')
@@ -21,18 +21,7 @@ class PersonalityResolver:
             print(e)
         self.db = self.client['PersonalityDB']
         self.collection = self.db['Personality']
-
-    def get_personality(self, user_id):
-        doc = self.collection.find_one({"_id": user_id})
-        if doc is None:
-            return self.create_default_personality(user_id)
-        # Filter out empty fields or fields with empty lists
-        filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
-
-        return filtered_doc
-
-    def get_schema(self):
-        schema = {
+        self.schema = {
             'name_nicknames': [],
             'traits': [],
             'achievements': [],
@@ -65,55 +54,26 @@ class PersonalityResolver:
                 }
             }
         }
-        return schema
+        self.default_personality = self.schema
 
-    def create_default_personality(self, user_id):
-        # Default personality schema
-        default_personality = {
-            'name_nicknames': ["user name"],
-            'traits': ["curious"],
-            'achievements': ["became a superdapp user"],
-            'mood_feelings': ["happy"],
-            'goals': ["onboard to superdapp"],
-            'tasks': [
-                {'id': 'task_0', 'description': 'onboard user to superdapp'},
-                {'id': 'task_1', 'description': 'set up tutorials'},
-            ],
-            'subtasks': [
-                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'ask for google calendar or calendly link'},
-                {'id': 'subtask_1', 'task_id': 'task_0', 'description': 'Setup web3 wallet'},
-                {'id': 'subtask_2', 'task_id': 'task_0', 'description': 'See if user wants to pay SUPR to use code interpreter or social groups'},
-                {'id': 'subtask_3', 'task_id': 'task_1', 'description': 'Reference docs in regards to tutorials on superdapp'},
-            ],
-            'active_task_id': 'task_0',
-            'active_subtask_id': 'subtask_0',
-            'facts_opinions': ["superdapp is awesome!"],
-            'interests': ["AI", "machine learning"],
-            'links': [],
-            'skills': ["hockey", "building legos"],
-            'occupations': ["engineer"],
-            'communication': {
-                'data_sharing': {
-                    'preferences': True,
-                    'history': False
-                },
-                'engagement': {
-                    'contact_methods': ['text', 'voice', 'video'],
-                    'DND': {
-                        'enabled': False,
-                        'times': '22:00-06:00'
-                    }
-                }
-            }
-        }
-        
-        # Insert the default personality into the collection
-        self.collection.insert_one({
+    async def get_personality(self, user_id):
+        doc = await self.collection.find_one({"_id": user_id})
+        if doc is None:
+            return None
+        # Filter out empty fields or fields with empty lists
+        filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
+
+        return filtered_doc
+
+    def get_schema(self):
+        return self.schema
+
+    async def create_default_personality(self, user_id):
+        return await self.collection.insert_one({
             '_id': user_id,
-            **default_personality
+            **self.default_personality
         })
         
-        return default_personality
 
     def check_for_nested_duplicates(self, value, target):
         if isinstance(target, list):
@@ -125,7 +85,7 @@ class PersonalityResolver:
             return False
 
 
-    def apply_patch(self, user_id, doc, patch_data):
+    async def apply_patch(self, user_id, doc, patch_data):
         # Make sure keys exist before applying patch
         for patch in patch_data:
             if patch["op"] in ["add", "replace"]:
@@ -182,7 +142,7 @@ class PersonalityResolver:
             return f"An unknown exception occurred: {e}"
 
         # Update the database
-        update_result = self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
+        update_result = await self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
         if update_result.modified_count == 0:
             logging.warn("No documents were updated.")
         return "success"

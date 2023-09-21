@@ -86,10 +86,9 @@ class PersonalityUpdater:
 
     async def update_personality(self, llm: ChatOpenAI, user: str, ai: str, user_id: str):
         """Reflect on recent observations and generate 'insights'."""
-        doc = self._personality_resolver.get_personality(user_id)
+        doc = await self._personality_resolver.get_personality(user_id)
         if doc is None:
-            logging.warn(f"get_personality got empty doc")
-            return
+            doc = self._personality_resolver.default_personality
         summary_prompt = SystemPrompt(doc)
         messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
                     HumanMessage(content=user),
@@ -98,7 +97,7 @@ class PersonalityUpdater:
         if len(patch_commands) > 0:
             if self._verbose:
                 logging.info("AiDA is trying to update personality")
-            response = self._personality_resolver.apply_patch(user_id, doc, patch_commands)
+            response = await self._personality_resolver.apply_patch(user_id, doc, patch_commands)
             if response != "success":
                 summary_prompt = SystemPrompt(doc, "2. You have been given human feedback that your changes were not accepted due to syntax, you are to carefully analyze and respond with the correct OPS")
                 messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
@@ -106,6 +105,6 @@ class PersonalityUpdater:
                     AIMessage(content=ai),
                     HumanMessage(content=response)]]
                 patch_commands = await self._get_json_patch_commands(messages, llm)
-                response = self._personality_resolver.apply_patch(user_id, doc, patch_commands)
+                response = await self._personality_resolver.apply_patch(user_id, doc, patch_commands)
                 if response != "success" and self._verbose:
                     logging.warn(f"PersonalityUpdater: personality_resolver patch application failed: {response}")

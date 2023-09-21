@@ -31,3 +31,4 @@ pytest
 pytest-asyncio
 boto3
 aioboto3
+motor
