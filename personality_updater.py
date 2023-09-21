@@ -16,34 +16,37 @@ class SystemPrompt:
 
     def to_prompt_string(self) -> str:
         template_text = f"""
-        You are a top-tier preferences interpreter. Your job is to take the existing PREFERENCES and assess the user / AI dialog to infer new unique, case-insensitive user preferences. Only include attributes that are important and likely to be referenced in future conversations with the user. Use the user's query for static attributes like name and occupation and both the user's query and the LLM's response for dynamic attributes like tasks and mood. 
-
-        1. Provide a list of JSONPatch operations (OPS) for updating the PREFERENCES. Follow this format:
-            - 'add': '/traits/-'
-            - 'remove' or 'replace': '/traits/[index]'
-
+        You are an expert preferences interpreter. Your task is to infer and update user preferences based on the dialog between the user and AI. Use the existing PREFERENCES as the current MongoDB database state.
+        
+        Guidelines:
+        1. Utilize JsonPatch operations (OPS) for DB updates:
+        - 'add': '/traits/-'
+        - 'remove' or 'replace': '/traits/[index]'
+        2. Update based on user/AI dialog, ensuring new preferences are unique, case-insensitive, and meaningful for future interactions.
+        
         {self.error}
+        
+        Notes:
+        - Only perform operations for meaningful state changes.
+        - Use '-' with 'add' for appending to arrays.
+        - Indices start at 0.
+        - Adjust the DB schema as needed.
+        - Only 'replace' for specified index changes.
+        - Manage tasks/subtasks and ensure IDs cross-reference.
+        - Cross-reference IDs of active tasks with tasks and IDs of active subtasks with subtasks.
+        - If the LLM response indicates moving on to the next subtask or task, assume the current subtask is complete and advance sequentially. For milestone tasks, add to accomplishments upon completion.
+        - Do not revert to a previous subtask within a task or previous task unless explicitly indicated by the user or LLM response.
+        - In cases of ambiguity or confusion, default to no changes to prevent unintended switches.
+        - Follow JsonPatch formatting rigorously.
+        - Returning an empty list is acceptable.
 
-        Note:
-        - Check values in OPS to make sure they are not already in PREFERENCES already.
-        - Use the '-' symbol ONLY with 'add' to indicate appending to an array.
-        - Indices are 0-based.
-        - Skip updates for code-related or non-conversational exchanges
-        - Feel free to make new field names or add to PREFERENCES schema.
-        - Use 'replace' ONLY for changing an existing value at a specified index.
-        - Tasks and subtasks are managed through their IDs. Make sure to cross-reference them appropriately.
-        - Only one active task or subtask is allowed at a time. Ensure active_task_id exists within tasks and active_subtask_id exists within subtasks.
-        - Use proper JSONPatch formatting.
-        - Returning empty list is perfectly reasonable
-        - Must be confident that each OP relates to the conversation meaningfully (or to reduce preferences size) to include it.
-
-        The OPS applied will create a new preferences on the backend make sure this will not exceed 1000 tokens. Remove any redundant attributes to meet this requirement.
-
-        Examples of OPS only to learn of formatting:
-            OPS: []
-            OPS: [{{"op": "add", "path": "/traits/-", "value": "adventurous"}},{{"op": "remove", "path": "/traits/1"}},{{"op": "replace", "path": "/traits/0", "value": "meticulous"}}]
-            OPS: [{{"op": "add", "path": "/tasks/-", "value": {{"id": "task_0", "description": "New Task"}}}},{{"op": "add", "path": "/subtasks/-", "value": {{"id": "subtask_0", "task_id": "task_0", "description": "New Subtask"}}}},{{"op": "replace", "path": "/active_task_id", "value": "task_0"}},{{"op": "replace", "path": "/active_subtask_id", "value": "subtask_0"}}]
-            OPS: [{{"op": "add", "path": "/achievements/-", "value": "New Achievement"}},{{"op": "add", "path": "/skills/-", "value": "New Skill"}},{{"op": "replace", "path": "/mood_feelings/0", "value": "content"}}]
+        Consider token limits (max 1000) for the database. Ensure any updates won't exceed this. Prioritize new preferences over older ones if needed.
+        
+        Example OPS formats:
+        OPS: []
+        OPS: [{{"op": "add", "path": "/traits/-", "value": "adventurous"}},{{"op": "remove", "path": "/traits/1"}},{{"op": "replace", "path": "/traits/0", "value": "meticulous"}}]
+        OPS: [{{"op": "add", "path": "/tasks/-", "value": {{"id": "task_0", "description": "New Task"}}}},{{"op": "add", "path": "/subtasks/-", "value": {{"id": "subtask_0", "task_id": "task_0", "description": "New Subtask"}}}},{{"op": "replace", "path": "/active_task_id", "value": "task_0"}},{{"op": "replace", "path": "/active_subtask_id", "value": "subtask_0"}}]
+        OPS: [{{"op": "add", "path": "/achievements/-", "value": "New Achievement"}},{{"op": "add", "path": "/skills/-", "value": "New Skill"}},{{"op": "replace", "path": "/mood_feelings/0", "value": "content"}}]
 
         PREFERENCES: {self.personality}
         """

@@ -47,7 +47,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         ids = []
         nowStamp = now.timestamp()
         for i in range(len(qa)):
-            if memory_types[i] != MemoryType.CONSCIOUS_MEMORY or importance[i] == "low":
+            if memory_types[i] != MemoryType.CONSCIOUS_MEMORY or importance[i] == "low" or importance == "preferences":
                 continue
             metadata = {
                 "id":  random.randint(0, 2**32 - 1),
@@ -69,7 +69,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         self, memory_content: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
     ) -> List[str]:
         """Add an observation or memory to the agent's memory."""
-        if memory_type != MemoryType.CONSCIOUS_MEMORY or importance == "low":
+        if memory_type != MemoryType.CONSCIOUS_MEMORY or importance == "low" or importance == "preferences":
             return None
         nowStamp = now.timestamp()
         metadata = {
