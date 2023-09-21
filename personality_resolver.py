@@ -48,6 +48,7 @@ class PersonalityResolver:
             'active_subtask_id': 'subtask_0',
             'facts_opinions': [],
             'interests': [],
+            'links': [],
             'skills': [],
             'occupations': [],
             'communication': {
@@ -88,6 +89,7 @@ class PersonalityResolver:
             'active_subtask_id': 'subtask_0',
             'facts_opinions': ["superdapp is awesome!"],
             'interests': ["AI", "machine learning"],
+            'links': [],
             'skills': ["hockey", "building legos"],
             'occupations': ["engineer"],
             'communication': {

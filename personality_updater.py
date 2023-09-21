@@ -16,7 +16,7 @@ class SystemPrompt:
 
     def to_prompt_string(self) -> str:
         template_text = f"""
-        You are a top-tier preferences interpreter. Your job is to take the existing PREFERENCES and assess the user / AI dialog to infer new unique, case-insensitive user preferences. Only include attributes that are important and likely to be referenced in future conversations with the user. Use the user's query for static attributes like name and occupation and both the user's query and the LLM's response for dynamic attributes like tasks and mood. 
+        You are a top-tier preferences interpreter. Your job is to take the existing PREFERENCES and assess the user / AI dialog to infer new unique, case-insensitive user preferences. Only include attributes that are important and likely to be referenced in future conversations with the user.
 
         1. Provide a list of JSONPatch operations (OPS) for updating the PREFERENCES. Follow this format:
             - 'add': '/traits/-'
@@ -31,8 +31,9 @@ class SystemPrompt:
         - Skip updates for code-related or non-conversational exchanges
         - Feel free to make new field names or add to PREFERENCES schema.
         - Use 'replace' ONLY for changing an existing value at a specified index.
-        - Tasks and subtasks are managed through their IDs. Make sure to cross-reference them appropriately.
-        - Only one active task or subtask is allowed at a time. Ensure active_task_id exists within tasks and active_subtask_id exists within subtasks.
+        - General task management through tasks/subtasks. Cross-reference IDs appropriately.
+        - One active task or subtask is always set. Cross-reference task/subtask IDs appropriately.
+        - Remove tasks/subtasks as they are completed, if they are major milestones add to accomplishments.
         - Use proper JSONPatch formatting.
         - Returning empty list is perfectly reasonable
         - Must be confident that each OP relates to the conversation meaningfully (or to reduce preferences size) to include it.
@@ -68,6 +69,7 @@ class PersonalityUpdater:
                 raise Exception("LLM did not provide a valid summary response.")
 
             result = response.generations[0][0].text
+            print(f'result {result}')
             # Find the array in the output string using a regular expression
             array_match = re.search(r'OPS:\s*\[\s*(\{.*\})\s*\]', result, re.DOTALL)
             if array_match:
@@ -92,6 +94,7 @@ class PersonalityUpdater:
                     HumanMessage(content=user),
                     AIMessage(content=ai)]]
         patch_commands = await self._get_json_patch_commands(messages, llm)
+        print(f'patch_commands {patch_commands}')
         if len(patch_commands) > 0:
             if self._verbose:
                 logging.info("AiDA is trying to update personality")
@@ -103,6 +106,7 @@ class PersonalityUpdater:
                     AIMessage(content=ai),
                     HumanMessage(content=response)]]
                 patch_commands = await self._get_json_patch_commands(messages, llm)
+                print(f'patch_commands1 {patch_commands}')
                 response = self._personality_resolver.apply_patch(user_id, doc, patch_commands)
                 if response != "success" and self._verbose:
                     logging.warn(f"PersonalityUpdater: personality_resolver patch application failed: {response}")

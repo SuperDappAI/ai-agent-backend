@@ -73,7 +73,8 @@ class AgentManager:
             convoJson = json.dumps({"user": memory_output.query, "AiDA": memory_output.llm_response})
             if memory_output.importance == "high":
                 asyncio.create_task(memory.pause_to_reflect(convoJson, memory_output.conversation_id))
-            asyncio.create_task(self.personality_updater.update_personality(ChatOpenAI(openai_api_key=memory_output.api_key, model="gpt-3.5-turbo", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
+            elif memory_output.importance == "preferences":
+                asyncio.create_task(self.personality_updater.update_personality(ChatOpenAI(openai_api_key=memory_output.api_key, model="gpt-4", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
             # this will save to user memory and also incrementally summarize memory in seperate summary collection
             asyncio.create_task(memory.save_context(memory_output.dict()))
             # decay memory by summarizing it continiously until max_summarizations then prune
