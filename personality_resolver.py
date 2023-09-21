@@ -42,7 +42,7 @@ class PersonalityResolver:
                 {'id': 'task_0', 'description': 'onboard user to superdapp'},
             ],
             'subtasks': [
-                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'find out user preferences, google calendar or calendly link'},
+                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'ask for google calendar or calendly link'},
             ],
             'active_task_id': 'task_0',
             'active_subtask_id': 'subtask_0',
@@ -79,7 +79,7 @@ class PersonalityResolver:
                 {'id': 'task_1', 'description': 'set up tutorials'},
             ],
             'subtasks': [
-                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'find out user preferences, google calendar or calendly link'},
+                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'ask for google calendar or calendly link'},
                 {'id': 'subtask_1', 'task_id': 'task_0', 'description': 'Setup web3 wallet'},
                 {'id': 'subtask_2', 'task_id': 'task_0', 'description': 'See if user wants to pay SUPR to use code interpreter or social groups'},
                 {'id': 'subtask_3', 'task_id': 'task_1', 'description': 'Reference docs in regards to tutorials on superdapp'},
