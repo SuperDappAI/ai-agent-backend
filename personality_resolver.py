@@ -50,7 +50,7 @@ class PersonalityResolver:
             'interests': [],
             'skills': [],
             'occupations': [],
-            'privacy': {
+            'communication': {
                 'data_sharing': {
                     'preferences': True,
                     'history': False
@@ -90,7 +90,7 @@ class PersonalityResolver:
             'interests': ["AI", "machine learning"],
             'skills': ["hockey", "building legos"],
             'occupations': ["engineer"],
-            'privacy': {
+            'communication': {
                 'data_sharing': {
                     'preferences': True,
                     'history': False
