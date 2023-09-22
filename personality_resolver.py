@@ -1,6 +1,7 @@
 
 import logging
 import os
+import traceback
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
@@ -57,22 +58,28 @@ class PersonalityResolver:
         self.default_personality = self.schema
 
     async def get_personality(self, user_id):
-        doc = await self.collection.find_one({"_id": user_id})
-        if doc is None:
-            return None
-        # Filter out empty fields or fields with empty lists
-        filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
-
+        try:
+            doc = await self.collection.find_one({"_id": user_id})
+            if doc is None:
+                return None
+            # Filter out empty fields or fields with empty lists
+            filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
+        except Exception as e:
+            logging.warn(f"PersonalityResolver: get_personality exception {e}\n{traceback.format_exc()}")
         return filtered_doc
 
     def get_schema(self):
         return self.schema
 
     async def create_default_personality(self, user_id):
-        return await self.collection.insert_one({
-            '_id': user_id,
-            **self.default_personality
-        })
+        try:
+            await self.collection.insert_one({
+                '_id': user_id,
+                **self.default_personality
+            })
+        except Exception as e:
+            logging.warn(f"PersonalityResolver: create_default_personality exception {e}\n{traceback.format_exc()}")
+        
         
 
     def check_for_nested_duplicates(self, value, target):
@@ -140,9 +147,11 @@ class PersonalityResolver:
             return f"fail: {e}"
         except Exception as e:
             return f"An unknown exception occurred: {e}"
-
-        # Update the database
-        update_result = await self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
-        if update_result.modified_count == 0:
-            logging.warn("No documents were updated.")
+        try:
+            # Update the database
+            update_result = await self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
+            if update_result.modified_count == 0:
+                logging.warn("No documents were updated.")
+        except Exception as e:
+            logging.warn(f"PersonalityResolver: update_one exception {e}\n{traceback.format_exc()}")
         return "success"
