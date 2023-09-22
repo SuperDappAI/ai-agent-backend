@@ -7,8 +7,15 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 from jsonpatch import JsonPatch, JsonPatchException
+from pydantic import BaseModel
 
-class PersonalityResolver:
+class QueryPreferencesInput(BaseModel):
+    user_id: str
+  
+class QueryPreferencesOutput(BaseModel):
+    user_id: str  
+    
+class PreferencesResolver:
     def __init__(self):
         load_dotenv()  # Load environment variables
         mongopw = os.getenv("MONGODB_PW")
@@ -47,7 +54,7 @@ class PersonalityResolver:
                 }
             }
         }
-        self.default_personality = self.schema
+        self.default_preferences = self.schema
 
     async def initialize(self):
         self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
@@ -56,42 +63,37 @@ class PersonalityResolver:
             print("Pinged your deployment. You successfully connected to MongoDB!")
             
             # Setup references after successful connection
-            self.db = self.client['PersonalityDB']
-            self.collection = self.db['Personality']
+            self.db = self.client['PreferencesDB']
+            self.collection = self.db['Preferences']
 
         except Exception as e:
-           logging.warn(f"PersonalityResolver: initialize exception {e}\n{traceback.format_exc()}")
+           logging.warn(f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
     
-    async def get_personality(self, user_id):
+    async def get_preferences(self, user_id):
         if self.client is None:
             await self.initialize()
         try:
             doc = await self.collection.find_one({"_id": user_id})
             if doc is None:
                 return None
-            if not isinstance(doc, dict):
-                logging.error(f"Expected a dictionary but received: {type(doc)}")
-                return None
-            # Filter out empty fields or fields with empty lists
-            filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
-            return filtered_doc
+            return doc
         except Exception as e:
-            logging.warn(f"PersonalityResolver: get_personality exception {e}\n{traceback.format_exc()}")
+            logging.warn(f"PreferencesResolver: get_preferences exception {e}\n{traceback.format_exc()}")
             return None
 
     def get_schema(self):
         return self.schema
 
-    async def create_default_personality(self, user_id):
+    async def create_default_preferences(self, user_id):
         if self.client is None:
             await self.initialize()
         try:
             await self.collection.insert_one({
                 '_id': user_id,
-                **self.default_personality
+                **self.default_preferences
             })
         except Exception as e:
-            logging.warn(f"PersonalityResolver: create_default_personality exception {e}\n{traceback.format_exc()}")
+            logging.warn(f"PreferencesResolver: create_default_preferences exception {e}\n{traceback.format_exc()}")
         
         
 
@@ -168,5 +170,5 @@ class PersonalityResolver:
             if update_result.modified_count == 0:
                 logging.warn("No documents were updated.")
         except Exception as e:
-            logging.warn(f"PersonalityResolver: update_one exception {e}\n{traceback.format_exc()}")
+            logging.warn(f"PreferencesResolver: update_one exception {e}\n{traceback.format_exc()}")
         return "success"
