@@ -11,8 +11,7 @@ from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
-from preferences_resolver import PreferencesResolver, QueryPreferencesInput, QueryPreferencesOutput
-from preferences_updater import PreferencesUpdater
+from preferences_resolver import QueryPreferencesInput
 from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
 
@@ -45,8 +44,6 @@ agent_manager = AgentManager()
 web_manager = WebManager()
 queryplan_manager = QueryPlanManager()
 doc_manager = DocManager()
-preferences_resolver = PreferencesResolver()
-preferences_updater = PreferencesUpdater(preferences_resolver, agent_manager.verbose)
 
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
@@ -63,21 +60,13 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
 async def getPreferences(preferences_query: QueryPreferencesInput):
     logging.info(f'Get preferences for user {preferences_query.user_id}')
     start = time.time()
-    response = await preferences_resolver.get_preferences(preferences_query.user_id)
+    response = await agent_manager.preferences_resolver.get_preferences(preferences_query.user_id)
     if response is None:
         logging.info(f'Preferences for user {preferences_query.user_id} does not exist, returnng default and making one in the background...')
-        asyncio.create_task(preferences_resolver.create_default_preferences(preferences_query.user_id))
-        response = preferences_resolver.default_preferences
+        asyncio.create_task(agent_manager.preferences_resolver.create_default_preferences(preferences_query.user_id))
+        response = agent_manager.preferences_resolver.default_preferences
     end = time.time()
     return {'response': response, 'elapsed_time': end - start}
-
-@app.post('/update_preferences/')
-async def updatePreferences(preferences_query: QueryPreferencesOutput):
-    logging.info(f'Update preferences for user {preferences_query.user_id}')
-    start = time.time()
-    asyncio.create_task(preferences_updater.update_preferences(preferences_query))
-    end = time.time()
-    return {'response': "success", 'elapsed_time': end - start}
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):
@@ -85,7 +74,7 @@ async def writeQueryPlan(query_input: QueryPlanInput):
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Writing query plan for query {query_input.query}')
-    response, elapsed_time = queryplan_manager.query_plan(preferences_resolver, query_input)
+    response, elapsed_time = queryplan_manager.query_plan(agent_manager.preferences_resolver, query_input)
     logging.info('Elapsed time for operation: %s',
                  elapsed_time)  # log the elapsed time
     queryplancache[query_input.query] = response

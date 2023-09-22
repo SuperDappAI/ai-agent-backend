@@ -88,7 +88,8 @@ class PreferencesUpdater:
         """Reflect on recent observations and generate 'insights'."""
         doc = await self._preferences_resolver.get_preferences(user_id)
         if doc is None:
-            doc = self._preferences_resolver.default_preferences
+            logging.warn(f"PreferencesUpdater: No preferences found for user {user_id}")
+            return
         summary_prompt = SystemPrompt(doc)
         messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
                     HumanMessage(content=user),
