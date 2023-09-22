@@ -11,9 +11,6 @@ from pydantic import BaseModel
 
 class QueryPreferencesInput(BaseModel):
     user_id: str
-  
-class QueryPreferencesOutput(BaseModel):
-    user_id: str  
     
 class PreferencesResolver:
     def __init__(self):
@@ -75,7 +72,8 @@ class PreferencesResolver:
         try:
             doc = await self.collection.find_one({"_id": user_id})
             if doc is None:
-                return None
+                await self.create_default_preferences(user_id)
+                return self.default_preferences
             return doc
         except Exception as e:
             logging.warn(f"PreferencesResolver: get_preferences exception {e}\n{traceback.format_exc()}")
