@@ -12,16 +12,8 @@ class PersonalityResolver:
     def __init__(self):
         load_dotenv()  # Load environment variables
         mongopw = os.getenv("MONGODB_PW")
-        uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
-        self.client = AsyncIOMotorClient(uri, server_api=ServerApi('1'))
-        # Send a ping to confirm a successful connection
-        try:
-            self.client.admin.command('ping')
-            print("Pinged your deployment. You successfully connected to MongoDB!")
-        except Exception as e:
-            print(e)
-        self.db = self.client['PersonalityDB']
-        self.collection = self.db['Personality']
+        self.uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
+        self.client = None
         self.schema = {
             'name_nicknames': [],
             'traits': [],
@@ -57,7 +49,22 @@ class PersonalityResolver:
         }
         self.default_personality = self.schema
 
+    async def initialize(self):
+        self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
+        try:
+            await self.client.admin.command('ping')
+            print("Pinged your deployment. You successfully connected to MongoDB!")
+            
+            # Setup references after successful connection
+            self.db = self.client['PersonalityDB']
+            self.collection = self.db['Personality']
+
+        except Exception as e:
+           logging.warn(f"PersonalityResolver: initialize exception {e}\n{traceback.format_exc()}")
+    
     async def get_personality(self, user_id):
+        if self.client is None:
+            await self.initialize()
         try:
             doc = await self.collection.find_one({"_id": user_id})
             if doc is None:
@@ -76,6 +83,8 @@ class PersonalityResolver:
         return self.schema
 
     async def create_default_personality(self, user_id):
+        if self.client is None:
+            await self.initialize()
         try:
             await self.collection.insert_one({
                 '_id': user_id,
@@ -97,6 +106,8 @@ class PersonalityResolver:
 
 
     async def apply_patch(self, user_id, doc, patch_data):
+        if self.client is None:
+            await self.initialize()
         # Make sure keys exist before applying patch
         for patch in patch_data:
             if patch["op"] in ["add", "replace"]:
