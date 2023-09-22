@@ -62,11 +62,15 @@ class PersonalityResolver:
             doc = await self.collection.find_one({"_id": user_id})
             if doc is None:
                 return None
+            if not isinstance(doc, dict):
+                logging.error(f"Expected a dictionary but received: {type(doc)}")
+                return None
             # Filter out empty fields or fields with empty lists
             filtered_doc = {k: v for k, v in doc.items() if v not in (None, [], '')}
+            return filtered_doc
         except Exception as e:
             logging.warn(f"PersonalityResolver: get_personality exception {e}\n{traceback.format_exc()}")
-        return filtered_doc
+            return None
 
     def get_schema(self):
         return self.schema
