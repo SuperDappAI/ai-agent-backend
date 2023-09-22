@@ -6,12 +6,12 @@ import re
 
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
 from langchain.chat_models import ChatOpenAI
-from personality_resolver import PersonalityResolver
+from preferences_resolver import PreferencesResolver
 from typing import List
 
 class SystemPrompt:
-    def __init__(self, personality: str, error: str = ""):
-         self.personality = personality
+    def __init__(self, preferences: str, error: str = ""):
+         self.preferences = preferences
          self.error = error
 
     def to_prompt_string(self) -> str:
@@ -48,16 +48,16 @@ class SystemPrompt:
         OPS: [{{"op": "add", "path": "/tasks/-", "value": {{"id": "task_0", "description": "New Task"}}}},{{"op": "add", "path": "/subtasks/-", "value": {{"id": "subtask_0", "task_id": "task_0", "description": "New Subtask"}}}},{{"op": "replace", "path": "/active_task_id", "value": "task_0"}},{{"op": "replace", "path": "/active_subtask_id", "value": "subtask_0"}}]
         OPS: [{{"op": "add", "path": "/achievements/-", "value": "New Achievement"}},{{"op": "add", "path": "/skills/-", "value": "New Skill"}},{{"op": "replace", "path": "/mood_feelings/0", "value": "content"}}]
 
-        PREFERENCES: {self.personality}
+        PREFERENCES: {self.preferences}
         """
         return template_text
 
-class PersonalityUpdater:
-    _personality_resolver: PersonalityResolver
+class PreferencesUpdater:
+    _preferences_resolver: PreferencesResolver
     _verbose: bool
 
-    def __init__(self, personality_resolver: PersonalityResolver, verbose: bool = False) -> None:
-        self._personality_resolver = personality_resolver
+    def __init__(self, preferences_resolver: PreferencesResolver, verbose: bool = False) -> None:
+        self._preferences_resolver = preferences_resolver
         self._verbose = verbose
 
     async def _get_json_patch_commands(
@@ -80,15 +80,15 @@ class PersonalityUpdater:
                 array_json = json.loads(array_str)
         except Exception as e:
             if self._verbose:
-                logging.warn(f"PersonalityUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
+                logging.warn(f"PreferencesUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
 
         return array_json
 
-    async def update_personality(self, llm: ChatOpenAI, user: str, ai: str, user_id: str):
+    async def update_preferences(self, llm: ChatOpenAI, user: str, ai: str, user_id: str):
         """Reflect on recent observations and generate 'insights'."""
-        doc = await self._personality_resolver.get_personality(user_id)
+        doc = await self._preferences_resolver.get_preferences(user_id)
         if doc is None:
-            doc = self._personality_resolver.default_personality
+            doc = self._preferences_resolver.default_preferences
         summary_prompt = SystemPrompt(doc)
         messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
                     HumanMessage(content=user),
@@ -96,8 +96,8 @@ class PersonalityUpdater:
         patch_commands = await self._get_json_patch_commands(messages, llm)
         if len(patch_commands) > 0:
             if self._verbose:
-                logging.info("AiDA is trying to update personality")
-            response = await self._personality_resolver.apply_patch(user_id, doc, patch_commands)
+                logging.info("AiDA is trying to update preferences")
+            response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
             if response != "success":
                 summary_prompt = SystemPrompt(doc, "2. You have been given human feedback that your changes were not accepted due to syntax, you are to carefully analyze and respond with the correct OPS")
                 messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
@@ -105,6 +105,6 @@ class PersonalityUpdater:
                     AIMessage(content=ai),
                     HumanMessage(content=response)]]
                 patch_commands = await self._get_json_patch_commands(messages, llm)
-                response = await self._personality_resolver.apply_patch(user_id, doc, patch_commands)
+                response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
                 if response != "success" and self._verbose:
-                    logging.warn(f"PersonalityUpdater: personality_resolver patch application failed: {response}")
+                    logging.warn(f"PreferencesUpdater: preferences_resolver patch application failed: {response}")

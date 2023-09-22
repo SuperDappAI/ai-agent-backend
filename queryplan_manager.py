@@ -290,7 +290,7 @@ class QueryPlanManager:
         return response
         
      
-    def query_plan(self, personality_resolver, query_input: QueryPlanInput):
+    def query_plan(self, preferences_resolver, query_input: QueryPlanInput):
         start = time.time()
         self.llm = OpenAI(model='gpt-3.5-turbo-instruct', temperature=0, max_tokens=8, openai_api_key=query_input.api_key)
         role = self.classify(query_input)
@@ -298,19 +298,19 @@ class QueryPlanManager:
             end = time.time()
             return "No plan needed", {end - start}
         # content_dict = {
-        #     "role": "You are a query planning assistant for a personal companion AI. You are given the user's query, user personality schema and available functions. Your role is to help the companion AI by devising a detailed plan. Break the problem down into manageable parts using functions, as many times as necessary. Your plan should have a numbered list of steps.",
+        #     "role": "You are a query planning assistant for a personal companion AI. You are given the user's query, user preferences schema and available functions. Your role is to help the companion AI by devising a detailed plan. Break the problem down into manageable parts using functions, as many times as necessary. Your plan should have a numbered list of steps.",
         # }
         # template_str = (
         #     f"{content_dict['role']}\n\n"
         #     "Query and functions:\n"
         #     "{query}\n\n"
-        #     "Personality Schema:\n"
+        #     "Preferences Schema:\n"
         #     "{schema}\n\n"
         # )
         # prompt_template = PromptTemplate.from_template(template_str)
         # response = self.chain(prompt_template).run(
         #     query=role,
-        #     schema=json.dumps(personality_resolver.get_schema()))
+        #     schema=json.dumps(preferences_resolver.get_schema()))
         
         end = time.time()
         logging.info(
