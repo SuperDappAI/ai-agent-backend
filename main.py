@@ -65,6 +65,7 @@ async def getPersonality(personality_query: QueryPersonalityInput):
     start = time.time()
     response = await agent_manager.personality_resolver.get_personality(personality_query.user_id)
     if response is None:
+        logging.info(f'Personality for user {personality_query.user_id} does not exist, returnng default and making one in the background...')
         asyncio.create_task(agent_manager.personality_resolver.create_default_personality(personality_query.user_id))
         response = agent_manager.personality_resolver.default_personality
     end = time.time()
