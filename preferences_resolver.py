@@ -61,7 +61,8 @@ class PreferencesResolver:
             
             # Setup references after successful connection
             self.db = self.client['PreferencesDB']
-            self.collection = self.db['Preferences']
+            self.pref_collection = self.db['Preferences']
+            self.role_collection = self.db['Roles']
 
         except Exception as e:
            logging.warn(f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
@@ -70,7 +71,7 @@ class PreferencesResolver:
         if self.client is None:
             await self.initialize()
         try:
-            doc = await self.collection.find_one({"_id": user_id})
+            doc = await self.pref_collection.find_one({"_id": user_id})
             if doc is None:
                 await self.create_default_preferences(user_id)
                 return self.default_preferences
@@ -79,6 +80,32 @@ class PreferencesResolver:
             logging.warn(f"PreferencesResolver: get_preferences exception {e}\n{traceback.format_exc()}")
             return None
 
+    async def get_role(self, conversation_id):
+        if self.client is None:
+            await self.initialize()
+        try:
+            roleObj = await self.role_collection.find_one({"_id": conversation_id})
+            if roleObj is not None:
+                return roleObj["role"]
+            else:
+                return None
+        except Exception as e:
+            logging.warn(f"PreferencesResolver: get_role exception {e}\n{traceback.format_exc()}")
+            return None
+
+    async def set_role(self, role, conversation_id):
+        if self.client is None:
+            await self.initialize()
+        try:
+            roleObj = {"_id": conversation_id, "role": role}
+            update_result = await self.role_collection.update_one({"_id": conversation_id}, {"$set": roleObj}, upsert=True)
+            if update_result.matched_count == 0 and update_result.upserted_id is None:
+                logging.warn("No documents were inserted or updated.")
+        except Exception as e:
+            logging.warn(f"PreferencesResolver: set_role exception {e}\n{traceback.format_exc()}")
+            return "failure"
+        return "success"
+
     def get_schema(self):
         return self.schema
 
@@ -86,7 +113,7 @@ class PreferencesResolver:
         if self.client is None:
             await self.initialize()
         try:
-            await self.collection.insert_one({
+            await self.pref_collection.insert_one({
                 '_id': user_id,
                 **self.default_preferences
             })
@@ -164,7 +191,7 @@ class PreferencesResolver:
             return f"An unknown exception occurred: {e}"
         try:
             # Update the database
-            update_result = await self.collection.update_one({"_id": user_id}, {"$set": modified_doc})
+            update_result = await self.pref_collection.update_one({"_id": user_id}, {"$set": modified_doc})
             if update_result.modified_count == 0:
                 logging.warn("No documents were updated.")
         except Exception as e:
