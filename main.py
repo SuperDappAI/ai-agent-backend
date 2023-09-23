@@ -70,14 +70,15 @@ async def getPreferences(preferences_query: QueryPreferencesInput):
 
 @app.post('/query_plan/')
 async def writeQueryPlan(query_input: QueryPlanInput):
-    result = queryplancache.get(query_input.query)
+    result = queryplancache.get(query_input.conversation_id)
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
-    logging.info(f'Writing query plan for query {query_input.query}')
-    response, elapsed_time = queryplan_manager.query_plan(agent_manager.preferences_resolver, query_input)
+    logging.info(f'Writing query plan for conversation_id {query_input.conversation_id}')
+    response, elapsed_time = await queryplan_manager.query_plan(agent_manager.preferences_resolver, query_input)
     logging.info('Elapsed time for operation: %s',
                  elapsed_time)  # log the elapsed time
-    queryplancache[query_input.query] = response
+    if response != "No plan needed":
+        queryplancache[query_input.conversation_id] = response
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/push_memory/')

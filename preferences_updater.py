@@ -15,17 +15,16 @@ class SystemPrompt:
          self.error = error
 
     def to_prompt_string(self) -> str:
-        template_text = f"""
-        You are an expert preferences interpreter. Your task is to infer and update user preferences based on the dialog between the user and AI. Use the existing PREFERENCES as the current MongoDB database state.
-        
+        template_text = f"""You are an expert preferences interpreter. Your task is to infer and update user preferences based on the dialog between the user and AI. Use the existing PREFERENCES as the current MongoDB database state.
+
         Guidelines:
         1. Utilize JsonPatch operations (OPS) for DB updates:
         - 'add': '/traits/-'
         - 'remove' or 'replace': '/traits/[index]'
         2. Update based on user/AI dialog, ensuring new preferences are unique, case-insensitive, and meaningful for future interactions.
-        
+
         {self.error}
-        
+
         Notes:
         - Only perform operations for meaningful state changes.
         - Use '-' with 'add' for appending to arrays.
@@ -41,15 +40,14 @@ class SystemPrompt:
         - Returning an empty list is acceptable.
 
         Consider token limits (max 1000) for the database. Ensure any updates won't exceed this. Prioritize new preferences over older ones if needed.
-        
+
         Example OPS formats:
         OPS: []
         OPS: [{{"op": "add", "path": "/traits/-", "value": "adventurous"}},{{"op": "remove", "path": "/traits/1"}},{{"op": "replace", "path": "/traits/0", "value": "meticulous"}}]
         OPS: [{{"op": "add", "path": "/tasks/-", "value": {{"id": "task_0", "description": "New Task"}}}},{{"op": "add", "path": "/subtasks/-", "value": {{"id": "subtask_0", "task_id": "task_0", "description": "New Subtask"}}}},{{"op": "replace", "path": "/active_task_id", "value": "task_0"}},{{"op": "replace", "path": "/active_subtask_id", "value": "subtask_0"}}]
         OPS: [{{"op": "add", "path": "/achievements/-", "value": "New Achievement"}},{{"op": "add", "path": "/skills/-", "value": "New Skill"}},{{"op": "replace", "path": "/mood_feelings/0", "value": "content"}}]
 
-        PREFERENCES: {self.preferences}
-        """
+        PREFERENCES: {self.preferences}"""
         return template_text
 
 class PreferencesUpdater:
