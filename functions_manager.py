@@ -175,7 +175,7 @@ class FunctionsManager:
             self.inited = True
         memory = self.load(function_input.api_key)
         response = []
-        loop = asyncio.get_event_loop()
+        #loop = asyncio.get_event_loop()
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
@@ -189,7 +189,7 @@ class FunctionsManager:
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
                     asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
-                    loop.run_in_executor(None, self.prune_functions)
+                    #loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:

@@ -36,7 +36,7 @@ class FlexibleDocumentSummarizer:
             memory = json.loads(document.page_content)
             summary_prompt_str = summary_prompt.to_prompt_string()
             user_message = [SystemMessage(content=summary_prompt_str), HumanMessage(content=memory["user"])]
-            aida_message = [SystemMessage(content=summary_prompt_str), AIMessage(content=memory["AiDA"])]
+            aida_message = [SystemMessage(content=summary_prompt_str), HumanMessage(content=memory["AiDA"])]
             response = await self._llm.agenerate([user_message, aida_message])
             if not response.generations or not response.generations[0] or not response.generations[1]:
                 raise Exception("LLM did not provide a valid summary response.")
@@ -44,7 +44,7 @@ class FlexibleDocumentSummarizer:
             document.page_content = json.dumps({'user': response.generations[0][0].text, 'AiDA': response.generations[1][0].text})
         except Exception as e:
             if self.verbose:
-                logging.warn(f"FlexibleDocumentSummarizer: _get_single_summary exception on document: {document.id} e: {e}\n{traceback.format_exc()}")
+                logging.warn(f"FlexibleDocumentSummarizer: _get_single_summary exception e: {e}\n{traceback.format_exc()}")
 
     async def asummarize(self,  documents: Sequence[Document]) -> None:
         tasks = [self._get_single_summary(document) for document in documents]

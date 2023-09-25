@@ -33,7 +33,6 @@ class GenerativeAgentMemory(BaseMemory):
         """Extract insights from the provided text."""
         # Split the text into lines
         lines = text.splitlines()
-        print(f'lines {lines}')
         # Find the index of the "Insights:" line
         try:
             start_idx = lines.index("Insights: ") + 1
@@ -86,7 +85,7 @@ class GenerativeAgentMemory(BaseMemory):
             memoryMessages = self.format_memories_as_messages(memoryDocuments)
             prompt = """
                 Given dialog and relevant memories between the user and AiDA (an AI assistant), classify dialog in terms of importance to the user from low, medium, or high and then provide questions and infer novel insights.
-                'high' important memories have to have sufficient context and information to be able to derive multiple new insights and topics.
+                'high' important memories have to have sufficient context and information to be able to derive multiple new insights and topics. 'high' importance memories are also used in the summarization of conversations for long-term memory of AiDA.
                 If importance is 'low' or 'medium' just output the importance and not any questions or insights.
                 If it is 'high', answer the question: What are the 3 most salient high-level questions we can answer about the subjects in the statements (Provide each question on a new line)?
                 Also answer the question: What are 3 high-level novel insights that are relevant for answering the 3 high-level questions? (Provide each insight on a new line)
