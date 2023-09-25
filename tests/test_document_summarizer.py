@@ -4,6 +4,7 @@ from langchain.schema import Document
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.chat_models import ChatOpenAI
 from document_summarizer import FlexibleDocumentSummarizer, SummaryPrompt  
+import json
 
 @pytest.mark.asyncio
 async def test_flexible_document_summarizer():
