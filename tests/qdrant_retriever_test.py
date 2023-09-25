@@ -1,5 +1,5 @@
 import pytest
-from qdrant_retriever import QDrantVectorStoreRetriever, MemoryType
+from qdrant_retriever import QDrantVectorStoreRetriever
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.schema import Document

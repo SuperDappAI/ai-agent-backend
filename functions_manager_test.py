@@ -1,5 +1,4 @@
 import unittest
-import json
 from unittest.mock import patch, MagicMock
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
 

@@ -13,7 +13,6 @@ from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
 from qdrant_client.http import models as rest
 from memory_summarizer import MemorySummarizer
-from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage, AIMessage, BaseMessage
 
 logger = logging.getLogger(__name__)
