@@ -91,6 +91,7 @@ class GenerativeAgentMemory(BaseMemory):
                 If it is 'high', answer the question: What are the 3 most salient high-level questions we can answer about the subjects in the statements (Provide each question on a new line)?
                 Also answer the question: What are 3 high-level novel insights that are relevant for answering the 3 high-level questions? (Provide each insight on a new line)
                 Do not include any insights that are not relevant to the questions.
+                Be concise.
                 Do not repeat any insights that have already been made.
                 
                 Format:
