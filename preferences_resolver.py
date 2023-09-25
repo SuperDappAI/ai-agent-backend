@@ -19,7 +19,7 @@ class PreferencesResolver:
         self.uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
         self.client = None
         self.schema = {
-            'name_nicknames': [],
+            'name_nickname': "",
             'traits': [],
             'achievements': [],
             'mood_feelings': [],

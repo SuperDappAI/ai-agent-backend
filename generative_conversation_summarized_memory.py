@@ -1,12 +1,12 @@
 import logging
 import random
+import traceback
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
 from qdrant_retriever import MemoryType
 from langchain.retrievers import ContextualCompressionRetriever
+from langchain.schema import SystemMessage, HumanMessage, AIMessage
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
 
@@ -21,24 +21,35 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
     """The retriever to fetch related memories."""
     verbose: bool = False
 
-    def chain(self, prompt: PromptTemplate) -> LLMChain:
-        return LLMChain(llm=self.llm, prompt=prompt, verbose=self.verbose)
-
-    def _init_summary_of_convo(self, doc0: str) -> str:
-        prompt = PromptTemplate.from_template(
-            "{doc0}\n\n"
-            "Create a topic-based summarization of only text above. If it is above 1000 words summarize to stay below. Be concise, do not add new details that is not in the provided text. Output is a new JSON object. example {{\"topic\",\"topic summary\"}}."
-        )
-        return self.chain(prompt).run(doc0=doc0)
-
-    def _summarize_with_convo(self, new_text: str, existing_summary: str) -> str:
-        prompt = PromptTemplate.from_template(
-            "{existing_summary}\n\n"
-            "{new_text}\n\n"
-            "Combine second text into the summary (first text) and return new summary using only the information above. Remove any redundancies. Create new topics if any of the information does not belong to existing topics. If result is above 1000 words summarize to stay below. Be concise, do not add new details that is not in the provided text or in the existing summary. Output is the modified JSON object."
-        )
-        return self.chain(prompt).run(existing_summary=existing_summary, new_text=new_text)
-
+    async def _init_summary_of_convo(self, doc0: str) -> str:
+        prompt = "Create a topic-based summarization of only user message. If it is above 1000 words summarize to stay below. Be concise, do not add new details that is not in the provided text. Output is a new JSON object. example {\"topic\",\"topic summary\"}."
+        try:
+            messages = [[SystemMessage(content=prompt), 
+            HumanMessage(content=doc0)]]
+            response = await self.llm.agenerate(messages)
+            if not response.generations or not response.generations[0]:
+                raise Exception("LLM did not provide a valid summary response.")
+            return response.generations[0][0].text
+        except Exception as e:
+            if self.verbose:
+                logging.warn(f"GenerativeAgentConversationSummarizedMemory: _init_summary_of_convo exception, e: {e}\n{traceback.format_exc()}")
+            return ''
+        
+    async def _summarize_with_convo(self, new_text: str, existing_summary: str) -> str:
+        prompt = "Combine user message into the existing summary (AI message) and return new summary. Remove any redundancies. Create new topics if any of the information does not belong to existing topics. If result is above 1000 words summarize to stay below. Be concise, do not add new details that is not in the provided text or in the existing summary. Output is the modified JSON object."
+        try: 
+            messages = [[SystemMessage(content=prompt), 
+            AIMessage(content=existing_summary),
+            HumanMessage(content=new_text)]]
+            response = await self.llm.agenerate(messages)
+            if not response.generations or not response.generations[0]:
+                raise Exception("LLM did not provide a valid summary response.")
+            return response.generations[0][0].text
+        except Exception as e:
+            if self.verbose:
+                logging.warn(f"GenerativeAgentConversationSummarizedMemory: _summarize_with_convo exception, e: {e}\n{traceback.format_exc()}")
+            return ''
+             
     async def add_memories(
         self, qa: List[str], conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
     ) -> List[str]:
@@ -86,9 +97,9 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         if doc is not None:
             # summarize the two together
             document.metadata = doc.metadata
-            document.page_content = self._summarize_with_convo(document.page_content, doc.page_content)
+            document.page_content = await self._summarize_with_convo(document.page_content, doc.page_content)
         else:
-            document.page_content = self._init_summary_of_convo(document.page_content)
+            document.page_content = await self._init_summary_of_convo(document.page_content)
         return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[document.metadata["id"]], wait = False)
 
     async def save_context(self, outputs: Dict[str, Any]) -> List[str]:

@@ -21,8 +21,7 @@ def test_memory_output(url):
         "user_id": "1",
         "query": "test",
         "llm_response": "response",
-        "conversation_id": "1",
-        "importance": "high"
+        "conversation_id": "1"
     }
     response = requests.post(f"{url}/push_memory/", json=mock_data)
     assert response.status_code == 200

@@ -94,7 +94,7 @@ class WebManager:
                 seen.add(key)
         return result
 
-    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: HTMLInput):
+    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: HTMLInput):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -103,7 +103,7 @@ class WebManager:
                 )
             ]
         )
-        result = memory.get_relevant_documents(function_input.query, filter=filter)
+        result = await memory.aget_relevant_documents(function_input.query, filter=filter)
         return result
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)

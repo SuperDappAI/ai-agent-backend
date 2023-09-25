@@ -198,7 +198,7 @@ class FunctionsManager:
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
+    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
         kwargs = {}
         if len(category) > 0:
             kwargs["extra_index"] = category
@@ -225,7 +225,7 @@ class FunctionsManager:
                 ]
             )
             kwargs["user_filter"] = filter
-        return memory.get_relevant_documents(query_str, **kwargs)
+        return await memory.aget_relevant_documents(query_str, **kwargs)
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
     def load(self, api_key: str):

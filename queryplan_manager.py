@@ -1,6 +1,7 @@
 import time
 import logging
 import asyncio
+import traceback
 
 from langchain.chat_models import ChatOpenAI
 from pydantic import BaseModel
@@ -100,18 +101,23 @@ class QueryPlanManager:
         start = time.time()
         roleDB = await preferences_resolver.get_role(query_input.conversation_id)
         if roleDB is None:
-            messages = [[SystemMessage(content=self.to_prompt_string()), 
-            HumanMessage(content=query_input.query)]]
-            llm = ChatOpenAI(model='gpt-4', temperature=0, max_tokens=8, openai_api_key=query_input.api_key)
-            response = await llm.agenerate(messages)
-            if not response.generations or not response.generations[0]:
-                raise Exception("LLM did not provide a valid summary response.")
-            result = response.generations[0][0].text
-            role = self.parseClassification(result)
-            if role is None:
+            try:
+                messages = [[SystemMessage(content=self.to_prompt_string()), 
+                HumanMessage(content=query_input.query)]]
+                llm = ChatOpenAI(model='gpt-4', temperature=0, max_tokens=8, openai_api_key=query_input.api_key)
+                response = await llm.agenerate(messages)
+                if not response.generations or not response.generations[0]:
+                    raise Exception("LLM did not provide a valid summary response.")
+                result = response.generations[0][0].text
+                role = self.parseClassification(result)
+                if role is None:
+                    end = time.time()
+                    return "No plan needed", {end - start}
+                asyncio.create_task(preferences_resolver.set_role(result, query_input.conversation_id))
+            except Exception as e:
+                logging.warn(f"QueryPlanManager: query_plan exception, e: {e}\n{traceback.format_exc()}") 
                 end = time.time()
-                return "No plan needed", {end - start}
-            asyncio.create_task(preferences_resolver.set_role(result, query_input.conversation_id))
+                return "No plan needed", {end - start} 
         else:
             role = self.parseClassification(roleDB)
             if role is None:

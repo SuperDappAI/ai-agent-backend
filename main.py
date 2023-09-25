@@ -84,7 +84,7 @@ async def writeQueryPlan(query_input: QueryPlanInput):
 @app.post('/push_memory/')
 async def writeMemoryForUser(memory_output: MemoryOutput):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user (importance: {memory_output.importance}) for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
+    logging.info(f'Writing memory for user for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
     elapsed_time = await agent_manager.push_memory(memory_output)
     return {'elapsed_time': elapsed_time}
 
