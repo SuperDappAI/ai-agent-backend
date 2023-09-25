@@ -4,7 +4,6 @@ from langchain.schema import Document
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.chat_models import ChatOpenAI
 from document_summarizer import FlexibleDocumentSummarizer, SummaryPrompt  
-import json
 
 @pytest.mark.asyncio
 async def test_flexible_document_summarizer():
@@ -16,7 +15,6 @@ async def test_flexible_document_summarizer():
     mock_document = MagicMock(Document)
     mock_document.metadata = {"summarizations": 2, "importance": "high"}
     mock_document.page_content = "{\"user\": \"user original text\", \"AiDA\": \"aida original text\"}"
-    test = json.loads(mock_document.page_content)
 
     await summarizer._get_single_summary(mock_document)
 
