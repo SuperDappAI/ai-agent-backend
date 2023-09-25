@@ -6,13 +6,13 @@ import cachetools.func
 from dotenv import load_dotenv
 from typing import Any, Dict, List
 from document_summarizer import FlexibleDocumentSummarizer
-from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.vectorstores import Qdrant
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.retrievers import ContextualCompressionRetriever
 from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from langchain.embeddings import OpenAIEmbeddings
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 
@@ -54,7 +54,7 @@ class MemorySummarizer:
             
     def create_summarized_memory(self, api_key: str, user_id:str):
         return GenerativeAgentConversationSummarizedMemory(
-            llm=OpenAI(openai_api_key=api_key, temperature=0, max_tokens=2048, model="gpt-3.5-turbo-instruct"),
+            llm=ChatOpenAI(openai_api_key=api_key, temperature=0, max_tokens=2048, model="gpt-3.5-turbo"),
             memory_retriever=self.create_new_conversation_summarizer(api_key, user_id),
             verbose=self.agent_manager.verbose
         )

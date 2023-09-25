@@ -84,7 +84,7 @@ async def writeQueryPlan(query_input: QueryPlanInput):
 @app.post('/push_memory/')
 async def writeMemoryForUser(memory_output: MemoryOutput):
     """Endpoint to push memory for a specific user."""
-    logging.info(f'Writing memory for user (importance: {memory_output.importance}) for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
+    logging.info(f'Writing memory for user for user {memory_output.user_id}, conversation {memory_output.conversation_id}')
     elapsed_time = await agent_manager.push_memory(memory_output)
     return {'elapsed_time': elapsed_time}
 
@@ -95,7 +95,7 @@ async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     if result is not None:
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
-    memories, elapsed_time = agent_manager.pull_memory(memory_input)
+    memories, elapsed_time = await agent_manager.pull_memory(memory_input)
     pullmemorycache[memory_input] = memories
     return {'response': memories, 'elapsed_time': elapsed_time}
 

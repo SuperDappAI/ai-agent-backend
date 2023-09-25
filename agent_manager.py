@@ -2,15 +2,13 @@ import time
 import logging
 import os
 import asyncio
-import json
 import traceback
 import cachetools.func
 
 from dotenv import load_dotenv
-from langchain.llms import OpenAI
 from langchain.embeddings import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from generative_memory import GenerativeAgentMemory
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.vectorstores import Qdrant
@@ -48,7 +46,6 @@ class MemoryOutput(BaseModel):
     query: str
     llm_response: str
     conversation_id: str
-    importance: str
 
 class ClearMemory(BaseModel):
     user_id: str
@@ -70,12 +67,9 @@ class AgentManager:
         start = time.time()
         memory = self.load(memory_output.api_key, memory_output.user_id)
         try:
-            convoJson = json.dumps({"user": memory_output.query, "AiDA": memory_output.llm_response})
-            if memory_output.importance == "high":
-                asyncio.create_task(memory.pause_to_reflect(convoJson, memory_output.conversation_id))
+            # update preferences on every exchange but only save summarized memory of a "finished" exchange, reflect on an important summarized memory and then decay memories
+            asyncio.create_task(memory.pause_to_reflect(memory_output.dict()))
             asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key, model="gpt-4", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
-            # this will save to user memory and also incrementally summarize memory in seperate summary collection
-            asyncio.create_task(memory.save_context(memory_output.dict()))
             # decay memory by summarizing it continiously until max_summarizations then prune
             asyncio.create_task(memory.decay())
         except Exception as e:
@@ -113,7 +107,7 @@ class AgentManager:
 
     def create_memory(self, api_key: str, user_id: str):
         return GenerativeAgentMemory(
-            llm=OpenAI(openai_api_key=api_key, model="gpt-3.5-turbo-instruct", max_tokens=1024),
+            llm=ChatOpenAI(openai_api_key=api_key, model="gpt-4", max_tokens=1024),
             memory_retriever=self.create_new_memory_retriever(api_key, user_id),
             memory_summarizer=MemorySummarizer(flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose
@@ -167,9 +161,9 @@ class AgentManager:
             "relevant_summary": ret,
         }
 
-    def load_memory(self, memory_input: MemoryInput):
+    async def load_memory(self, memory_input: MemoryInput):
         memory = self.load(memory_input.api_key, memory_input.user_id)
-        return memory.load_memory_variables(
+        return await memory.load_memory_variables(
             queries=[memory_input.query], 
             conversation_id=memory_input.conversation_id
         )
@@ -195,7 +189,7 @@ class AgentManager:
         conversation_id = conversation_summary.metadata.get("extra_index", "N/A")
         return f"(created: {created_ago}, conversation_id: {conversation_id}) {conversation_summary.page_content}"
   
-    def pull_memory(self, memory_input: MemoryInput):
+    async def pull_memory(self, memory_input: MemoryInput):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
         response = None
@@ -208,7 +202,7 @@ class AgentManager:
                     return None, end - start
                 response = self.load_summary(memory_input)
             else: 
-                response = self.load_memory(memory_input)
+                response = await self.load_memory(memory_input)
         except Exception as e:
             logging.warn(f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")
         finally:

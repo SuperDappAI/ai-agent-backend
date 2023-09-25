@@ -18,7 +18,7 @@ from langchain.vectorstores import Qdrant
 from langchain.embeddings import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
 from qdrant_client.http.models import PayloadSchemaType
@@ -175,11 +175,11 @@ class FunctionsManager:
             self.inited = True
         memory = self.load(function_input.api_key)
         response = []
-        loop = asyncio.get_event_loop()
+        #loop = asyncio.get_event_loop()
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                documents = self.get_retrieved_nodes(memory,
+                documents = await self.get_retrieved_nodes(memory,
                     query, action_item.category, function_input.user_id)
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
@@ -189,7 +189,7 @@ class FunctionsManager:
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
                     asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
-                    loop.run_in_executor(None, self.prune_functions)
+                    #loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
@@ -198,7 +198,7 @@ class FunctionsManager:
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
+    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
         kwargs = {}
         if len(category) > 0:
             kwargs["extra_index"] = category
@@ -225,7 +225,7 @@ class FunctionsManager:
                 ]
             )
             kwargs["user_filter"] = filter
-        return memory.get_relevant_documents(query_str, **kwargs)
+        return await memory.aget_relevant_documents(query_str, **kwargs)
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
     def load(self, api_key: str):

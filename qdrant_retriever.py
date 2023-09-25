@@ -2,7 +2,7 @@
 from datetime import datetime
 from pydantic import Field
 from enum import Enum
-from langchain.callbacks.manager import CallbackManagerForRetrieverRun
+from langchain.callbacks.manager import AsyncCallbackManagerForRetrieverRun
 from langchain.schema import BaseRetriever, Document
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
@@ -55,11 +55,11 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             score -= self.subconscious_memory_penalty
         return score
 
-    def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
+    async def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
         """Return documents that are salient to the query."""
-        return self.vectorstore.similarity_search_with_score(query, k=10, **kwargs)
+        return await self.vectorstore.asimilarity_search_with_score(query, k=10, **kwargs)
 
-    def get_relevant_documents_for_reflection(
+    async def get_relevant_documents_for_reflection(
         self, query: str, conversation: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
@@ -73,7 +73,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             ]
         )
         kwargs.update({"filter": filter})
-        docs_and_scores = self.get_salient_docs(query, **kwargs)
+        docs_and_scores = await self.get_salient_docs(query, **kwargs)
         rescored_docs = []
         for doc, relevance in docs_and_scores:
             combined_score = self._get_combined_score(doc, relevance, conversation)
@@ -124,8 +124,11 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             docs.append(document)
         return docs
 
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs
+    def _get_relevant_documents(self, *args, **kwargs):
+        pass
+
+    async def _aget_relevant_documents(
+        self, query: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
         current_time = datetime.now().timestamp()
@@ -133,7 +136,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         user_filter = kwargs.pop("user_filter", None)
         if user_filter:
             kwargs.update({"filter": user_filter})
-        docs_and_scores = self.get_salient_docs(query, **kwargs)
+        docs_and_scores = await self.get_salient_docs(query, **kwargs)
         rescored_docs = [
             (doc, self._get_combined_score(doc, relevance, extra_index))
             for doc, relevance in docs_and_scores

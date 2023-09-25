@@ -1,5 +1,4 @@
 import logging
-import re
 import json
 import random
 import asyncio
@@ -7,8 +6,6 @@ import traceback
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
 from qdrant_retriever import MemoryType
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.schema import BaseMemory, Document
@@ -16,6 +13,8 @@ from langchain.schema.language_model import BaseLanguageModel
 from langchain.utils import mock_now
 from qdrant_client.http import models as rest
 from memory_summarizer import MemorySummarizer
+from langchain.chat_models import ChatOpenAI
+from langchain.schema import SystemMessage, HumanMessage, AIMessage, BaseMessage
 
 logger = logging.getLogger(__name__)
     
@@ -29,79 +28,115 @@ class GenerativeAgentMemory(BaseMemory):
     """Memory summarizer to be used when adding core memories."""
     verbose: bool = False
 
-    def chain(self, prompt: PromptTemplate) -> LLMChain:
-        return LLMChain(llm=self.llm, prompt=prompt, verbose=self.verbose)
+    @staticmethod
+    def _extract_insights(text: str) -> List[str]:
+        """Extract insights from the provided text."""
+        # Split the text into lines
+        lines = text.splitlines()
+        # Find the index of the "Insights:" line
+        try:
+            start_idx = lines.index("Insights: ") + 1
+        except ValueError:
+            try:
+                start_idx = lines.index("Insights:") + 1
+            except ValueError:
+                return []
+        # Extract insights until an empty line or end of text
+        insights = []
+        for line in lines[start_idx:]:
+            if not line.strip():
+                break
+            insights.append(line.strip())
+        insights_str = '\n'.join(insights)
+        return insights_str
 
     @staticmethod
-    def _parse_list(text: str) -> List[str]:
-        """Parse a newline-separated string into a list of strings."""
-        lines = re.split(r"\n", text.strip())
-        lines = [line for line in lines if line.strip()]  # remove empty lines
-        return [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in lines]
+    def _extract_importance(text: str) -> str:
+        """Extract importance level from the provided text."""
+        
+        # Split the text into lines
+        lines = text.splitlines()
+        
+        # Find the line with "Importance:"
+        for line in lines:
+            if "Importance:" in line:
+                # Extract the importance level
+                level = line.split("Importance:")[1].strip()
+                return level.lower()
 
-    def _get_topics_of_reflection(self, memory_content: str, conversation: str) -> [List[Document], List[str]]:
-        """Return the 3 most salient high-level questions about recent observations."""
-        prompt = PromptTemplate.from_template(
-            "{observations}\n\n"
-            "Given only the information above, what are the 3 most salient "
-            "high-level questions we can answer about the subjects in the statements?\n"
-            "Provide each question on a new line."
-        )
-        # get last important memories to get reflections on them
-        kwargs = {}
-        observationsDocuments = self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(memory_content, conversation, **kwargs)
-        if len(observationsDocuments) > 0:
-            observation_str = "\n".join(
-                [self._format_memory_detail(o) for o in observationsDocuments]
-            )
-            result = self.chain(prompt).run(observations=observation_str)
-            return observationsDocuments, self._parse_list(result)
-        else:
-            return [], []
+        return "low"
 
-    def _get_insights_on_topics(
-        self, topics: List[str], observationDocuments: List[Document], **kwargs: Any,
-    ) -> List[str]:
-        """Generate 'insights' on a topic of reflection, based on pertinent memories."""
-        prompt = PromptTemplate.from_template(
-            "Related statements to questions:\n"
-            "---\n"
-            "{related_statements}\n"
-            "---\n"
-            "What 5 high-level novel insights can you infer from the above statements "
-            "that are relevant for answering the following questions?\n"
-            "Do not include any insights that are not relevant to the questions.\n"
-            "Do not repeat any insights that have already been made.\n\n"
-            "Questions: {topics}\n\n"
-            "(example format: insight (because of 1, 3))\n"
-        )
-        related_statements = "\n".join(
-            [
-                self._format_memory_detail(observation, prefix=f"{i+1}. ")
-                for i, observation in enumerate(observationDocuments)
-            ]
-        )
-        result = self.chain(prompt).run(
-            topics=topics, related_statements=related_statements
-        )
-        return self._parse_list(result)
+    def format_memories_as_messages(self, relevant_memories: List[Document]) -> List[BaseMessage]:
+        formatted_memories = []
+        for mem in relevant_memories:
+            memory = json.loads(mem.page_content)  # Convert the JSON string to a dictionary
+            formatted_memories.append(HumanMessage(content=f'Memory: {memory["user"]}'))
+            formatted_memories.append(AIMessage(content=f'Memory: {memory["AiDA"]}'))
+        return formatted_memories
 
-    async def pause_to_reflect(self, memory_content: str, conversation_id: str) -> List[str]:
-        """Reflect on recent observations and generate 'insights'."""
+    async def _get_importance_and_insight(self, user: str, llm_response: str, conversation_id: str):
+        """Reflect on recent query and generate 'insights'."""
         if self.verbose:
-            logger.info("AiDA is reflecting")
+            logger.info("AiDA is checking importance")
+        kwargs = {}
+        # lookup some relevant context for query classification
+        memoryDocuments = await self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(json.dumps({'user': user, 'AiDA': llm_response}), conversation_id, **kwargs)
+        try:
+            memoryMessages = self.format_memories_as_messages(memoryDocuments)
+            prompt = """
+                Given dialog and relevant memories between the user and AiDA (an AI assistant), classify dialog in terms of importance to the user from low, medium, or high and then provide questions and infer novel insights.
+                'high' important memories have to have sufficient context and information to be able to derive multiple new insights and topics. 'high' importance memories are also used in the summarization of conversations for long-term memory of AiDA.
+                If importance is 'low' or 'medium' just output the importance and not any questions or insights.
+                If it is 'high', answer the question: What are the 3 most salient high-level questions we can answer about the subjects in the statements (Provide each question on a new line)?
+                Also answer the question: What are 3 high-level novel insights that are relevant for answering the 3 high-level questions? (Provide each insight on a new line)
+                Do not include any insights that are not relevant to the questions.
+                Be concise.
+                Do not repeat any insights that have already been made.
+                
+                Format:
+                
+                Importance: <level, low/medium/high>
+                Questions: <questions, each on a new line>
+                Insights: <insights, each on a new line>
+                """
+            messages = [SystemMessage(content=prompt)]
+            messages.extend(memoryMessages)  # Extend the list with memoryMessages
+            messages.append(HumanMessage(content=user))
+            messages.append(AIMessage(content=llm_response))
+            response = await self.llm.agenerate([messages])
+            if not response.generations or not response.generations[0]:
+                raise Exception("LLM did not provide a valid summary response.")
+            result = response.generations[0][0].text
+            importance = self._extract_importance(result)
+            insights = self._extract_insights(result)
+            return importance, insights
+        except Exception as e:
+            if self.verbose:
+                logging.warn(f"GenerativeAgentMemory: _get_importance_and_insight exception, e: {e}\n{traceback.format_exc()}")
+            return None, None
+
+    async def pause_to_reflect(self, outputs: Dict[str, Any]) -> List[str]:
+        """Reflect on recent observations and generate 'insights'."""
         new_insights = []
+        conversation_id = outputs.get("conversation_id")
+        query = outputs.get("query")
+        aida = outputs.get("llm_response")
         now=datetime.now()
-        observationDocuments, topics = self._get_topics_of_reflection(memory_content, conversation_id)
-        if len(observationDocuments) > 0 and len(topics) > 0:
-            insights = self._get_insights_on_topics(topics, observationDocuments, conversation=conversation_id, now=now)
-            if len(insights) > 0:
-                qa = {"my_reflections": topics, "my_insights": insights}
+        try:
+            importance, insights = await self._get_importance_and_insight(query, aida, conversation_id)
+            if importance == "high" and len(insights) > 0:
+                if self.verbose:
+                    logger.info("AiDA is reflecting")
                 # ensure we are dealing with non-core memories because reflections are sub-conscious thoughts
-                await self.add_memory(memory_content=json.dumps(qa), conversation_id=conversation_id, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
+                await self.add_memory(memory_content=json.dumps({'user': 'AiDA to reflect and generate insight', 'AiDA': insights}), conversation_id=conversation_id, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
                 new_insights.extend(insights)
-                return new_insights
-        return []
+        except Exception as e:
+            importance = 'low'
+            if self.verbose:
+                logging.warn(f"GenerativeAgentMemory: pause_to_reflect exception, e: {e}\n{traceback.format_exc()}")           
+        outputs["importance"] = importance
+        await self.save_context(outputs)
+        return new_insights
 
     async def add_memories(
         self, qa: List[str], conversation_id: str, importance: List[str], memory_types: List[MemoryType], now: Optional[datetime] = None
@@ -148,7 +183,7 @@ class GenerativeAgentMemory(BaseMemory):
         )
         return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
 
-    def fetch_memories(
+    async def fetch_memories(
         self, topic: str, **kwargs: Any
     ) -> List[Document]:
         """Fetch related memories."""
@@ -156,7 +191,7 @@ class GenerativeAgentMemory(BaseMemory):
         conversation_id = kwargs.pop("conversation_id")
         if current_time is not None:
             with mock_now(current_time):
-                return self.memory_retriever.get_relevant_documents(topic)
+                return await self.memory_retriever.aget_relevant_documents(topic)
         else:
             if conversation_id != "":
                 kwargs.update({"filter": rest.Filter(
@@ -167,13 +202,7 @@ class GenerativeAgentMemory(BaseMemory):
                         )
                     ]
                 )})
-            docs = self.memory_retriever.get_relevant_documents(topic, **kwargs)
-            return docs
-
-    def _format_memory_detail(self, memory: Document, prefix: str = "") -> str:
-        memory_type = MemoryType(memory.metadata["memory_type"]).name.replace("_", " ").lower()
-        created_time = datetime.fromtimestamp(memory.metadata["created_at"]).strftime("%B %d, %Y, %I:%M %p")
-        return f"{prefix}[{created_time}] ({memory_type}) {memory.page_content.strip()}"
+            return await self.memory_retriever.aget_relevant_documents(topic, **kwargs)
 
     def _time_ago(self, timestamp: float) -> str:
         """Return a rough string representation of the time passed since a timestamp."""
@@ -207,12 +236,12 @@ class GenerativeAgentMemory(BaseMemory):
         """Input keys this memory class will load dynamically."""
         return []
 
-    def load_memory_variables(self, **kwargs) -> Dict[str, str]:
+    async def load_memory_variables(self, **kwargs) -> Dict[str, str]:
         """Return key-value pairs given the text input to the chain."""
         queries = kwargs.pop("queries")
         if queries is not None:
             relevant_memories = [
-                mem for query in queries for mem in self.fetch_memories(query, **kwargs)
+                mem for query in queries for mem in await self.fetch_memories(query, **kwargs)
             ]
             # update last_accessed_at/summarizations
             ids = [doc.metadata["id"] for doc in relevant_memories]
@@ -234,7 +263,7 @@ class GenerativeAgentMemory(BaseMemory):
         user_id = outputs.get("user_id")
         api_key = outputs.get("api_key")
         if query:
-            qa = {"user": query, "AiDA": aida}
+            qa = {'user': query, 'AiDA': aida}
             await self.memory_summarizer.save(api_key, user_id, outputs)
             return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []

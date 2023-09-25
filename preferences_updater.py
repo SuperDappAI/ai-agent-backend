@@ -52,11 +52,11 @@ class SystemPrompt:
 
 class PreferencesUpdater:
     _preferences_resolver: PreferencesResolver
-    _verbose: bool
+    verbose: bool
 
     def __init__(self, preferences_resolver: PreferencesResolver, verbose: bool = False) -> None:
         self._preferences_resolver = preferences_resolver
-        self._verbose = verbose
+        self.verbose = verbose
 
     async def _get_json_patch_commands(
         self, messages, llm: ChatOpenAI
@@ -77,7 +77,7 @@ class PreferencesUpdater:
                 # Parse the array string as JSON
                 array_json = json.loads(array_str)
         except Exception as e:
-            if self._verbose:
+            if self.verbose:
                 logging.warn(f"PreferencesUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
 
         return array_json
@@ -94,7 +94,7 @@ class PreferencesUpdater:
                     AIMessage(content=ai)]]
         patch_commands = await self._get_json_patch_commands(messages, llm)
         if len(patch_commands) > 0:
-            if self._verbose:
+            if self.verbose:
                 logging.info("AiDA is trying to update preferences")
             response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
             if response != "success":
@@ -105,5 +105,5 @@ class PreferencesUpdater:
                     HumanMessage(content=response)]]
                 patch_commands = await self._get_json_patch_commands(messages, llm)
                 response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
-                if response != "success" and self._verbose:
+                if response != "success" and self.verbose:
                     logging.warn(f"PreferencesUpdater: preferences_resolver patch application failed: {response}")

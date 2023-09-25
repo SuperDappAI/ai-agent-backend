@@ -16,7 +16,7 @@ from langchain.vectorstores import Qdrant
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from langchain.schema import Document
 from datetime import datetime
 from qdrant_client.http import models as rest
@@ -93,7 +93,7 @@ class DocManager:
                 seen.add(key)
         return result
 
-    def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: DocSearchInput):
+    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: DocSearchInput):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -102,7 +102,7 @@ class DocManager:
                 )
             ]
         )
-        result = memory.get_relevant_documents(function_input.query, filter=filter)
+        result = await memory.aget_relevant_documents(function_input.query, filter=filter)
         return result
 
     @cachetools.func.lru_cache(maxsize=16384)
@@ -145,7 +145,7 @@ class DocManager:
         response = None
         try:
             memory = self.load(function_input.api_key)
-            nodes = self.get_retrieved_nodes(memory, function_input)
+            nodes = await self.get_retrieved_nodes(memory, function_input)
             response = self.extract_text_and_source_url(nodes)
             # update last_accessed_at
             if len(nodes) > 0:
