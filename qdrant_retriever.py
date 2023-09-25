@@ -1,8 +1,6 @@
 # Importing necessary libraries and modules
 from datetime import datetime
-from pydantic import Field
 from enum import Enum
-from langchain.callbacks.manager import AsyncCallbackManagerForRetrieverRun
 from langchain.schema import BaseRetriever, Document
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest

@@ -1,7 +1,6 @@
 
 import pytest
 import os
-from unittest.mock import MagicMock, patch
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
 from dotenv import load_dotenv
 from langchain.schema import Document

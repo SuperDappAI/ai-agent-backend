@@ -5,7 +5,7 @@ import json
 
 from typing import Sequence
 from langchain.schema import Document
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
+from langchain.schema import SystemMessage, HumanMessage
 from langchain.chat_models import ChatOpenAI
 
 class SummaryPrompt:
