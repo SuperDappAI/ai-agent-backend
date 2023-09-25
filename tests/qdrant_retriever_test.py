@@ -62,10 +62,10 @@ def setup_retriever():
 #         assert isinstance(score, float)
 #         print(doc)
 
-def test_get_salient_docs(setup_retriever):
+async def test_get_salient_docs(setup_retriever):
     retriever = setup_retriever
     query = "test_query"
-    docs = retriever.get_salient_docs(query)
+    docs = await retriever.get_salient_docs(query)
     
     assert isinstance(docs, list)
     
