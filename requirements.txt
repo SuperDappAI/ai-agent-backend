@@ -1,5 +1,6 @@
 cohere
 langchain
+pydantic
 openai
 pandas
 gitpython
