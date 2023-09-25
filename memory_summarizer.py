@@ -12,7 +12,7 @@ from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.retrievers import ContextualCompressionRetriever
 from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from langchain.embeddings import OpenAIEmbeddings
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 

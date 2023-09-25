@@ -16,7 +16,7 @@ from langchain.vectorstores import Qdrant
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
 from qdrant_client.http import models as rest
@@ -137,7 +137,7 @@ class WebManager:
                 await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
                 end = time.time()
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
-            nodes = self.get_retrieved_nodes(memory, function_input)
+            nodes = await self.get_retrieved_nodes(memory, function_input)
             response = self.extract_text_and_source_url(nodes)
             # update last_accessed_at
             if len(function_input.action_items) == 0 and len(nodes) > 0:

@@ -128,7 +128,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         pass
 
     async def _aget_relevant_documents(
-        self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun, **kwargs
+        self, query: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
         current_time = datetime.now().timestamp()

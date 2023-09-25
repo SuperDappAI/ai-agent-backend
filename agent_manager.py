@@ -8,7 +8,7 @@ import cachetools.func
 from dotenv import load_dotenv
 from langchain.embeddings import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from generative_memory import GenerativeAgentMemory
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.vectorstores import Qdrant
