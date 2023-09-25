@@ -32,22 +32,40 @@ class GenerativeAgentMemory(BaseMemory):
     def _extract_insights(text: str) -> List[str]:
         """Extract insights from the provided text."""
         # Split the text into lines
-        lines = text.strip().split("\n")
-        
+        lines = text.splitlines()
+        print(f'lines {lines}')
         # Find the index of the "Insights:" line
         try:
-            start_idx = lines.index("Insights:") + 1
+            start_idx = lines.index("Insights: ") + 1
         except ValueError:
-            return []
-
+            try:
+                start_idx = lines.index("Insights:") + 1
+            except ValueError:
+                return []
         # Extract insights until an empty line or end of text
         insights = []
         for line in lines[start_idx:]:
             if not line.strip():
                 break
             insights.append(line.strip())
+        insights_str = '\n'.join(insights)
+        return insights_str
 
-        return insights
+    @staticmethod
+    def _extract_importance(text: str) -> str:
+        """Extract importance level from the provided text."""
+        
+        # Split the text into lines
+        lines = text.splitlines()
+        
+        # Find the line with "Importance:"
+        for line in lines:
+            if "Importance:" in line:
+                # Extract the importance level
+                level = line.split("Importance:")[1].strip()
+                return level.lower()
+
+        return "low"
 
     def format_memories_as_messages(self, relevant_memories: List[Document]) -> List[BaseMessage]:
         formatted_memories = []
@@ -57,7 +75,7 @@ class GenerativeAgentMemory(BaseMemory):
             formatted_memories.append(AIMessage(content=f'Memory: {memory["AiDA"]}'))
         return formatted_memories
 
-    async def _get_importance_and_insight(self, llm: ChatOpenAI, user: str, llm_response: str, conversation_id: str):
+    async def _get_importance_and_insight(self, user: str, llm_response: str, conversation_id: str):
         """Reflect on recent query and generate 'insights'."""
         if self.verbose:
             logger.info("AiDA is checking importance")
@@ -85,32 +103,30 @@ class GenerativeAgentMemory(BaseMemory):
             messages.extend(memoryMessages)  # Extend the list with memoryMessages
             messages.append(HumanMessage(content=user))
             messages.append(AIMessage(content=llm_response))
-            response = await llm.agenerate([messages])
+            response = await self.llm.agenerate([messages])
             if not response.generations or not response.generations[0]:
                 raise Exception("LLM did not provide a valid summary response.")
             result = response.generations[0][0].text
+            importance = self._extract_importance(result)
             insights = self._extract_insights(result)
-            if len(insights) > 0:
-                return "high", insights
-            else:
-                return result, None
+            return importance, insights
         except Exception as e:
             if self.verbose:
                 logging.warn(f"GenerativeAgentMemory: _get_importance_and_insight exception, e: {e}\n{traceback.format_exc()}")
             return None, None
 
-    async def pause_to_reflect(self, llm: ChatOpenAI, outputs: Dict[str, Any]) -> List[str]:
+    async def pause_to_reflect(self, outputs: Dict[str, Any]) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
-        if self.verbose:
-            logger.info("AiDA is reflecting")
         new_insights = []
         conversation_id = outputs.get("conversation_id")
         query = outputs.get("query")
         aida = outputs.get("llm_response")
         now=datetime.now()
         try:
-            importance, insights = await self._get_importance_and_insight(llm, query, aida, conversation_id)
-            if importance == "high":
+            importance, insights = await self._get_importance_and_insight(query, aida, conversation_id)
+            if importance == "high" and len(insights) > 0:
+                if self.verbose:
+                    logger.info("AiDA is reflecting")
                 # ensure we are dealing with non-core memories because reflections are sub-conscious thoughts
                 await self.add_memory(memory_content=json.dumps({'user': 'AiDA to reflect and generate insight', 'AiDA': insights}), conversation_id=conversation_id, importance="medium", memory_type=MemoryType.SUBCONSCIOUS_MEMORY, now=now)
                 new_insights.extend(insights)
@@ -118,7 +134,7 @@ class GenerativeAgentMemory(BaseMemory):
             importance = 'low'
             if self.verbose:
                 logging.warn(f"GenerativeAgentMemory: pause_to_reflect exception, e: {e}\n{traceback.format_exc()}")           
-        outputs.set("importance", importance)
+        outputs["importance"] = importance
         await self.save_context(outputs)
         return new_insights
 

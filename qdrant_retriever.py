@@ -124,6 +124,9 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             docs.append(document)
         return docs
 
+    def _get_relevant_documents(self, *args, **kwargs):
+        pass
+
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun, **kwargs
     ) -> List[Document]:
