@@ -37,10 +37,10 @@ class HTMLInput(BaseModel):
     hash: str
     query: str
     def __str__(self):
-        return self.api_key + self.hash + self.query
+        return self.hash + self.query
 
     def __eq__(self,other):
-        return self.api_key == other.api_key and self.hash == other.hash and self.query == other.query
+        return self.hash == other.hash and self.query == other.query
 
     def __hash__(self):
         return hash(str(self))

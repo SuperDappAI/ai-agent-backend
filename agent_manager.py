@@ -32,10 +32,10 @@ class MemoryInput(BaseModel):
     conversation_id: str
     summary: bool
     def __str__(self):
-        return self.api_key + str(self.summary) + self.user_id + self.query + self.conversation_id
+        return str(self.summary) + self.user_id + self.query + self.conversation_id
 
     def __eq__(self,other):
-        return self.api_key == other.api_key and self.user_id == other.user_id and self.query == other.query and self.conversation_id == other.conversation_id and self.summary == other.summary
+        return self.user_id == other.user_id and self.query == other.query and self.conversation_id == other.conversation_id and self.summary == other.summary
 
     def __hash__(self):
         return hash(str(self))

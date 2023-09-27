@@ -36,10 +36,10 @@ class DocSearchInput(BaseModel):
     query: str
     category: str
     def __str__(self):
-        return self.api_key + self.query + self.category
+        return self.query + self.category
 
     def __eq__(self,other):
-        return self.api_key == other.api_key and self.query == other.query and self.category == other.category
+        return self.query == other.query and self.category == other.category
 
     def __hash__(self):
         return hash(str(self))    
