@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
-from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
+from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from preferences_resolver import QueryPreferencesInput
@@ -125,6 +125,13 @@ async def addDoc(function_input: DocAddInput):
     """Endpoint to conduct add HTML document for doc portal."""
     logging.info('add to Doc Portal')
     results, elapsed_time = await doc_manager.add_doc(function_input)
+    return {'response': results, 'elapsed_time': elapsed_time}
+
+@app.post('/delete_doc/')
+async def deleteDoc(function_input: DocDeleteInput):
+    """Endpoint to conduct delete HTML document from doc portal."""
+    logging.info('delete from Doc Portal')
+    results, elapsed_time = await doc_manager.delete_doc(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/is_doc_cached/')

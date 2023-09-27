@@ -31,6 +31,11 @@ class DocAddInput(BaseModel):
     html_doc: str
     category: str
 
+class DocDeleteInput(BaseModel):
+    api_key: str
+    source_url: str
+    category: str
+
 class DocSearchInput(BaseModel):
     api_key: str
     query: str
@@ -105,6 +110,32 @@ class DocManager:
         result = await memory.aget_relevant_documents(function_input.query, filter=filter)
         return result
 
+    def get_url_docs_ids(self, source_url: str):
+        result = list()
+        start = time.time()
+        try:
+            filter = rest.Filter(
+                must=[
+                    rest.FieldCondition(
+                        key="metadata.source_url",
+                        match=rest.MatchValue(value=source_url),
+                    )
+                ]
+            )
+            records, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter)
+            for record in records:
+                if (
+                    'metadata' in record.payload and 'source_url' in record.payload['metadata'] and
+                    record.payload['metadata']['source_url'] == source_url
+                ):
+                    result.append(record.id)
+        except Exception as e:
+            logging.warn(f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}")
+        end = time.time()
+        logging.info(
+            f"DocManager: get_url_docs_ids operation took {end - start} seconds")
+        return result, end - start
+
     @cachetools.func.lru_cache(maxsize=16384)
     def load(self, api_key: str):
         """Load existing index data from the filesystem ."""
@@ -137,6 +168,25 @@ class DocManager:
             asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
             end = time.time()
             logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
+        return "success", end - start
+
+    async def delete_doc(self, function_input: DocDeleteInput):
+        start = time.time()
+        if len(function_input.source_url) <= 0:
+            logging.warn("DocManager: Cannot delete document because data missing")
+            end = time.time()
+            return "fail", end - start
+        memory = self.load(function_input.api_key)
+        ids, _ = self.get_url_docs_ids(function_input.source_url)
+        try:
+            if len(ids) > 0:
+                result, _ = self.client.delete(collection_name=self.collection_name, points_selector=ids)
+        except Exception as e:
+            logging.warn(f"DocManager: delete_doc exception {e}")
+            end = time.time()
+            return "fail", end - start
+
+        end = time.time()
         return "success", end - start
 
     async def search_doc(self, function_input: DocSearchInput):
