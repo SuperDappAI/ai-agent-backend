@@ -212,6 +212,7 @@ class DocManager:
             return response, end - start
 
     def does_source_exist(self, source_url: str):
+        result = None
         start = time.time()
         try:
             filter = rest.Filter(
