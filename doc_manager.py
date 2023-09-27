@@ -32,7 +32,6 @@ class DocAddInput(BaseModel):
     category: str
 
 class DocDeleteInput(BaseModel):
-    api_key: str
     source_url: str
     category: str
 
@@ -157,6 +156,10 @@ class DocManager:
                     rest.FieldCondition(
                         key="metadata.source_url",
                         match=rest.MatchValue(value=function_input.source_url),
+                    ),
+                    rest.FieldCondition(
+                        key="metadata.extra_index",
+                        match=rest.MatchValue(value=function_input.category),
                     )
                 ]
             )
