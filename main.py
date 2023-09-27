@@ -131,7 +131,7 @@ async def addDoc(function_input: DocAddInput):
 async def deleteDoc(function_input: DocDeleteInput):
     """Endpoint to conduct delete HTML document from doc portal."""
     logging.info('delete from Doc Portal')
-    results, elapsed_time = await doc_manager.delete_doc(function_input)
+    results, elapsed_time = doc_manager.delete_doc(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/is_doc_cached/')
