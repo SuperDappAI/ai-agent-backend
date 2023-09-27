@@ -43,12 +43,12 @@ class FunctionInput(BaseModel):
                                            {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
     def __str__(self):
         if self.user_id:
-            return self.api_key + str(self.action_items) + self.user_id
+            return str(self.action_items) + self.user_id
         else:
-            return self.api_key + str(self.action_items)
+            return str(self.action_items)
 
     def __eq__(self,other):
-        return self.api_key == other.api_key and self.action_items == other.action_items and self.user_id == other.user_id
+        return self.action_items == other.action_items and self.user_id == other.user_id
 
     def __hash__(self):
         return hash(str(self))
