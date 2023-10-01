@@ -161,6 +161,7 @@ async def getFunctions(function_input: FunctionInput):
     """Endpoint to get functions based on provided input."""
     result = functioncache.get(function_input)
     if result is not None:
+        logging.info(f'Found functions in cache, result {result}')
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
