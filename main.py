@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
-from doc_manager import DocManager, DocAddInput, DocSearchInput, CacheDoc
+from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from preferences_resolver import QueryPreferencesInput
@@ -127,6 +127,13 @@ async def addDoc(function_input: DocAddInput):
     results, elapsed_time = await doc_manager.add_doc(function_input)
     return {'response': results, 'elapsed_time': elapsed_time}
 
+@app.post('/delete_doc/')
+async def deleteDoc(function_input: DocDeleteInput):
+    """Endpoint to conduct delete HTML document from doc portal."""
+    logging.info('delete from Doc Portal')
+    results, elapsed_time = doc_manager.delete_doc(function_input)
+    return {'response': results, 'elapsed_time': elapsed_time}
+
 @app.post('/is_doc_cached/')
 async def isDocCached(cache_html: CacheDoc):
     """Endpoint to check if doc content is cached."""
@@ -154,6 +161,7 @@ async def getFunctions(function_input: FunctionInput):
     """Endpoint to get functions based on provided input."""
     result = functioncache.get(function_input)
     if result is not None:
+        logging.info(f'Found functions in cache, result {result}')
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)

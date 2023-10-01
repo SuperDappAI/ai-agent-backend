@@ -31,6 +31,10 @@ class DocAddInput(BaseModel):
     html_doc: str
     category: str
 
+class DocDeleteInput(BaseModel):
+    source_url: str
+    category: str
+
 class DocSearchInput(BaseModel):
     api_key: str
     query: str
@@ -139,6 +143,35 @@ class DocManager:
             logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
         return "success", end - start
 
+    def delete_doc(self, function_input: DocDeleteInput):
+        """Delete docs by source_url."""
+        start = time.time()
+        if 0 >= len(function_input.source_url):
+            logging.warn("DocManager: Cannot delete document because data missing")
+            end = time.time()
+            return "fail", end - start
+        try:
+            filter = rest.Filter(
+                must=[
+                    rest.FieldCondition(
+                        key="metadata.source_url",
+                        match=rest.MatchValue(value=function_input.source_url),
+                    ),
+                    rest.FieldCondition(
+                        key="metadata.extra_index",
+                        match=rest.MatchValue(value=function_input.category),
+                    )
+                ]
+            )
+            self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+            end = time.time()
+            logging.info(f"DocManager: Delete documents operation took {end - start} seconds")
+        except Exception as e:
+            logging.warn(f"DocManager: delete_doc exception {e}")
+            end = time.time()
+            return "fail", end - start
+        return "success", end - start
+
     async def search_doc(self, function_input: DocSearchInput):
         """Fetch Doc data based on a query."""
         start = time.time()
@@ -162,6 +195,7 @@ class DocManager:
             return response, end - start
 
     def does_source_exist(self, source_url: str):
+        result = None
         start = time.time()
         try:
             filter = rest.Filter(
