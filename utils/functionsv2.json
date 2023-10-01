@@ -1,7 +1,20 @@
 {
 	"information_retrieval": [
 	],
-	"communication": [
+	"communication": [{
+			"name": "translateText",
+			"description": "Performs a Google translation. Example: {'name': 'translateText', 'parameters': {'q': 'translate from english to german: good morning'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the translation query. Should follow the format 'translate from [source language] to [target language]: [text to translate]'."
+					}
+				},
+				"required": ["q"]
+			}
+		},
 		{
 			"name": "makeAudioOrVideoCallToYourContact",
 			"description": "Initiates a call (audio or video) to another user by their User ID. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeAudioOrVideoCallToYourContact', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
@@ -133,6 +146,142 @@
 				"required": ["userIDs"]
 			}
 		},
+
+
+		{
+			"name": "deleteYourContacts",
+			"description": "Deletes specified users from the contact list.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the users to be deleted from the contact list."
+					}
+				},
+				"required": ["userIDs"]
+			}
+		},
+		{
+			"name": "deleteYourConversations",
+			"description": "Deletes specified conversations from the user's conversation list.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"conversationIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the conversations to be deleted."
+					}
+				},
+				"required": ["conversationIDs"]
+			}
+		},
+		{
+			"name": "findMutualFreeTimeWithYourContacts",
+			"description": "Finds a mutual free time slot with the specified users.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The users with whom to find a mutual free time slot."
+					},
+					"start": {
+						"type": "string",
+						"description": "The start of the time range within which to find a mutual free time slot."
+					},
+					"end": {
+						"type": "string",
+						"description": "The end of the time range within which to find a mutual free time slot."
+					}
+				},
+				"required": ["userIDs", "start", "end"]
+			}
+		},
+		{
+			"name": "scheduleCallWithYourContacts",
+			"description": "Schedules a call with specified users at a specified time.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The IDs of the users with whom to schedule the call."
+					},
+					"time": {
+						"type": "string",
+						"format": "date-time",
+						"description": "The time at which to schedule the call."
+					}
+				},
+				"required": ["userIDs", "time"]
+			}
+		},
+		{
+			"name": "getYourCryptoTransactions",
+			"description": "Retrieves the transaction history of the user for a specific cryptocurrency.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"symbol": {
+						"type": "string",
+						"description": "The symbol of the cryptocurrency to fetch the transaction history for."
+					}
+				},
+				"required": ["symbol"]
+			}
+		},
+		{
+			"name": "fetchConversationsWithYourContacts",
+			"description": "Fetches conversations based on provided filters.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"filters": {
+						"type": "object",
+						"description": "The filters to apply when fetching conversations. Possible filters can be by participants, keywords, dates, etc."
+					}
+				},
+				"required": []
+			}
+		},
+		{
+			"name": "fetchYourContactsFromConversations",
+			"description": "Fetches contacts based on provided conversation IDs and filters.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"conversationIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the conversations to fetch contacts from."
+					},
+					"filters": {
+						"type": "object",
+						"description": "Optional. The filters to apply when fetching contacts. Possible filters can be by name, email, user IDs, etc."
+					},
+					"onlineStatus": {
+						"type": "string",
+						"description": "The online status of the contacts to fetch. Can be 'online', 'offline', 'away', etc."
+					}
+				},
+				"required": ["conversationIDs"]
+			}
+		},
 		{
 			"name": "inviteFriendsByEmail",
 			"description": "Invite friends to join the application by sending them an invitation email.",
@@ -199,7 +348,33 @@
 				},
 				"required": ["userIDs", "permission"]
 			}
+		},
+		{
+			"name": "sendEmail",
+			"description": "Send an email to specified recipients with a given subject and message.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of email addresses to send the email to."
+					},
+					"subject": {
+						"type": "string",
+						"description": "The subject of the email."
+					},
+					"message": {
+						"type": "string",
+						"description": "The content of the email message."
+					}
+				},
+				"required": ["to", "subject", "message"]
+			}
 		}
+
 	],
 	"data_processing": [{
 			"name": "createFolder",
@@ -213,6 +388,28 @@
 					}
 				},
 				"required": ["folderName"]
+			}
+		},
+		{
+			"name": "createOrMoveTextFile",
+			"description": "Create a new text file in the user's file storage or move a downloaded file handle to the user's local storage for persistence.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"fileName": {
+						"type": "string",
+						"description": "The name of the new file or the downloaded file to be moved."
+					},
+					"fileContent": {
+						"type": "string",
+						"description": "The content to write in the new file. Not required when moving a downloaded file."
+					},
+					"downloadedFilePath": {
+						"type": "string",
+						"description": "The path of the downloaded file to be moved. Required when moving a downloaded file."
+					}
+				},
+				"required": ["fileName"]
 			}
 		},
 		{
@@ -240,6 +437,18 @@
 			}
 		}
 	],
-	"sensory_perception": [
-	]
+	"sensory_perception": [{
+		"name": "doImageAnalysis",
+		"description": "Performs a Google Lens call based on an image URL or file handle. Can do image recognition and transcribe it or extract text. Example: {'name': 'doImageAnalysis', 'parameters': {'url': 'https://example.com/image.jpg'}}",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"url": {
+					"type": "string",
+					"description": "Defines the URL or file handle of an image to perform the Google Lens call."
+				}
+			},
+			"required": ["url"]
+		}
+	}]
 }
