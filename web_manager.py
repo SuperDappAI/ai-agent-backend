@@ -118,7 +118,7 @@ class WebManager:
     async def search_html(self, function_input: HTMLInput):
         """Fetch HTML data based on a query for a specific hash."""
         start = time.time()
-        response = None
+        response = []
         nowStamp = datetime.now().timestamp()
         loop = asyncio.get_event_loop()
         try:

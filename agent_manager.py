@@ -193,14 +193,14 @@ class AgentManager:
     async def pull_memory(self, memory_input: MemoryInput):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
-        response = None
+        response = {}
         try:
             # look up from summary or semantically
             if memory_input.summary:
                 if len(memory_input.conversation_id) <= 0:
                     logging.warn(f"AgentManager: pull_memory asked for summary but no conversation_id provided!")
                     end = time.time()
-                    return None, end - start
+                    return {}, end - start
                 response = self.load_summary(memory_input)
             else: 
                 response = await self.load_memory(memory_input)
