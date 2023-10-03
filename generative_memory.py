@@ -73,7 +73,7 @@ class GenerativeAgentMemory(BaseMemory):
             formatted_memories.append(AIMessage(content=f'Memory: {memory["AiDA"]}'))
         return formatted_memories
 
-    async def _get_importance_and_insight(self, user: str, llm_response: str, conversation_id: str):
+    async def _get_importance_and_insight(self, user: str, llm_response: str, conversation_id: str, role: str):
         """Reflect on recent query and generate 'insights'."""
         if self.verbose:
             logger.info("AiDA is checking importance")
@@ -82,9 +82,9 @@ class GenerativeAgentMemory(BaseMemory):
         memoryDocuments = await self.memory_retriever.base_retriever.get_relevant_documents_for_reflection(json.dumps({'user': user, 'AiDA': llm_response}), conversation_id, **kwargs)
         try:
             memoryMessages = self.format_memories_as_messages(memoryDocuments)
-            prompt = """
-                Given dialog and relevant memories between the user and AiDA (an AI assistant), classify dialog in terms of importance to the user from low, medium, or high and then provide questions and infer novel insights.
-                'high' important memories have to have sufficient context and information to be able to derive multiple new insights and topics. 'high' importance memories are also used in the summarization of conversations for long-term memory of AiDA.
+            prompt = f"""
+                Based on your role ({role}) analyze the given dialog and relevant memories between the user and AiDA (an AI assistant), classify dialog in terms of importance from low, medium, or high and then provide questions and infer novel insights.
+                Determining importance: 'low' are ones that can usually be forgotten. The default is 'medium' memories which are useful to remember long-term. 'high' are useful memories to remember and have sufficient context and information to be able to derive multiple new insights and topics.
                 If importance is 'low' or 'medium' just output the importance and not any questions or insights.
                 If it is 'high', answer the question: What are the 3 most salient high-level questions we can answer about the subjects in the statements (Provide each question on a new line)?
                 Also answer the question: What are 3 high-level novel insights that are relevant for answering the 3 high-level questions? (Provide each insight on a new line)
@@ -114,7 +114,7 @@ class GenerativeAgentMemory(BaseMemory):
                 logging.warn(f"GenerativeAgentMemory: _get_importance_and_insight exception, e: {e}\n{traceback.format_exc()}")
             return None, None
 
-    async def pause_to_reflect(self, outputs: Dict[str, Any]) -> List[str]:
+    async def pause_to_reflect(self, outputs: Dict[str, Any], preferences_resolver) -> List[str]:
         """Reflect on recent observations and generate 'insights'."""
         new_insights = []
         conversation_id = outputs.get("conversation_id")
@@ -122,7 +122,10 @@ class GenerativeAgentMemory(BaseMemory):
         aida = outputs.get("llm_response")
         now=datetime.now()
         try:
-            importance, insights = await self._get_importance_and_insight(query, aida, conversation_id)
+            role = await preferences_resolver.get_role(conversation_id)
+            if role is None:
+                role = "ConversationGPT"
+            importance, insights = await self._get_importance_and_insight(query, aida, conversation_id, role)
             if importance == "high" and len(insights) > 0:
                 if self.verbose:
                     logger.info("AiDA is reflecting")
