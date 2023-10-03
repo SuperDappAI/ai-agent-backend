@@ -23,7 +23,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
     verbose: bool = False
 
     async def _init_summary_of_convo(self, doc0: str) -> str:
-        prompt = "Create a topic-based summarization of the conversation between the subjects in the user message. If it is above 1000 words summarize to stay below. Be concise, do not add new details that is not in the provided text. Output is a new JSON object. example {\"topic\",\"topic summary\"}."
+        prompt = "Create a topic-based summarization of the conversation between the subjects in the user message. Be concise, do not add new details that is not in the provided text. Output is a new JSON object. example {\"topic\",\"topic summary\"}."
         try:
             messages = [[SystemMessage(content=prompt), 
             HumanMessage(content=doc0)]]
@@ -37,7 +37,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             return ''
         
     async def _summarize_with_convo(self, new_text: str, existing_summary: str) -> str:
-        prompt = "Combine user message into the existing summary (AI message) and return new topic-based summarization of the conversation of the subjects in the supplied conversation. Remove any redundancies. Create new topics if any of the information does not belong to existing topics. If result is above 1000 words summarize to stay below. Be concise, do not add new details that is not in the provided text or in the existing summary. Output is the modified JSON object."
+        prompt = "Combine user message into the existing summary (AI message) and return new topic-based summarization of the conversation of the subjects in the supplied conversation. Remove any redundancies. Create new topics if any of the information does not belong to existing topics. Be concise, do not add new details that is not in the provided text or in the existing summary. Output is the modified JSON object."
         try: 
             messages = [[SystemMessage(content=prompt), 
             AIMessage(content=existing_summary),

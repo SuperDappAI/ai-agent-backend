@@ -175,7 +175,7 @@ class DocManager:
     async def search_doc(self, function_input: DocSearchInput):
         """Fetch Doc data based on a query."""
         start = time.time()
-        response = None
+        response = []
         try:
             memory = self.load(function_input.api_key)
             nodes = await self.get_retrieved_nodes(memory, function_input)

@@ -68,7 +68,7 @@ class AgentManager:
         memory = self.load(memory_output.api_key, memory_output.user_id)
         try:
             # update preferences on every exchange but only save summarized memory of a "finished" exchange, reflect on an important summarized memory and then decay memories
-            asyncio.create_task(memory.pause_to_reflect(memory_output.dict()))
+            asyncio.create_task(memory.pause_to_reflect(memory_output.dict(), self.preferences_resolver))
             asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key, model="gpt-4", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
             # decay memory by summarizing it continiously until max_summarizations then prune
             asyncio.create_task(memory.decay())
@@ -193,14 +193,14 @@ class AgentManager:
     async def pull_memory(self, memory_input: MemoryInput):
         """Fetch memory based on a query for a specific user."""
         start = time.time()
-        response = None
+        response = {}
         try:
             # look up from summary or semantically
             if memory_input.summary:
                 if len(memory_input.conversation_id) <= 0:
                     logging.warn(f"AgentManager: pull_memory asked for summary but no conversation_id provided!")
                     end = time.time()
-                    return None, end - start
+                    return {}, end - start
                 response = self.load_summary(memory_input)
             else: 
                 response = await self.load_memory(memory_input)

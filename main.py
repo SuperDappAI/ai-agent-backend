@@ -46,7 +46,6 @@ doc_manager = DocManager()
 
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
-pullmemorycache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
     
@@ -90,13 +89,8 @@ async def writeMemoryForUser(memory_output: MemoryOutput):
 @app.post('/pull_memory/')
 async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
     """Endpoint to pull relevant memories for a specific user."""
-    result = pullmemorycache.get(memory_input)
-    if result is not None:
-        return {'response': result, 'elapsed_time': 0}
     logging.info(f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
     memories, elapsed_time = await agent_manager.pull_memory(memory_input)
-    if memories != {}:
-        pullmemorycache[memory_input] = memories
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
@@ -123,6 +117,7 @@ async def addDoc(function_input: DocAddInput):
     """Endpoint to conduct add HTML document for doc portal."""
     logging.info('add to Doc Portal')
     results, elapsed_time = await doc_manager.add_doc(function_input)
+    doccache.clear()
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/delete_doc/')
@@ -130,6 +125,7 @@ async def deleteDoc(function_input: DocDeleteInput):
     """Endpoint to conduct delete HTML document from doc portal."""
     logging.info('delete from Doc Portal')
     results, elapsed_time = doc_manager.delete_doc(function_input)
+    doccache.clear()
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/is_doc_cached/')
