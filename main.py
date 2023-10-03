@@ -95,7 +95,8 @@ async def pullRelevantMemoriesForUser(memory_input: MemoryInput):
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Pulling relevant memories for user {memory_input.user_id}, conversation {memory_input.conversation_id}')
     memories, elapsed_time = await agent_manager.pull_memory(memory_input)
-    pullmemorycache[memory_input] = memories
+    if memories != {}:
+        pullmemorycache[memory_input] = memories
     return {'response': memories, 'elapsed_time': elapsed_time}
 
 @app.post('/semantic_search_html/')
@@ -106,18 +107,15 @@ async def semanticSearchHTML(function_input: HTMLInput):
         return {'response': result, 'elapsed_time': 0}
     logging.info('Semantic search HTML')
     results, elapsed_time = await web_manager.search_html(function_input)
-    searchhtmlcache[function_input] = results
+    if len(results) > 0:
+        searchhtmlcache[function_input] = results
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/is_html_search_cached/')
 async def isHTMLSearchCached(cache_html: CacheHTML):
     """Endpoint to check if HTML content is cached."""
-    result = searchhtmlcache.get(cache_html.hash)
-    if result is not None:
-        return {'response': result, 'elapsed_time': 0}
     logging.info('Checking if HTML results are cached')
     result, elapsed_time = web_manager.does_hash_exist(cache_html.hash)
-    searchhtmlcache[cache_html.hash] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/add_doc/')
@@ -137,12 +135,8 @@ async def deleteDoc(function_input: DocDeleteInput):
 @app.post('/is_doc_cached/')
 async def isDocCached(cache_html: CacheDoc):
     """Endpoint to check if doc content is cached."""
-    result = doccache.get(cache_html.source_url)
-    if result is not None:
-        return {'response': result, 'elapsed_time': 0}
     logging.info('Checking if doc is cached')
     result, elapsed_time = doc_manager.does_source_exist(cache_html.source_url)
-    doccache[cache_html.source_url] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/search_doc/')
@@ -153,7 +147,8 @@ async def semanticSearchDoc(function_input: DocSearchInput):
         return {'response': result, 'elapsed_time': 0}
     logging.info('Semantic search Doc Portal')
     results, elapsed_time = await doc_manager.search_doc(function_input)
-    doccache[function_input] = results
+    if len(results) > 0:
+        doccache[function_input] = results
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/get_functions/')
@@ -165,7 +160,8 @@ async def getFunctions(function_input: FunctionInput):
         return {'response': result, 'elapsed_time': 0}
     logging.info(f'Processing Action Item: {function_input.action_items}')
     result, elapsed_time = await functions_manager.pull_functions(function_input)
-    functioncache[function_input] = result
+    if len(result) > 0:
+        functioncache[function_input] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/push_functions/')

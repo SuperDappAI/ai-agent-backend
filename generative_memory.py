@@ -242,14 +242,15 @@ class GenerativeAgentMemory(BaseMemory):
             relevant_memories = [
                 mem for query in queries for mem in await self.fetch_memories(query, **kwargs)
             ]
-            # update last_accessed_at/summarizations
-            ids = [doc.metadata["id"] for doc in relevant_memories]
-            for doc in relevant_memories:
-                doc.metadata.pop('relevance_score', None)
-            asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
-            return {
-                "relevant_memories": self.format_memories_simple(relevant_memories),
-            }
+            if len(relevant_memories) > 0:
+                # update last_accessed_at/summarizations
+                ids = [doc.metadata["id"] for doc in relevant_memories]
+                for doc in relevant_memories:
+                    doc.metadata.pop('relevance_score', None)
+                asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
+                return {
+                    "relevant_memories": self.format_memories_simple(relevant_memories),
+                }
         return {}
 
     async def save_context(self, outputs: Dict[str, Any]) -> List[str]:

@@ -157,9 +157,10 @@ class AgentManager:
         ret = ""
         if doc:
             ret = self.format_summary_simple(doc)
-        return {
-            "relevant_summary": ret,
-        }
+            return {
+                "relevant_summary": ret,
+            }
+        return {}
 
     async def load_memory(self, memory_input: MemoryInput):
         memory = self.load(memory_input.api_key, memory_input.user_id)
