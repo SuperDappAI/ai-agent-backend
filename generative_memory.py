@@ -281,6 +281,7 @@ class GenerativeAgentMemory(BaseMemory):
     async def decay(self):
         """Decay all old memories by summarizing based on importance and summarization count."""
         try:
+            await asyncio.sleep(0.1)
             # Delete memories flagged as too old
             self.memory_retriever.base_retriever.delete_max_summarized()
             # Get the documents to summarize
@@ -289,6 +290,7 @@ class GenerativeAgentMemory(BaseMemory):
                 await self.memory_summarizer.flexible_document_summarizer.asummarize(documents)
                 # upsert entire document set to qdrant against existing IDs (stored in metadata)
                 ids = [doc.metadata["id"] for doc in documents]
+                await asyncio.sleep(0.1)
                 await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 
         except Exception as e:
             logging.warn(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")

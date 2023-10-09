@@ -144,6 +144,7 @@ class WebManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
+                await asyncio.sleep(0.1)
                 asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
                 loop.run_in_executor(None, self.prune_web)
         except Exception as e:

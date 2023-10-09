@@ -138,6 +138,7 @@ class DocManager:
             documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
         if len(documents) > 0:
             ids = [doc.metadata["id"] for doc in documents]
+            await asyncio.sleep(0.1)
             asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
             end = time.time()
             logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
@@ -185,6 +186,7 @@ class DocManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
+                await asyncio.sleep(0.1)
                 asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
         except Exception as e:
             logging.warn(f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
