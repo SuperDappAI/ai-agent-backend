@@ -35,7 +35,7 @@ app.include_router(interpreter_router, prefix="/interpreter")
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
 logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
-                    format='%(name)s - %(message)s', force=True, level=logging.INFO)
+                    format='%(asctime)s.%(msecs)03d %(name)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S', force=True, level=logging.INFO)
 
 
 functions_manager = FunctionsManager()
@@ -48,11 +48,6 @@ queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
-    
-LOGFILE_PATH = os.path.join(os.path.dirname(
-    os.path.abspath(__file__)), 'app.log')
-logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
-                    format='%(name)s - %(message)s', force=True)
 
 @app.post('/get_preferences/')
 async def getPreferences(preferences_query: QueryPreferencesInput):
