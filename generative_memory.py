@@ -15,6 +15,7 @@ from qdrant_client.http import models as rest
 from memory_summarizer import MemorySummarizer
 from langchain.schema import SystemMessage, HumanMessage, AIMessage, BaseMessage
 
+
 logger = logging.getLogger(__name__)
     
 class GenerativeAgentMemory(BaseMemory):
@@ -137,6 +138,7 @@ class GenerativeAgentMemory(BaseMemory):
             if self.verbose:
                 logging.warn(f"GenerativeAgentMemory: pause_to_reflect exception, e: {e}\n{traceback.format_exc()}")           
         outputs["importance"] = importance
+        await asyncio.sleep(0.1)
         await self.save_context(outputs)
         return new_insights
 
@@ -183,6 +185,7 @@ class GenerativeAgentMemory(BaseMemory):
             page_content=memory_content, 
             metadata=metadata,
         )
+        await asyncio.sleep(0.1)
         return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
 
     async def fetch_memories(
@@ -250,6 +253,7 @@ class GenerativeAgentMemory(BaseMemory):
                 ids = [doc.metadata["id"] for doc in relevant_memories]
                 for doc in relevant_memories:
                     doc.metadata.pop('relevance_score', None)
+                await asyncio.sleep(0.1)
                 asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
                 return {
                     "relevant_memories": self.format_memories_simple(relevant_memories),
@@ -267,6 +271,8 @@ class GenerativeAgentMemory(BaseMemory):
         api_key = outputs.get("api_key")
         if query:
             qa = {'user': query, 'AiDA': aida}
+
+            await asyncio.sleep(0.1)
             await self.memory_summarizer.save(api_key, user_id, outputs)
             return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []
