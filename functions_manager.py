@@ -264,6 +264,7 @@ class FunctionsManager:
                         user_id, functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
             ids = [doc.metadata["id"] for doc in all_docs]
+            await asyncio.sleep(0.1)
             await memory.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
