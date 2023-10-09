@@ -18,6 +18,8 @@ class PreferencesResolver:
         mongopw = os.getenv("MONGODB_PW")
         self.uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
         self.client = None
+        self.pref_collection = None
+        self.role_collection = None
         self.schema = {
             'name_nickname': "",
             'traits': [],
@@ -54,8 +56,8 @@ class PreferencesResolver:
         self.default_preferences = self.schema
 
     async def initialize(self):
-        self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
         try:
+            self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
             await self.client.admin.command('ping')
             print("Pinged your deployment. You successfully connected to MongoDB!")
             
@@ -81,7 +83,7 @@ class PreferencesResolver:
             return None
 
     async def get_role(self, conversation_id):
-        if self.client is None:
+        if self.client is None or self.role_collection is None:
             await self.initialize()
         try:
             roleObj = await self.role_collection.find_one({"_id": conversation_id})
@@ -94,7 +96,7 @@ class PreferencesResolver:
             return None
 
     async def set_role(self, role, conversation_id):
-        if self.client is None:
+        if self.client is None or self.role_collection is None:
             await self.initialize()
         try:
             roleObj = {"_id": conversation_id, "role": role}
@@ -110,7 +112,7 @@ class PreferencesResolver:
         return self.schema
 
     async def create_default_preferences(self, user_id):
-        if self.client is None:
+        if self.client is None or self.pref_collection is None:
             await self.initialize()
         try:
             await self.pref_collection.insert_one({
@@ -133,7 +135,7 @@ class PreferencesResolver:
 
 
     async def apply_patch(self, user_id, doc, patch_data):
-        if self.client is None:
+        if self.client is None or self.pref_collection is None:
             await self.initialize()
         # Make sure keys exist before applying patch
         for patch in patch_data:
