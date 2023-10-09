@@ -184,10 +184,8 @@ class FunctionsManager:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                 documents = await self.get_retrieved_nodes(memory,
                     query, action_item.category, function_input.user_id)
-                logging.info(f'pull_functions documents {documents}')
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
-                    logging.info(f'pull_functions parsed_response {parsed_response}')
                     response.append(parsed_response)
                     # update last_accessed_at
                     # ids = [doc.metadata["id"] for doc in documents]

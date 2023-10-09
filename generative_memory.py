@@ -121,6 +121,7 @@ class GenerativeAgentMemory(BaseMemory):
         conversation_id = outputs.get("conversation_id")
         query = outputs.get("query")
         aida = outputs.get("llm_response")
+        await asyncio.sleep(0.1)
         now=datetime.now()
         try:
             role = await preferences_resolver.get_role(conversation_id)
@@ -138,7 +139,6 @@ class GenerativeAgentMemory(BaseMemory):
             if self.verbose:
                 logging.warn(f"GenerativeAgentMemory: pause_to_reflect exception, e: {e}\n{traceback.format_exc()}")           
         outputs["importance"] = importance
-        await asyncio.sleep(0.1)
         await self.save_context(outputs)
         return new_insights
 
@@ -149,6 +149,7 @@ class GenerativeAgentMemory(BaseMemory):
         documents = []
         ids = []
         nowStamp = now.timestamp()
+        await asyncio.sleep(0.1)
         for i in range(len(qa)):
             metadata = {
                 "id":  random.randint(0, 2**32 - 1),
@@ -198,6 +199,7 @@ class GenerativeAgentMemory(BaseMemory):
             with mock_now(current_time):
                 return await self.memory_retriever.aget_relevant_documents(topic)
         else:
+            await asyncio.sleep(0.1)
             if conversation_id != "":
                 kwargs.update({"filter": rest.Filter(
                     must=[
@@ -271,7 +273,6 @@ class GenerativeAgentMemory(BaseMemory):
         api_key = outputs.get("api_key")
         if query:
             qa = {'user': query, 'AiDA': aida}
-
             await asyncio.sleep(0.1)
             await self.memory_summarizer.save(api_key, user_id, outputs)
             return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)

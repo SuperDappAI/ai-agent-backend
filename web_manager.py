@@ -144,8 +144,7 @@ class WebManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                await asyncio.sleep(0.1)
-                asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
+                asyncio.create_task(self.update_store(memory, nodes, ids))
                 loop.run_in_executor(None, self.prune_web)
         except Exception as e:
             logging.warn(f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
@@ -154,6 +153,10 @@ class WebManager:
             logging.info(
                 f"WebManager: search_html operation took {end - start} seconds")
             return response, end - start
+
+    async def update_store(self, memory, nodes, ids):
+        await asyncio.sleep(0.1)
+        await memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False)
 
     def prune_web(self):
         """Prune points that are older than 4 hours."""

@@ -2,6 +2,7 @@ import logging
 import random
 import traceback
 import json
+import asyncio
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -58,6 +59,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         documents = []
         ids = []
         nowStamp = now.timestamp()
+        await asyncio.sleep(0.1)
         for i in range(len(qa)):
             if memory_types[i] != MemoryType.CONSCIOUS_MEMORY or importance[i] == "low":
                 continue
@@ -83,6 +85,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         """Add an observation or memory to the agent's memory."""
         if memory_type != MemoryType.CONSCIOUS_MEMORY or importance == "low":
             return None
+        await asyncio.sleep(0.1)
         nowStamp = now.timestamp()
         metadata = {
             "id": random.randint(0, 2**32 - 1),
