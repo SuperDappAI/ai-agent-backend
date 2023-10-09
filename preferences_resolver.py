@@ -68,7 +68,7 @@ class PreferencesResolver:
            logging.warn(f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
     
     async def get_preferences(self, user_id):
-        if self.client is None:
+        if self.client is None or self.pref_collection is None:
             await self.initialize()
         try:
             doc = await self.pref_collection.find_one({"_id": user_id})
