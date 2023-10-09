@@ -190,10 +190,10 @@ class FunctionsManager:
                     logging.info(f'pull_functions parsed_response {parsed_response}')
                     response.append(parsed_response)
                     # update last_accessed_at
-                    ids = [doc.metadata["id"] for doc in documents]
-                    for doc in documents:
-                        doc.metadata.pop('relevance_score', None)
-                    asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+                    # ids = [doc.metadata["id"] for doc in documents]
+                    # for doc in documents:
+                    #     doc.metadata.pop('relevance_score', None)
+                    # asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
                     #loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
