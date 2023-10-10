@@ -50,10 +50,11 @@ class DocSearchInput(BaseModel):
 class DocManager:
     scheduler = schedule.Scheduler()
 
-    def __init__(self, rate_limiter):
+    def __init__(self, rate_limiter, rate_limiter_sync):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.rate_limiter = rate_limiter
+        self.rate_limiter_sync = rate_limiter_sync
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
@@ -79,7 +80,7 @@ class DocManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -138,8 +139,7 @@ class DocManager:
             documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
         if len(documents) > 0:
             ids = [doc.metadata["id"] for doc in documents]
-            async with self.rate_limiter:
-                await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+            await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
             end = time.time()
             logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
         return "success", end - start
@@ -186,8 +186,7 @@ class DocManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                async with self.rate_limiter:
-                    await memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids)
+                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
         except Exception as e:
             logging.warn(f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:

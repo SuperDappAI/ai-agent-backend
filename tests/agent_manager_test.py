@@ -9,9 +9,9 @@ from memory_summarizer import MemorySummarizer
 from document_summarizer import FlexibleDocumentSummarizer
 from pydantic import BaseModel, Field
 from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
-
+rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 
 class MockLanguageModel(BaseLanguageModel):
     async def agenerate_prompt(self, *args, **kwargs):
@@ -62,7 +62,7 @@ class MockMemorySummarizer(MemorySummarizer):
 
 @pytest.fixture
 def setup_agent_manager():
-    agent_manager = AgentManager(rate_limiter)
+    agent_manager = AgentManager(rate_limiter, rate_limiter_sync)
     return agent_manager
 
 @pytest.mark.asyncio
@@ -83,6 +83,7 @@ async def test_push_memory(setup_agent_manager):
         memory_retriever=MockMemoryRetriever(),
         memory_summarizer=MockMemorySummarizer(
             rate_limiter=rate_limiter,
+            rate_limiter_sync=rate_limiter_sync,
             flexible_document_summarizer=MockFlexibleDocumentSummarizer(
                 llm=MockLanguageModel()
             ),

@@ -8,9 +8,9 @@ from langchain.vectorstores import Qdrant
 from langchain.embeddings import OpenAIEmbeddings
 from datetime import datetime
 from dotenv import load_dotenv
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
-
+rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 import os
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def setup_retriever():
         )
         
     vectorstore.add_documents([document], ids=[metadata["id"]])
-    retriever = QDrantVectorStoreRetriever(rate_limiter=rate_limiter, client=client, vectorstore=vectorstore, collection_name=collection_name)
+    retriever = QDrantVectorStoreRetriever(rate_limiter=rate_limiter, rate_limiter_sync=rate_limiter_sync, client=client, vectorstore=vectorstore, collection_name=collection_name)
     return retriever
 
 # def test_get_salient_docs(setup_retriever):

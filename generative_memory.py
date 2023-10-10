@@ -164,8 +164,7 @@ class GenerativeAgentMemory(BaseMemory):
                 )
             documents.append(doc)
             ids.append(metadata["id"])
-        async with self.rate_limiter:
-            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+        return await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
 
     async def add_memory(
         self, memory_content: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
@@ -185,8 +184,7 @@ class GenerativeAgentMemory(BaseMemory):
             page_content=memory_content, 
             metadata=metadata,
         )
-        async with self.rate_limiter:
-            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]])
+        return await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, [document], ids=[metadata["id"]])
 
     async def fetch_memories(
         self, topic: str, **kwargs: Any
@@ -253,8 +251,7 @@ class GenerativeAgentMemory(BaseMemory):
                 ids = [doc.metadata["id"] for doc in relevant_memories]
                 for doc in relevant_memories:
                     doc.metadata.pop('relevance_score', None)
-                async with self.rate_limiter:
-                    await self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids)
+                await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, relevant_memories, ids=ids)
                 return {
                     "relevant_memories": self.format_memories_simple(relevant_memories),
                 }
@@ -287,8 +284,7 @@ class GenerativeAgentMemory(BaseMemory):
                 await self.memory_summarizer.flexible_document_summarizer.asummarize(documents)
                 # upsert entire document set to qdrant against existing IDs (stored in metadata)
                 ids = [doc.metadata["id"] for doc in documents]
-                async with self.rate_limiter:
-                    await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 
+                await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, documents, ids=ids) 
         except Exception as e:
             logging.warn(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")
             

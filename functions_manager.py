@@ -69,13 +69,14 @@ class FunctionOutput(BaseModel):
     
 class FunctionsManager:
 
-    def __init__(self, rate_limiter):
+    def __init__(self, rate_limiter, rate_limiter_sync):
         load_dotenv()  # Load environment variables
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         os.getenv("COHERE_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.index = None
         self.rate_limiter = rate_limiter
+        self.rate_limiter_sync = rate_limiter_sync
         self.max_length_allowed = 512
         self.collection_name = "functions"
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
@@ -103,7 +104,7 @@ class FunctionsManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -193,8 +194,7 @@ class FunctionsManager:
                     ids = [doc.metadata["id"] for doc in documents]
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
-                    async with self.rate_limiter:
-                        await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+                    await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
                     #loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
@@ -265,8 +265,7 @@ class FunctionsManager:
                         user_id, functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
             ids = [doc.metadata["id"] for doc in all_docs]
-            async with self.rate_limiter:
-                await memory.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
+            await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")

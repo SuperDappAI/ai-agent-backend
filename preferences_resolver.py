@@ -8,7 +8,8 @@ from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 from jsonpatch import JsonPatch, JsonPatchException
 from pydantic import BaseModel
-from ratelimiter import RateLimiter
+from rate_limiter import RateLimiter
+from asyncio import Lock
 
 class QueryPreferencesInput(BaseModel):
     user_id: str
@@ -21,7 +22,7 @@ class PreferencesResolver:
         self.client = None
         self.pref_collection = None
         self.role_collection = None
-        self.rate_limiter = RateLimiter(max_calls=10, period=1)
+        self.rate_limiter = None
         self.schema = {
             'name_nickname': "",
             'traits': [],
@@ -55,28 +56,32 @@ class PreferencesResolver:
                 }
             }
         }
-        self.default_preferences = self.schema
+        self.default_preferences = None
+        self.init_lock = Lock()
 
     async def initialize(self):
-        try:
-            self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
-            await self.client.admin.command('ping')
-            print("Pinged your deployment. You successfully connected to MongoDB!")
-            
-            # Setup references after successful connection
-            self.db = self.client['PreferencesDB']
-            self.pref_collection = self.db['Preferences']
-            self.role_collection = self.db['Roles']
-
-        except Exception as e:
-           logging.warn(f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
+        async with self.init_lock:
+            if self.client is not None:
+                return
+            try:
+                self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
+                await self.client.admin.command('ping')
+                print("Pinged your deployment. You successfully connected to MongoDB!")
+                
+                # Setup references after successful connection
+                self.db = self.client['PreferencesDB']
+                self.pref_collection = self.db['Preferences']
+                self.role_collection = self.db['Roles']
+                self.rate_limiter = RateLimiter(rate=10, period=1)
+                self.default_preferences = self.schema
+            except Exception as e:
+                logging.warn(f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
     
     async def get_preferences(self, user_id):
-        if self.client is None or self.pref_collection is None:
+        if self.client is None or self.pref_collection is None or self.rate_limiter is None:
             await self.initialize()
         try:
-            async with self.rate_limiter:
-                doc = await self.pref_collection.find_one({"_id": user_id})
+            doc = await self.rate_limiter.execute(self.pref_collection.find_one, {"_id": user_id})
             if doc is None:
                 await self.create_default_preferences(user_id)
                 return self.default_preferences
@@ -86,11 +91,10 @@ class PreferencesResolver:
             return None
 
     async def get_role(self, conversation_id):
-        if self.client is None or self.role_collection is None:
+        if self.client is None or self.role_collection is None or self.rate_limiter is None:
             await self.initialize()
         try:
-            async with self.rate_limiter:
-                roleObj = await self.role_collection.find_one({"_id": conversation_id})
+            roleObj = await self.rate_limiter.execute(self.role_collection.find_one, {"_id": conversation_id})
             if roleObj is not None:
                 return roleObj["role"]
             else:
@@ -100,12 +104,11 @@ class PreferencesResolver:
             return None
 
     async def set_role(self, role, conversation_id):
-        if self.client is None or self.role_collection is None:
+        if self.client is None or self.role_collection is None or self.rate_limiter is None:
             await self.initialize()
         try:
             roleObj = {"_id": conversation_id, "role": role}
-            async with self.rate_limiter:
-                update_result = await self.role_collection.update_one({"_id": conversation_id}, {"$set": roleObj}, upsert=True)
+            update_result = await self.rate_limiter.execute(self.role_collection.update_one, {"_id": conversation_id}, {"$set": roleObj}, upsert=True)
             if update_result.matched_count == 0 and update_result.upserted_id is None:
                 logging.warn("No documents were inserted or updated.")
         except Exception as e:
@@ -117,11 +120,10 @@ class PreferencesResolver:
         return self.schema
 
     async def create_default_preferences(self, user_id):
-        if self.client is None or self.pref_collection is None:
+        if self.client is None or self.pref_collection is None or self.rate_limiter is None:
             await self.initialize()
         try:
-            async with self.rate_limiter:
-                await self.pref_collection.insert_one({
+            await self.rate_limiter.execute(self.pref_collection.insert_one, {
                 '_id': user_id,
                 **self.default_preferences
             })
@@ -141,7 +143,7 @@ class PreferencesResolver:
 
 
     async def apply_patch(self, user_id, doc, patch_data):
-        if self.client is None or self.pref_collection is None:
+        if self.client is None or self.pref_collection is None or self.rate_limiter is None:
             await self.initialize()
         # Make sure keys exist before applying patch
         for patch in patch_data:
@@ -199,8 +201,7 @@ class PreferencesResolver:
             return f"An unknown exception occurred: {e}"
         try:
             # Update the database
-            async with self.rate_limiter:
-                update_result = await self.pref_collection.update_one({"_id": user_id}, {"$set": modified_doc})
+            update_result = await self.rate_limiter.execute(self.pref_collection.update_one, {"_id": user_id}, {"$set": modified_doc})
             if update_result.modified_count == 0:
                 logging.warn("No documents were updated.")
         except Exception as e:
