@@ -6,6 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from datetime import timedelta
 from langchain.vectorstores import Qdrant
+from rate_limiter import RateLimiter
 from typing import (
     List,
     Optional,
@@ -18,6 +19,7 @@ class MemoryType(Enum):
     
 class QDrantVectorStoreRetriever(BaseRetriever):
     """Retriever that combines embedding similarity with conversation matching scores in retrieving values."""
+    rate_limiter: RateLimiter
     collection_name: str
     
     client: QdrantClient
@@ -55,7 +57,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     async def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
         """Return documents that are salient to the query."""
-        return await self.vectorstore.asimilarity_search_with_score(query, k=10, **kwargs)
+        async with self.rate_limiter:
+            return await self.vectorstore.asimilarity_search_with_score(query, k=10, **kwargs)
 
     async def get_relevant_documents_for_reflection(
         self, query: str, conversation: str, **kwargs
@@ -179,4 +182,4 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 )
             ]
         )
-        self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+        self.client.delete(collection_name=self.collection_name, points_selector=filter)

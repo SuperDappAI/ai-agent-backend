@@ -52,11 +52,12 @@ class ClearMemory(BaseModel):
     conversation_id: str
     
 class AgentManager:
-    def __init__(self):
+    def __init__(self, rate_limiter):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
+        self.rate_limiter = rate_limiter
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.verbose = True
         self.preferences_resolver = PreferencesResolver()
@@ -100,16 +101,17 @@ class AgentManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, collection_name=collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
 
     def create_memory(self, api_key: str, user_id: str):
         return GenerativeAgentMemory(
+            rate_limiter=self.rate_limiter,
             llm=ChatOpenAI(openai_api_key=api_key, model="gpt-4", max_tokens=1024),
             memory_retriever=self.create_new_memory_retriever(api_key, user_id),
-            memory_summarizer=MemorySummarizer(flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
+            memory_summarizer=MemorySummarizer(rate_limiter=self.rate_limiter,flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose
         )
 
@@ -222,7 +224,7 @@ class AgentManager:
                 )
             ]
         )
-        self.client.delete(collection_name=collection_name, points_selector=filter, wait = False)
+        self.client.delete(collection_name=collection_name, points_selector=filter)
 
     def clear_conversation(self, clear_memory: ClearMemory):
         """Delete all memories for a specific conversation with a user."""

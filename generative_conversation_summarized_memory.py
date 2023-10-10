@@ -2,7 +2,6 @@ import logging
 import random
 import traceback
 import json
-import asyncio
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -11,12 +10,13 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
 from langchain.schema import BaseMemory, Document
 from langchain.schema.language_model import BaseLanguageModel
+from rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
     
 class GenerativeAgentConversationSummarizedMemory(BaseMemory):
     """Conversations summarized for the generative agent."""
-
+    rate_limiter: RateLimiter
     llm: BaseLanguageModel
     """The core language model."""
     memory_retriever: ContextualCompressionRetriever
@@ -59,7 +59,6 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         documents = []
         ids = []
         nowStamp = now.timestamp()
-        await asyncio.sleep(0.1)
         for i in range(len(qa)):
             if memory_types[i] != MemoryType.CONSCIOUS_MEMORY or importance[i] == "low":
                 continue
@@ -75,7 +74,8 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             documents.append(doc)
             ids.append(metadata["id"])
         if len(documents) > 0:
-            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
+            async with self.rate_limiter:
+                return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
         else:
             return None
 
@@ -85,7 +85,6 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         """Add an observation or memory to the agent's memory."""
         if memory_type != MemoryType.CONSCIOUS_MEMORY or importance == "low":
             return None
-        await asyncio.sleep(0.1)
         nowStamp = now.timestamp()
         metadata = {
             "id": random.randint(0, 2**32 - 1),
@@ -104,7 +103,8 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             document.page_content = await self._summarize_with_convo(document.page_content, doc.page_content)
         else:
             document.page_content = await self._init_summary_of_convo(document.page_content)
-        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[document.metadata["id"]], wait = False)
+        async with self.rate_limiter:
+            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[document.metadata["id"]])
 
     async def save_context(self, outputs: Dict[str, Any]) -> List[str]:
         """Save the context of this model run to memory."""

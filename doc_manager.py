@@ -2,7 +2,6 @@ import time
 import datetime
 import schedule
 import os
-import asyncio
 import random
 import logging
 import traceback
@@ -51,9 +50,10 @@ class DocSearchInput(BaseModel):
 class DocManager:
     scheduler = schedule.Scheduler()
 
-    def __init__(self):
+    def __init__(self, rate_limiter):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
+        self.rate_limiter = rate_limiter
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
@@ -79,7 +79,7 @@ class DocManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -138,14 +138,11 @@ class DocManager:
             documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
         if len(documents) > 0:
             ids = [doc.metadata["id"] for doc in documents]
-            asyncio.create_task(self.update_store(memory, documents, ids))
+            async with self.rate_limiter:
+                await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
             end = time.time()
             logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
         return "success", end - start
-
-    async def update_store(self, memory, documents, ids):
-        await asyncio.sleep(0.1)
-        await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
 
     def delete_doc(self, function_input: DocDeleteInput):
         """Delete docs by source_url."""
@@ -167,7 +164,7 @@ class DocManager:
                     )
                 ]
             )
-            self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+            self.client.delete(collection_name=self.collection_name, points_selector=filter)
             end = time.time()
             logging.info(f"DocManager: Delete documents operation took {end - start} seconds")
         except Exception as e:
@@ -189,7 +186,8 @@ class DocManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                asyncio.create_task(self.update_store(memory, nodes, ids))
+                async with self.rate_limiter:
+                    await memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids)
         except Exception as e:
             logging.warn(f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:

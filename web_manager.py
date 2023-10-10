@@ -4,7 +4,6 @@ import os
 import random
 import logging
 import traceback
-import asyncio
 import cachetools.func
 
 from dotenv import load_dotenv
@@ -48,13 +47,14 @@ class HTMLInput(BaseModel):
 
 class WebManager:
 
-    def __init__(self):
+    def __init__(self, rate_limiter):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.collection_name = "web"
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        self.rate_limiter = rate_limiter
 
     def create_new_web_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
@@ -76,7 +76,7 @@ class WebManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -120,7 +120,6 @@ class WebManager:
         start = time.time()
         response = []
         nowStamp = datetime.now().timestamp()
-        loop = asyncio.get_event_loop()
         try:
             memory = self.load(function_input.api_key)
             documents = []
@@ -134,7 +133,8 @@ class WebManager:
                 documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
-                await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+                async with self.rate_limiter:
+                    await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
                 end = time.time()
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
             nodes = await self.get_retrieved_nodes(memory, function_input)
@@ -144,8 +144,9 @@ class WebManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                asyncio.create_task(self.update_store(memory, nodes, ids))
-                loop.run_in_executor(None, self.prune_web)
+                async with self.rate_limiter:
+                    await memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids)
+                    self.prune_web()
         except Exception as e:
             logging.warn(f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
@@ -153,10 +154,6 @@ class WebManager:
             logging.info(
                 f"WebManager: search_html operation took {end - start} seconds")
             return response, end - start
-
-    async def update_store(self, memory, nodes, ids):
-        await asyncio.sleep(0.1)
-        await memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False)
 
     def prune_web(self):
         """Prune points that are older than 4 hours."""
@@ -170,7 +167,7 @@ class WebManager:
                 )
             ]
         )
-        self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+        self.client.delete(collection_name=self.collection_name, points_selector=filter)
 
     def does_hash_exist(self, hash: str):
         start = time.time()
