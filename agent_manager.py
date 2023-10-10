@@ -52,12 +52,13 @@ class ClearMemory(BaseModel):
     conversation_id: str
     
 class AgentManager:
-    def __init__(self, rate_limiter):
+    def __init__(self, rate_limiter, rate_limiter_sync):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.rate_limiter = rate_limiter
+        self.rate_limiter_sync = rate_limiter_sync
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.verbose = True
         self.preferences_resolver = PreferencesResolver()
@@ -101,7 +102,7 @@ class AgentManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, collection_name=collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -111,7 +112,7 @@ class AgentManager:
             rate_limiter=self.rate_limiter,
             llm=ChatOpenAI(openai_api_key=api_key, model="gpt-4", max_tokens=1024),
             memory_retriever=self.create_new_memory_retriever(api_key, user_id),
-            memory_summarizer=MemorySummarizer(rate_limiter=self.rate_limiter,flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
+            memory_summarizer=MemorySummarizer(rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, flexible_document_summarizer=FlexibleDocumentSummarizer(ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose
         )
 

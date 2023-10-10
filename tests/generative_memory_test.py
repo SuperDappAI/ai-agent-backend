@@ -9,9 +9,9 @@ from agent_manager import AgentManager
 from pydantic import BaseModel
 from langchain.schema.retriever import BaseRetriever
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
-
+rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 
 from unittest.mock import AsyncMock
 from pydantic import Field
@@ -50,8 +50,9 @@ class MockMemorySummarizer(MemorySummarizer):
     def __init__(self):
         super().__init__(
             rate_limiter=rate_limiter,
+            rate_limiter_sync=rate_limiter_sync,
             flexible_document_summarizer=MockFlexibleDocumentSummarizer(),
-            agent_manager=MockAgentManager(rate_limiter)
+            agent_manager=MockAgentManager(rate_limiter, rate_limiter_sync)
         )
 
 class MockBaseDocumentCompressor(BaseDocumentCompressor):

@@ -7,9 +7,9 @@ from qdrant_client import QdrantClient
 from langchain.chat_models import ChatOpenAI
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 import os
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)
-
+rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 @pytest.fixture
 def mock_agent_manager():
     mock_agent_manager = Mock()
@@ -23,7 +23,7 @@ def mock_agent_manager():
 @patch('memory_summarizer.QDrantVectorStoreRetriever')
 def test_create_new_conversation_summarizer(mock_retriever, mock_compression, mock_rerank, mock_embeddings, mock_qdrant, mock_agent_manager):
     # Arrange
-    summarizer = MemorySummarizer(rate_limiter, Mock(), mock_agent_manager)
+    summarizer = MemorySummarizer(rate_limiter, rate_limiter_sync, Mock(), mock_agent_manager)
     api_key = os.getenv("OPENAI_API_KEY")
 
     # Act
@@ -40,7 +40,7 @@ def test_create_new_conversation_summarizer(mock_retriever, mock_compression, mo
 @patch('memory_summarizer.GenerativeAgentConversationSummarizedMemory')
 def test_create_summarized_memory(mock_memory, mock_agent_manager):
     # Arrange
-    summarizer = MemorySummarizer(rate_limiter, Mock(), mock_agent_manager)
+    summarizer = MemorySummarizer(rate_limiter, rate_limiter_sync, Mock(), mock_agent_manager)
     api_key = os.getenv("OPENAI_API_KEY")
 
     # Act
@@ -58,7 +58,7 @@ def test_create_summarized_memory(mock_memory, mock_agent_manager):
 @patch('memory_summarizer.GenerativeAgentConversationSummarizedMemory')
 def test_load(mock_memory, mock_agent_manager):
     # Arrange
-    summarizer = MemorySummarizer(rate_limiter, Mock(), mock_agent_manager)
+    summarizer = MemorySummarizer(rate_limiter, rate_limiter_sync, Mock(), mock_agent_manager)
     api_key = os.getenv("OPENAI_API_KEY")
 
     # Act

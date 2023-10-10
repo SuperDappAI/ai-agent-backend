@@ -2,15 +2,16 @@ import unittest
 import asyncio
 from datetime import datetime
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory, MemoryType
-from langchain.llms.openai import OpenAI
 from agent_manager import AgentManager
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
+from langchain.chat_models import ChatOpenAI
 import os
 
 class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
     rate_limiter = RateLimiter(rate=5, period=1)
-    mock_llm = OpenAI() 
-    mock_retriever = AgentManager(rate_limiter).create_new_memory_retriever(api_key=os.getenv("OPENAI_API_KEY"), user_id="test1")
+    rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
+    mock_llm = ChatOpenAI() 
+    mock_retriever = AgentManager(rate_limiter, rate_limiter_sync).create_new_memory_retriever(api_key=os.getenv("OPENAI_API_KEY"), user_id="test1")
 
     @classmethod
     def setUpClass(cls):

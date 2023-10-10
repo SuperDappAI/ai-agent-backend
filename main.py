@@ -13,9 +13,9 @@ from queryplan_manager import QueryPlanManager, QueryPlanInput
 from preferences_resolver import QueryPreferencesInput
 from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
-
+rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 # Load environment variables
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -40,11 +40,11 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
                     format='%(asctime)s.%(msecs)03d %(name)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S', force=True, level=logging.INFO)
 
 
-functions_manager = FunctionsManager(rate_limiter)
-agent_manager = AgentManager(rate_limiter)
-web_manager = WebManager(rate_limiter)
+functions_manager = FunctionsManager(rate_limiter, rate_limiter_sync)
+agent_manager = AgentManager(rate_limiter, rate_limiter_sync)
+web_manager = WebManager(rate_limiter, rate_limiter_sync)
 queryplan_manager = QueryPlanManager()
-doc_manager = DocManager(rate_limiter)
+doc_manager = DocManager(rate_limiter, rate_limiter_sync)
 
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)

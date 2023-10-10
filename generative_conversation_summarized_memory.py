@@ -74,8 +74,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             documents.append(doc)
             ids.append(metadata["id"])
         if len(documents) > 0:
-            async with self.rate_limiter:
-                return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+            return await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
         else:
             return None
 
@@ -97,14 +96,13 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
         )
         # pull existing conversation and merge the two into a new memory
         doc = self.get_conversation(conversation_id)
-        if doc is not None:
+        if doc is not None and len(doc.page_content) > 0:
             # summarize the two together
             document.metadata = doc.metadata
             document.page_content = await self._summarize_with_convo(document.page_content, doc.page_content)
         else:
             document.page_content = await self._init_summary_of_convo(document.page_content)
-        async with self.rate_limiter:
-            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[document.metadata["id"]])
+        return await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, [document], ids=[document.metadata["id"]])
 
     async def save_context(self, outputs: Dict[str, Any]) -> List[str]:
         """Save the context of this model run to memory."""

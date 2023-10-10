@@ -47,7 +47,7 @@ class HTMLInput(BaseModel):
 
 class WebManager:
 
-    def __init__(self, rate_limiter):
+    def __init__(self, rate_limiter, rate_limiter_sync):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
@@ -55,6 +55,7 @@ class WebManager:
         self.collection_name = "web"
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.rate_limiter = rate_limiter
+        self.rate_limiter_sync = rate_limiter_sync
 
     def create_new_web_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
@@ -76,7 +77,7 @@ class WebManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -133,8 +134,7 @@ class WebManager:
                 documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
-                async with self.rate_limiter:
-                    await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
+                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
                 end = time.time()
                 logging.info(f"WebManager: Loaded from documents operation took {end - start} seconds")
             nodes = await self.get_retrieved_nodes(memory, function_input)
@@ -144,9 +144,8 @@ class WebManager:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                async with self.rate_limiter:
-                    await memory.base_retriever.vectorstore.aadd_documents(nodes, ids=ids)
-                    self.prune_web()
+                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
+                self.prune_web()
         except Exception as e:
             logging.warn(f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
@@ -167,7 +166,7 @@ class WebManager:
                 )
             ]
         )
-        self.client.delete(collection_name=self.collection_name, points_selector=filter)
+        self.rate_limiter_sync.execute(self.client.delete, collection_name=self.collection_name, points_selector=filter)
 
     def does_hash_exist(self, hash: str):
         start = time.time()
@@ -180,7 +179,7 @@ class WebManager:
                         )
                     ]
             )
-            result, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+            result, _ = self.rate_limiter_sync.execute(self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit = 1)
         except Exception as e:
             logging.warn(f"WebManager: does_hash_exist exception {e}\n{traceback.format_exc()}")
         finally:

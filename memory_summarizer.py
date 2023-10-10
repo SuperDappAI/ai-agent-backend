@@ -18,13 +18,14 @@ from generative_conversation_summarized_memory import GenerativeAgentConversatio
 
 class MemorySummarizer:
     flexible_document_summarizer: FlexibleDocumentSummarizer
-    def __init__(self, rate_limiter, flexible_document_summarizer, agent_manager):
+    def __init__(self, rate_limiter, rate_limiter_sync, flexible_document_summarizer, agent_manager):
         load_dotenv()  # Load environment variables
         os.getenv("COHERE_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.agent_manager = agent_manager
         self.rate_limiter = rate_limiter
+        self.rate_limiter_sync = rate_limiter_sync
         self.flexible_document_summarizer = flexible_document_summarizer
 
     def create_new_conversation_summarizer(self, api_key: str, user_id: str):
@@ -48,7 +49,7 @@ class MemorySummarizer:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, collection_name=collection_name, client=self.agent_manager.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=collection_name, client=self.agent_manager.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever

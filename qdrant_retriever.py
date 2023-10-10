@@ -6,7 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from datetime import timedelta
 from langchain.vectorstores import Qdrant
-from rate_limiter import RateLimiter
+from rate_limiter import RateLimiter, SyncRateLimiter
 from typing import (
     List,
     Optional,
@@ -20,6 +20,7 @@ class MemoryType(Enum):
 class QDrantVectorStoreRetriever(BaseRetriever):
     """Retriever that combines embedding similarity with conversation matching scores in retrieving values."""
     rate_limiter: RateLimiter
+    rate_limiter_sync: SyncRateLimiter
     collection_name: str
     
     client: QdrantClient
@@ -57,8 +58,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     async def get_salient_docs(self, query: str, **kwargs) -> List[Tuple[Document, float]]:
         """Return documents that are salient to the query."""
-        async with self.rate_limiter:
-            return await self.vectorstore.asimilarity_search_with_score(query, k=10, **kwargs)
+        return await self.rate_limiter.execute(self.vectorstore.asimilarity_search_with_score, query, k=10, **kwargs)
 
     async def get_relevant_documents_for_reflection(
         self, query: str, conversation: str, **kwargs
@@ -108,7 +108,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 )
             ]
         )
-        results, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 5000)
+        results, _ = self.rate_limiter_sync.execute(self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit = 5000)
         docs = []
         for record in results:
             document = self.vectorstore._document_from_scored_point(
@@ -164,7 +164,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 )
             ]
         )
-        record, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+        record, _ = self.rate_limiter_sync.execute(self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit = 1)
         if record is not None and len(record) > 0:
             return self.vectorstore._document_from_scored_point(
                 record[0], self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
@@ -182,4 +182,4 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 )
             ]
         )
-        self.client.delete(collection_name=self.collection_name, points_selector=filter)
+        self.rate_limiter_sync.execute(self.client.delete, collection_name=self.collection_name, points_selector=filter)
