@@ -1,15 +1,17 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from agent_manager import AgentManager, MemoryOutput, MemoryInput
+from unittest.mock import AsyncMock, patch
+from agent_manager import AgentManager, MemoryOutput
 from generative_memory import GenerativeAgentMemory
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.schema import BaseRetriever
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
 from memory_summarizer import MemorySummarizer
 from document_summarizer import FlexibleDocumentSummarizer
-from datetime import datetime
 from pydantic import BaseModel, Field
 from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
+from rate_limiter import RateLimiter
+rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
+
 
 class MockLanguageModel(BaseLanguageModel):
     async def agenerate_prompt(self, *args, **kwargs):
@@ -60,7 +62,7 @@ class MockMemorySummarizer(MemorySummarizer):
 
 @pytest.fixture
 def setup_agent_manager():
-    agent_manager = AgentManager()
+    agent_manager = AgentManager(rate_limiter)
     return agent_manager
 
 @pytest.mark.asyncio
@@ -76,9 +78,11 @@ async def test_push_memory(setup_agent_manager):
     )
 
     with patch.object(agent_manager, 'load', return_value=GenerativeAgentMemory(
+        rate_limiter=rate_limiter,
         llm=MockLanguageModel(),
         memory_retriever=MockMemoryRetriever(),
         memory_summarizer=MockMemorySummarizer(
+            rate_limiter=rate_limiter,
             flexible_document_summarizer=MockFlexibleDocumentSummarizer(
                 llm=MockLanguageModel()
             ),

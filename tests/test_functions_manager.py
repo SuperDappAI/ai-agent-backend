@@ -4,13 +4,14 @@ import os
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
 from dotenv import load_dotenv
 from langchain.schema import Document
-
+from rate_limiter import RateLimiter
+rate_limiter = RateLimiter(rate=5, period=1)
 
 class TestFunctionsManager:
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
         load_dotenv()
-        self.functions_manager = FunctionsManager()
+        self.functions_manager = FunctionsManager(rate_limiter)
         yield
 
     def test_transform(self):

@@ -4,15 +4,18 @@ from datetime import datetime
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory, MemoryType
 from langchain.llms.openai import OpenAI
 from agent_manager import AgentManager
+from rate_limiter import RateLimiter
 import os
 
 class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
+    rate_limiter = RateLimiter(rate=5, period=1)
     mock_llm = OpenAI() 
-    mock_retriever = AgentManager().create_new_memory_retriever(api_key=os.getenv("OPENAI_API_KEY"), user_id="test1")
+    mock_retriever = AgentManager(rate_limiter).create_new_memory_retriever(api_key=os.getenv("OPENAI_API_KEY"), user_id="test1")
 
     @classmethod
     def setUpClass(cls):
         cls.agent_memory = GenerativeAgentConversationSummarizedMemory(
+            rate_limiter=cls.rate_limiter,
             llm=cls.mock_llm,
             memory_retriever=cls.mock_retriever,
             verbose=True

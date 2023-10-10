@@ -5,11 +5,13 @@ import time
 from dotenv import load_dotenv
 import asyncio
 import os
+from rate_limiter import RateLimiter
+rate_limiter = RateLimiter(rate=5, period=1)
 
 @pytest.fixture
 def setup_web_manager():
     load_dotenv()
-    web_manager = WebManager()
+    web_manager = WebManager(rate_limiter)
     yield web_manager  
 
 @pytest.fixture

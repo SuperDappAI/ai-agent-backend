@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
+from rate_limiter import RateLimiter
+rate_limiter = RateLimiter(rate=5, period=1) 
 
 class TestFunctionsManager(unittest.TestCase):
     @patch("functions_manager.schedule")
@@ -17,7 +19,7 @@ class TestFunctionsManager(unittest.TestCase):
         mock_llm_rerank.return_value = MagicMock()
         mock_service_context.from_defaults.return_value = MagicMock()
 
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
 
         # Assert that environment is loaded
         mock_load_dotenv.assert_called_once()
@@ -33,7 +35,7 @@ class TestFunctionsManager(unittest.TestCase):
     @patch('memory_manager.time.sleep')
     def test_run_continuously(self, mock_sleep, mock_run_pending):
         mock_sleep.side_effect = lambda *args: exit(0)
-        functions_manager = FunctionsManager()
+        functions_manager = FunctionsManager(rate_limiter)
 
         try:
             functions_manager.run_continuously()
@@ -44,7 +46,7 @@ class TestFunctionsManager(unittest.TestCase):
 
 
     def test_transform(self):
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
         user_id = "2"
         data = [{"name": "test_name", "description": "test_description"}]
         result = fm.transform(user_id, data, "test_category")
@@ -62,7 +64,7 @@ class TestFunctionsManager(unittest.TestCase):
             'data_processing': [{'name': 'function3', 'description': 'description3'}],
             'sensory_perception': [{'name': 'function4', 'description': 'description4'}]
         }
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
         for idx, func_type in enumerate(functions):
             result = fm.push_functions({func_type: functions[func_type]})
             expected_result = [{f"function{idx+1}": 14}]
@@ -81,7 +83,7 @@ class TestFunctionsManager(unittest.TestCase):
         mock_llm_rerank.return_value = MagicMock()
         mock_index.as_query_engine.return_value = MagicMock()
 
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
         result = fm.load()
         if result:
             # If load is successful, these functions should be called
@@ -99,14 +101,14 @@ class TestFunctionsManager(unittest.TestCase):
         mock_encoding_for_model.return_value = MagicMock()
         mock_encoding_for_model.return_value.encode.side_effect = ['token1', 'token2', 'token3']
         functions = {'information_retrieval': [{'name': 'function1', 'description': 'description1'}]}
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
         result = fm.count_tokens(functions)
         expected_result = [{'function1': 6}]
         self.assertEqual(result, expected_result)
         fm.stop()
 
     def test_save(self):
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
         fm.index = MagicMock()  # Mock the entire index object
         fm.dirty = True  # Set dirty attribute to True
 
@@ -119,7 +121,7 @@ class TestFunctionsManager(unittest.TestCase):
         fm.stop()
 
     def test_pull_functions(self):
-        fm = FunctionsManager()
+        fm = FunctionsManager(rate_limiter)
         fm.query_engine = MagicMock()
 
         # create FunctionInput instance

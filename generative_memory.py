@@ -1,7 +1,6 @@
 import logging
 import json
 import random
-import asyncio
 import traceback
 
 from datetime import datetime, timedelta
@@ -14,11 +13,12 @@ from langchain.utils import mock_now
 from qdrant_client.http import models as rest
 from memory_summarizer import MemorySummarizer
 from langchain.schema import SystemMessage, HumanMessage, AIMessage, BaseMessage
-
+from rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
     
 class GenerativeAgentMemory(BaseMemory):
+    rate_limiter: RateLimiter
     """Memory for the generative agent."""
     llm: BaseLanguageModel
     """The core language model."""
@@ -121,7 +121,6 @@ class GenerativeAgentMemory(BaseMemory):
         conversation_id = outputs.get("conversation_id")
         query = outputs.get("query")
         aida = outputs.get("llm_response")
-        await asyncio.sleep(0.1)
         now=datetime.now()
         try:
             role = await preferences_resolver.get_role(conversation_id)
@@ -149,7 +148,6 @@ class GenerativeAgentMemory(BaseMemory):
         documents = []
         ids = []
         nowStamp = now.timestamp()
-        await asyncio.sleep(0.1)
         for i in range(len(qa)):
             metadata = {
                 "id":  random.randint(0, 2**32 - 1),
@@ -166,7 +164,8 @@ class GenerativeAgentMemory(BaseMemory):
                 )
             documents.append(doc)
             ids.append(metadata["id"])
-        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False)
+        async with self.rate_limiter:
+            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
 
     async def add_memory(
         self, memory_content: str, conversation_id: str, importance: str, memory_type: MemoryType, now: Optional[datetime] = None
@@ -186,8 +185,8 @@ class GenerativeAgentMemory(BaseMemory):
             page_content=memory_content, 
             metadata=metadata,
         )
-        await asyncio.sleep(0.1)
-        return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]], wait = False)
+        async with self.rate_limiter:
+            return await self.memory_retriever.base_retriever.vectorstore.aadd_documents([document], ids=[metadata["id"]])
 
     async def fetch_memories(
         self, topic: str, **kwargs: Any
@@ -199,7 +198,6 @@ class GenerativeAgentMemory(BaseMemory):
             with mock_now(current_time):
                 return await self.memory_retriever.aget_relevant_documents(topic)
         else:
-            await asyncio.sleep(0.1)
             if conversation_id != "":
                 kwargs.update({"filter": rest.Filter(
                     must=[
@@ -255,8 +253,8 @@ class GenerativeAgentMemory(BaseMemory):
                 ids = [doc.metadata["id"] for doc in relevant_memories]
                 for doc in relevant_memories:
                     doc.metadata.pop('relevance_score', None)
-                await asyncio.sleep(0.1)
-                asyncio.create_task(self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids, wait = False))
+                async with self.rate_limiter:
+                    await self.memory_retriever.base_retriever.vectorstore.aadd_documents(relevant_memories, ids=ids)
                 return {
                     "relevant_memories": self.format_memories_simple(relevant_memories),
                 }
@@ -273,7 +271,6 @@ class GenerativeAgentMemory(BaseMemory):
         api_key = outputs.get("api_key")
         if query:
             qa = {'user': query, 'AiDA': aida}
-            await asyncio.sleep(0.1)
             await self.memory_summarizer.save(api_key, user_id, outputs)
             return await self.add_memory(json.dumps(qa), conversation_id=conversation_id, memory_type=MemoryType.CONSCIOUS_MEMORY, importance=importance, now=now)
         return []
@@ -282,7 +279,6 @@ class GenerativeAgentMemory(BaseMemory):
     async def decay(self):
         """Decay all old memories by summarizing based on importance and summarization count."""
         try:
-            await asyncio.sleep(0.1)
             # Delete memories flagged as too old
             self.memory_retriever.base_retriever.delete_max_summarized()
             # Get the documents to summarize
@@ -291,8 +287,8 @@ class GenerativeAgentMemory(BaseMemory):
                 await self.memory_summarizer.flexible_document_summarizer.asummarize(documents)
                 # upsert entire document set to qdrant against existing IDs (stored in metadata)
                 ids = [doc.metadata["id"] for doc in documents]
-                await asyncio.sleep(0.1)
-                await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 
+                async with self.rate_limiter:
+                    await self.memory_retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids) 
         except Exception as e:
             logging.warn(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")
             

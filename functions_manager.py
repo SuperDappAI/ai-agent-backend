@@ -1,9 +1,9 @@
 import time
 import tiktoken
 import json
-import asyncio
 import os
 import random
+import asyncio
 import logging
 import traceback
 import cachetools.func
@@ -69,16 +69,18 @@ class FunctionOutput(BaseModel):
     
 class FunctionsManager:
 
-    def __init__(self):
+    def __init__(self, rate_limiter):
         load_dotenv()  # Load environment variables
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         os.getenv("COHERE_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.index = None
+        self.rate_limiter = rate_limiter
         self.max_length_allowed = 512
         self.collection_name = "functions"
         self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.inited = False
+        
         
     def create_new_functions_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
@@ -101,7 +103,7 @@ class FunctionsManager:
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -169,7 +171,8 @@ class FunctionsManager:
         start = time.time()
         if self.inited is False:
             try:
-                self.client.get_collection(self.collection_name)
+                async with self.rate_limiter:
+                    self.client.get_collection(self.collection_name)
             except:
                 with open('./utils/functions.json', 'r') as f:
                     print("FunctionsManager: Loading from functions.json")
@@ -188,10 +191,11 @@ class FunctionsManager:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
                     # update last_accessed_at
-                    # ids = [doc.metadata["id"] for doc in documents]
-                    # for doc in documents:
-                    #     doc.metadata.pop('relevance_score', None)
-                    # asyncio.create_task(memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+                    ids = [doc.metadata["id"] for doc in documents]
+                    for doc in documents:
+                        doc.metadata.pop('relevance_score', None)
+                    async with self.rate_limiter:
+                        await memory.base_retriever.vectorstore.aadd_documents(documents, ids=ids)
                     #loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
@@ -262,7 +266,8 @@ class FunctionsManager:
                         user_id, functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
             ids = [doc.metadata["id"] for doc in all_docs]
-            await memory.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
+            async with self.rate_limiter:
+                await memory.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
             logging.warn(f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")
@@ -285,7 +290,7 @@ class FunctionsManager:
                     )
                 ]
             )
-            self.client.delete(collection_name=self.collection_name, points_selector=filter, wait = False)
+            self.client.delete(collection_name=self.collection_name, points_selector=filter)
         try:
             attempt_prune()
         except Exception as e:

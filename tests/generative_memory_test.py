@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import MagicMock
 from unittest.mock import AsyncMock
 from datetime import datetime
 from generative_memory import GenerativeAgentMemory, MemoryType
@@ -10,6 +9,9 @@ from agent_manager import AgentManager
 from pydantic import BaseModel
 from langchain.schema.retriever import BaseRetriever
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
+from rate_limiter import RateLimiter
+rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
+
 
 from unittest.mock import AsyncMock
 from pydantic import Field
@@ -47,8 +49,9 @@ class MockMemorySummarizer(MemorySummarizer):
 
     def __init__(self):
         super().__init__(
+            rate_limiter=rate_limiter,
             flexible_document_summarizer=MockFlexibleDocumentSummarizer(),
-            agent_manager=MockAgentManager()
+            agent_manager=MockAgentManager(rate_limiter)
         )
 
 class MockBaseDocumentCompressor(BaseDocumentCompressor):
@@ -77,6 +80,7 @@ def setup_generative_agent_memory():
     memory_retriever = MockMemoryRetriever()
     memory_summarizer = MockMemorySummarizer()
     generative_agent_memory = GenerativeAgentMemory(
+        rate_limiter=rate_limiter,
         llm=llm,
         memory_retriever=memory_retriever,
         memory_summarizer=memory_summarizer,
