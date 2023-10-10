@@ -8,6 +8,7 @@ from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 from jsonpatch import JsonPatch, JsonPatchException
 from pydantic import BaseModel
+from ratelimiter import RateLimiter
 
 class QueryPreferencesInput(BaseModel):
     user_id: str
@@ -20,6 +21,7 @@ class PreferencesResolver:
         self.client = None
         self.pref_collection = None
         self.role_collection = None
+        self.rate_limiter = RateLimiter(max_calls=10, period=1)
         self.schema = {
             'name_nickname': "",
             'traits': [],
@@ -73,7 +75,8 @@ class PreferencesResolver:
         if self.client is None or self.pref_collection is None:
             await self.initialize()
         try:
-            doc = await self.pref_collection.find_one({"_id": user_id})
+            async with self.rate_limiter:
+                doc = await self.pref_collection.find_one({"_id": user_id})
             if doc is None:
                 await self.create_default_preferences(user_id)
                 return self.default_preferences
@@ -86,7 +89,8 @@ class PreferencesResolver:
         if self.client is None or self.role_collection is None:
             await self.initialize()
         try:
-            roleObj = await self.role_collection.find_one({"_id": conversation_id})
+            async with self.rate_limiter:
+                roleObj = await self.role_collection.find_one({"_id": conversation_id})
             if roleObj is not None:
                 return roleObj["role"]
             else:
@@ -100,7 +104,8 @@ class PreferencesResolver:
             await self.initialize()
         try:
             roleObj = {"_id": conversation_id, "role": role}
-            update_result = await self.role_collection.update_one({"_id": conversation_id}, {"$set": roleObj}, upsert=True)
+            async with self.rate_limiter:
+                update_result = await self.role_collection.update_one({"_id": conversation_id}, {"$set": roleObj}, upsert=True)
             if update_result.matched_count == 0 and update_result.upserted_id is None:
                 logging.warn("No documents were inserted or updated.")
         except Exception as e:
@@ -115,7 +120,8 @@ class PreferencesResolver:
         if self.client is None or self.pref_collection is None:
             await self.initialize()
         try:
-            await self.pref_collection.insert_one({
+            async with self.rate_limiter:
+                await self.pref_collection.insert_one({
                 '_id': user_id,
                 **self.default_preferences
             })
@@ -193,7 +199,8 @@ class PreferencesResolver:
             return f"An unknown exception occurred: {e}"
         try:
             # Update the database
-            update_result = await self.pref_collection.update_one({"_id": user_id}, {"$set": modified_doc})
+            async with self.rate_limiter:
+                update_result = await self.pref_collection.update_one({"_id": user_id}, {"$set": modified_doc})
             if update_result.modified_count == 0:
                 logging.warn("No documents were updated.")
         except Exception as e:
