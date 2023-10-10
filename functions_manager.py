@@ -171,8 +171,7 @@ class FunctionsManager:
         start = time.time()
         if self.inited is False:
             try:
-                async with self.rate_limiter:
-                    self.client.get_collection(self.collection_name)
+                self.client.get_collection(self.collection_name)
             except:
                 with open('./utils/functions.json', 'r') as f:
                     print("FunctionsManager: Loading from functions.json")
