@@ -170,6 +170,7 @@ class WebManager:
 
     def does_hash_exist(self, hash: str):
         start = time.time()
+        result = None
         try:
             filter = rest.Filter(
                 must=[
