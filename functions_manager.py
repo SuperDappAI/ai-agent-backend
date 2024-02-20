@@ -141,7 +141,7 @@ class FunctionsManager:
                           'data_processing',
                           'sensory_perception']
 
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-0125")
         tokens = []
         for func_type in function_types:
             if func_type in functions:
