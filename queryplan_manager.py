@@ -26,7 +26,7 @@ class QueryPlanManager:
             try:
                 messages = [[SystemMessage(content=self.classify_prompts.to_prompt_string()), 
                 HumanMessage(content=query_input.query)]]
-                llm = ChatOpenAI(model='gpt-4', temperature=0, max_tokens=8, openai_api_key=query_input.api_key)
+                llm = ChatOpenAI(model='gpt-3.5-turbo-0125', temperature=0, max_tokens=8, openai_api_key=query_input.api_key)
                 response = await llm.agenerate(messages)
                 if not response.generations or not response.generations[0]:
                     raise Exception("LLM did not provide a valid summary response.")

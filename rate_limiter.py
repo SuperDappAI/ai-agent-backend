@@ -53,17 +53,19 @@ class SyncRateLimiter:
 
     def execute(self, func, *args, **kwargs):
         for _ in range(self.max_retries):
-            acquired = self.semaphore.acquire(blocking=False)
-            if acquired:
-                try:
+            acquired = False
+            try:
+                acquired = self.semaphore.acquire(blocking=False)
+                if acquired:
                     self._schedule_release()
                     return func(*args, **kwargs)
-                except Exception as e:
-                    print(f"Exception occurred: {e}. Retrying...")
+                else:
+                    threading.Event().wait(self.period)
+            except Exception as e:
+                print(f"Exception occurred: {e}. Retrying...")
+            finally:
+                if acquired:
                     self.semaphore.release()
-            else:
-                threading.Event().wait(self.period)
-
         raise Exception("Max retries reached")
 
     def __enter__(self):
