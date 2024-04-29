@@ -10,6 +10,7 @@ from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
+from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
 from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
@@ -19,6 +20,7 @@ rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 # Load environment variables
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+CONSOLE_KEY = os.getenv("CONSOLE_KEY")
 
 origins = [
     "http://localhost",
@@ -192,3 +194,24 @@ async def clearUserMemory(clear_memory: ClearMemory):
         f'Clearing user memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
     response, elapsed_time = agent_manager.clear_conversation(clear_memory)
     return {'response': response, 'elapsed_time': elapsed_time}
+
+@app.post('/cache_clear/')
+async def clearCache(cache_clear_input: CacheClearInput):
+    """Endpoint to clear caches."""
+    start = time.time()
+    if not cache_clear_input.console_key.strip():
+        logging.warn("CacheManager: console key is empty, check settings!")
+        return {'response': "fail", 'elapsed_time': 0}
+    if CONSOLE_KEY != cache_clear_input.console_key:
+        logging.warn("CacheManager: Invalid console key")
+        return {'response': "fail", 'elapsed_time': 0}
+    if {"doc", "all"} & set(cache_clear_input.cache_types):
+        doccache.clear()
+    if {"queryplan", "all"} & set(cache_clear_input.cache_types):
+        functioncache.clear()
+    if {"searchhtml", "all"} & set(cache_clear_input.cache_types):
+        queryplancache.clear()
+    if {"function", "all"} & set(cache_clear_input.cache_types):
+        searchhtmlcache.clear()
+    end = time.time()
+    return {'response': "success", 'elapsed_time': end - start}
