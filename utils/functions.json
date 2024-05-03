@@ -95,8 +95,8 @@
 			}
 		},
 		{
-			"name": "sendMessageBetweenYourContacts",
-			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
+			"name": "sendChatMessageToYourContacts",
+			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendChatMessageToYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
 			"parameters": {
 				"type": "object",
 				"properties": {
