@@ -21,7 +21,7 @@ termcolor==2.3.0
 gunicorn==21.2.0
 llama-index==0.8.50
 schedule==1.2.1
-qdrant-client==1.6.3
+qdrant-client==1.9.0
 apscheduler
 nltk==3.8.1
 cachetools==5.3.2
