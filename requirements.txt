@@ -19,7 +19,7 @@ termcolor==2.3.0
 #tenacity
 #sse-starlette
 gunicorn==21.2.0
-llama-index==0.8.50
+llama-index==0.10.13
 schedule==1.2.1
 qdrant-client==1.6.3
 apscheduler
