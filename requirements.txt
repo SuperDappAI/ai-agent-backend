@@ -1,5 +1,5 @@
 cohere==4.32
-langchain==0.0.322
+langchain==0.1.0
 openai==0.28.1
 pandas==2.1.1
 gitpython
