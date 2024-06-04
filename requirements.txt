@@ -18,7 +18,7 @@ python-dotenv==1.0.0
 termcolor==2.3.0
 #tenacity
 #sse-starlette
-gunicorn==21.2.0
+gunicorn==22.0.0
 llama-index==0.10.13
 schedule==1.2.1
 qdrant-client==1.9.0
