@@ -2,13 +2,15 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from langchain.schema import Document
 from langchain.schema import SystemMessage, HumanMessage
-from langchain.chat_models import ChatOpenAI
-from document_summarizer import FlexibleDocumentSummarizer, SummaryPrompt  
+from langchain_community.chat_models import ChatOpenAI
+from document_summarizer import FlexibleDocumentSummarizer, SummaryPrompt
+
 
 @pytest.mark.asyncio
 async def test_flexible_document_summarizer():
     mock_llm = AsyncMock(ChatOpenAI)
-    mock_llm.agenerate.return_value = MagicMock(generations=[[MagicMock(text="user summary text")], [MagicMock(text="aida summary text")]])
+    mock_llm.agenerate.return_value = MagicMock(generations=[[MagicMock(
+        text="user summary text")], [MagicMock(text="aida summary text")]])
 
     summarizer = FlexibleDocumentSummarizer(llm=mock_llm, verbose=True)
 
@@ -20,8 +22,10 @@ async def test_flexible_document_summarizer():
 
     # assertions
     mock_llm.agenerate.assert_called_once()
-    expected_prompt = SummaryPrompt(summarizations=2, importance="high").to_prompt_string()
-    expected_messages = [[SystemMessage(content=expected_prompt), HumanMessage(content="user original text")], [SystemMessage(content=expected_prompt), HumanMessage(content="aida original text")]]
+    expected_prompt = SummaryPrompt(
+        summarizations=2, importance="high").to_prompt_string()
+    expected_messages = [[SystemMessage(content=expected_prompt), HumanMessage(content="user original text")], [
+        SystemMessage(content=expected_prompt), HumanMessage(content="aida original text")]]
     assert mock_llm.agenerate.call_args[0][0] == expected_messages
 
     # Verify content was summarized
@@ -32,4 +36,5 @@ async def test_flexible_document_summarizer():
     await summarizer.asummarize(documents)
 
     # assertions
-    assert mock_llm.agenerate.call_count == 6  # the method should have been called for each document
+    # the method should have been called for each document
+    assert mock_llm.agenerate.call_count == 6
