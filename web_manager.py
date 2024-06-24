@@ -7,7 +7,7 @@ import traceback
 import cachetools.func
 
 from dotenv import load_dotenv
-from llama_index.langchain_helpers.text_splitter import SentenceSplitter
+from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
 from typing import List
 from qdrant_client import QdrantClient
 from pydantic import BaseModel, Field
