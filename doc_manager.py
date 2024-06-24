@@ -76,7 +76,7 @@ class DocManager:
             logging.info("DocManager: loaded from cloud...")
         finally:
             logging.info(f"DocManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(openai_api_key=api_key))
+            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=api_key))
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
