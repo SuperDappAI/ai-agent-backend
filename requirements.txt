@@ -1,5 +1,6 @@
 cohere==4.32
-langchain==0.1.0
+langchain==0.2.5
+langchain-community==0.2.5
 openai==1.35.3
 pandas==2.1.1
 gitpython
@@ -19,7 +20,7 @@ termcolor==2.3.0
 #tenacity
 #sse-starlette
 gunicorn==22.0.0
-llama-index==0.10.13
+llama-index==0.10.50
 schedule==1.2.1
 qdrant-client==1.9.0
 apscheduler
