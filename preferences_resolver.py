@@ -30,13 +30,8 @@ class PreferencesResolver:
             'achievements': [],
             'mood_feelings': [],
             'goals': [],
-            'tasks': [
-                {'id': 'task_0', 'description': 'onboard user to superdapp'},
-            ],
-            'subtasks': [
-                {'id': 'subtask_0', 'task_id': 'task_0',
-                    'description': 'ask for google calendar or calendly link'},
-            ],
+            'tasks': [],
+            'subtasks': [],
             'active_task_id': 'task_0',
             'active_subtask_id': 'subtask_0',
             'facts_opinions': [],
