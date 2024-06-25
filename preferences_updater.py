@@ -5,14 +5,15 @@ import json
 import re
 
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from preferences_resolver import PreferencesResolver
 from typing import List
 
+
 class SystemPrompt:
     def __init__(self, preferences: str, error: str = ""):
-         self.preferences = preferences
-         self.error = error
+        self.preferences = preferences
+        self.error = error
 
     def to_prompt_string(self) -> str:
         template_text = f"""You are an expert preferences interpreter. Your task is to infer and update user preferences based on the dialog between the user and AI. Use the existing PREFERENCES as the current MongoDB database state.
@@ -50,6 +51,7 @@ class SystemPrompt:
         PREFERENCES: {self.preferences}"""
         return template_text
 
+
 class PreferencesUpdater:
     _preferences_resolver: PreferencesResolver
     verbose: bool
@@ -66,19 +68,23 @@ class PreferencesUpdater:
         try:
             response = await llm.agenerate(messages)
             if not response.generations or not response.generations[0]:
-                raise Exception("LLM did not provide a valid summary response.")
+                raise Exception(
+                    "LLM did not provide a valid summary response.")
 
             result = response.generations[0][0].text
             # Find the array in the output string using a regular expression
-            array_match = re.search(r'OPS:\s*\[\s*(\{.*\})\s*\]', result, re.DOTALL)
+            array_match = re.search(
+                r'OPS:\s*\[\s*(\{.*\})\s*\]', result, re.DOTALL)
             if array_match:
                 array_str = '[' + array_match.group(1) + ']'
-                array_str = array_str.replace("True", "true").replace("False", "false")
+                array_str = array_str.replace(
+                    "True", "true").replace("False", "false")
                 # Parse the array string as JSON
                 array_json = json.loads(array_str)
         except Exception as e:
             if self.verbose:
-                logging.warn(f"PreferencesUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
+                logging.warn(
+                    f"PreferencesUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
 
         return array_json
 
@@ -86,10 +92,11 @@ class PreferencesUpdater:
         """Reflect on recent observations and generate 'insights'."""
         doc = await self._preferences_resolver.get_preferences(user_id)
         if doc is None:
-            logging.warn(f"PreferencesUpdater: No preferences found for user {user_id}")
+            logging.warn(
+                f"PreferencesUpdater: No preferences found for user {user_id}")
             return
         summary_prompt = SystemPrompt(doc)
-        messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
+        messages = [[SystemMessage(content=summary_prompt.to_prompt_string()),
                     HumanMessage(content=user),
                     AIMessage(content=ai)]]
         patch_commands = await self._get_json_patch_commands(messages, llm)
@@ -98,12 +105,14 @@ class PreferencesUpdater:
                 logging.info("AiDA is trying to update preferences")
             response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
             if response != "success":
-                summary_prompt = SystemPrompt(doc, "2. You have been given human feedback that your changes were not accepted due to syntax, you are to carefully analyze and respond with the correct OPS")
-                messages = [[SystemMessage(content=summary_prompt.to_prompt_string()), 
-                    HumanMessage(content=user),
-                    AIMessage(content=ai),
-                    HumanMessage(content=response)]]
+                summary_prompt = SystemPrompt(
+                    doc, "2. You have been given human feedback that your changes were not accepted due to syntax, you are to carefully analyze and respond with the correct OPS")
+                messages = [[SystemMessage(content=summary_prompt.to_prompt_string()),
+                             HumanMessage(content=user),
+                             AIMessage(content=ai),
+                             HumanMessage(content=response)]]
                 patch_commands = await self._get_json_patch_commands(messages, llm)
                 response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
                 if response != "success" and self.verbose:
-                    logging.warn(f"PreferencesUpdater: preferences_resolver patch application failed: {response}")
+                    logging.warn(
+                        f"PreferencesUpdater: preferences_resolver patch application failed: {response}")
