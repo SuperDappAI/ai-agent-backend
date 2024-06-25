@@ -5,7 +5,7 @@ from langchain.schema import BaseRetriever, Document
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from datetime import timedelta
-from langchain.vectorstores import Qdrant
+from langchain_community.vectorstores import Qdrant
 from rate_limiter import RateLimiter, SyncRateLimiter
 from typing import (
     List,
@@ -13,29 +13,31 @@ from typing import (
     Tuple,
 )
 
+
 class MemoryType(Enum):
     CONSCIOUS_MEMORY = 0
     SUBCONSCIOUS_MEMORY = 1
-    
+
+
 class QDrantVectorStoreRetriever(BaseRetriever):
     """Retriever that combines embedding similarity with conversation matching scores in retrieving values."""
     rate_limiter: RateLimiter
     rate_limiter_sync: SyncRateLimiter
     collection_name: str
-    
+
     client: QdrantClient
-    
+
     vectorstore: Qdrant
     """The vectorstore to store documents and determine salience."""
 
     extra_index_penalty: float = float(0.1)
-    
+
     subconscious_memory_penalty: float = float(0.05)
     """Penalty given to the combined score (percentage) if the memory type is SUBCONSCIOUS_MEMORY."""
 
     _max_summarizations: int = int(20)
     """How many summaries before we prune unused memories."""
-    
+
     class Config:
         """Configuration for this pydantic object."""
         arbitrary_types_allowed = True
@@ -68,8 +70,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
-                    key="metadata.importance", 
-                    match=rest.MatchValue(value="high"), 
+                    key="metadata.importance",
+                    match=rest.MatchValue(value="high"),
                 )
             ]
         )
@@ -77,7 +79,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         docs_and_scores = await self.get_salient_docs(query, **kwargs)
         rescored_docs = []
         for doc, relevance in docs_and_scores:
-            combined_score = self._get_combined_score(doc, relevance, conversation)
+            combined_score = self._get_combined_score(
+                doc, relevance, conversation)
             # Skip the document if it matches the given query, and conversation
             if doc.page_content == query and doc.metadata["extra_index"] == conversation:
                 continue  # Skip to the next iteration
@@ -91,7 +94,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             doc.metadata["last_accessed_at"] = current_time.timestamp()
         # Return just the list of Documents
         return [doc for doc, _ in rescored_docs]
-    
+
     def get_documents_for_summarization(self) -> List[Document]:
         """Return documents that are relevant to summarize."""
         current_time = datetime.now()
@@ -99,16 +102,17 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
-                    key="metadata.last_accessed_at", 
-                    range=rest.Range(lte=two_weeks_ago.timestamp()), 
+                    key="metadata.last_accessed_at",
+                    range=rest.Range(lte=two_weeks_ago.timestamp()),
                 ),
                 rest.FieldCondition(
-                    key="metadata.summarizations", 
-                    range=rest.Range(lt=self._max_summarizations), 
+                    key="metadata.summarizations",
+                    range=rest.Range(lt=self._max_summarizations),
                 )
             ]
         )
-        results, _ = self.rate_limiter_sync.execute(self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit = 5000)
+        results, _ = self.rate_limiter_sync.execute(
+            self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit=5000)
         docs = []
         for record in results:
             document = self.vectorstore._document_from_scored_point(
@@ -150,7 +154,8 @@ class QDrantVectorStoreRetriever(BaseRetriever):
                 doc.metadata['summarizations'] -= 1
 
         # Sort by score and extract just the documents
-        sorted_docs = [doc for doc, _ in sorted(rescored_docs, key=lambda x: x[1], reverse=True)]
+        sorted_docs = [doc for doc, _ in sorted(
+            rescored_docs, key=lambda x: x[1], reverse=True)]
         # Return just the list of Documents
         return sorted_docs
 
@@ -159,12 +164,13 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
-                    key=key, 
-                    match=rest.MatchValue(value=value), 
+                    key=key,
+                    match=rest.MatchValue(value=value),
                 )
             ]
         )
-        record, _ = self.rate_limiter_sync.execute(self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+        record, _ = self.rate_limiter_sync.execute(
+            self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit=1)
         if record is not None and len(record) > 0:
             return self.vectorstore._document_from_scored_point(
                 record[0], self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
@@ -177,9 +183,10 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
-                    key="metadata.summarized", 
-                    range=rest.Range(gt=self._max_summarizations), 
+                    key="metadata.summarized",
+                    range=rest.Range(gt=self._max_summarizations),
                 )
             ]
         )
-        self.rate_limiter_sync.execute(self.client.delete, collection_name=self.collection_name, points_selector=filter)
+        self.rate_limiter_sync.execute(
+            self.client.delete, collection_name=self.collection_name, points_selector=filter)
