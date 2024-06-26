@@ -23,6 +23,7 @@ from qdrant_client.http.models import PayloadSchemaType
 
 class CacheDoc(BaseModel):
     source_url: str
+    category: str
 
 class DocAddInput(BaseModel):
     api_key: str
@@ -126,7 +127,7 @@ class DocManager:
             end = time.time()
             return "fail", end - start
         memory = self.load(function_input.api_key)
-        srcExist, _ = self.does_source_exist(function_input.source_url)
+        srcExist, _ = self.does_source_exist(CacheDoc(source_url=function_input.source_url, category=function_input.category))
         if srcExist:
             logging.warn("DocManager: source_url already exists")
             end = time.time()
@@ -195,15 +196,20 @@ class DocManager:
                 f"DocManager: search_html operation took {end - start} seconds")
             return response, end - start
 
-    def does_source_exist(self, source_url: str):
+    def does_source_exist(self, function_input: CacheDoc):
+        logging.error(function_input)
         result = None
         start = time.time()
         try:
             filter = rest.Filter(
                 must=[
                     rest.FieldCondition(
-                        key="metadata.source_url", 
-                        match=rest.MatchValue(value=source_url), 
+                        key="metadata.source_url",
+                        match=rest.MatchValue(value=function_input.source_url),
+                    ),
+                    rest.FieldCondition(
+                        key="metadata.extra_index",
+                        match=rest.MatchValue(value=function_input.category),
                     )
                 ]
             )
