@@ -1,18 +1,20 @@
-
 import pytest
 import os
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
 from dotenv import load_dotenv
+from qdrant_client.http.models import ScoredPoint
 from langchain.schema import Document
 from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 
+
 class TestFunctionsManager:
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
         load_dotenv()
-        self.functions_manager = FunctionsManager(rate_limiter, rate_limiter_sync)
+        self.functions_manager = FunctionsManager(
+            rate_limiter, rate_limiter_sync)
         yield
 
     def test_transform(self):
@@ -21,7 +23,7 @@ class TestFunctionsManager:
         user_id = "2"
 
         transformed = self.functions_manager.transform(user_id, data, category)
-        
+
         assert isinstance(transformed, list)
         assert all(isinstance(doc, Document) for doc in transformed)
 
@@ -40,10 +42,20 @@ class TestFunctionsManager:
 
     def test_extract_name_and_category(self):
         documents = [
-            Document(
-                page_content='{"name": "test1", "category": "cat1"}', metadata={}),
-            Document(
-                page_content='{"name": "test2", "category": "cat2"}', metadata={})
+            ScoredPoint(
+                id=1,
+                payload={"name": "test1", "category": "cat1"},
+                vector=[0.1, 0.2, 0.3],
+                score=0.9,
+                version=1
+            ),
+            ScoredPoint(
+                id=2,
+                payload={"name": "test2", "category": "cat2"},
+                vector=[0.4, 0.5, 0.6],
+                score=0.8,
+                version=1
+            )
         ]
 
         extracted = self.functions_manager.extract_name_and_category(documents)
