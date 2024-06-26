@@ -4,19 +4,27 @@ from datetime import datetime
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory, MemoryType
 from agent_manager import AgentManager
 from rate_limiter import RateLimiter, SyncRateLimiter
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 import os
+from dotenv import load_dotenv
 
 
 class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
     rate_limiter = RateLimiter(rate=5, period=1)
     rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
-    mock_llm = ChatOpenAI()
-    mock_retriever = AgentManager(rate_limiter, rate_limiter_sync).create_new_memory_retriever(
-        api_key=os.getenv("OPENAI_API_KEY"), user_id="test1")
 
     @classmethod
     def setUpClass(cls):
+        load_dotenv()  # Load environment variables from .env file
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "The OPENAI_API_KEY environment variable is missing")
+
+        cls.mock_llm = ChatOpenAI(openai_api_key=api_key)
+        cls.mock_retriever = AgentManager(cls.rate_limiter, cls.rate_limiter_sync).create_new_memory_retriever(
+            api_key=api_key, user_id="test1")
+
         cls.agent_memory = GenerativeAgentConversationSummarizedMemory(
             rate_limiter=cls.rate_limiter,
             llm=cls.mock_llm,
