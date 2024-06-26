@@ -166,9 +166,8 @@ class FunctionsManager:
         for doc in documents:
             # Parse the payload string into a Python dict
             payload = doc.payload
-            page_content = json.loads(payload.get("page_content", "{}"))
-            name = page_content.get('name')
-            category = page_content.get('category')
+            name = payload.get('name')
+            category = payload.get('category')
 
             # Check if this combination has been seen before
             if (name, category) not in seen:
