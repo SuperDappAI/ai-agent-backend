@@ -4,11 +4,34 @@ from functions_manager import FunctionsManager, ActionItem, FunctionInput
 from dotenv import load_dotenv
 from langchain.schema import Document
 from qdrant_client.http.models import ScoredPoint
-from rate_limiter import RateLimiter, SyncRateLimiter
+from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
+from rate_limiter import RateLimiter, SyncRateLimiter
+from qdrant_client.http import models as rest
 
 rate_limiter = RateLimiter(rate=5, period=1)
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
+
+
+@pytest.fixture(scope='session', autouse=True)
+def create_collections():
+    load_dotenv()
+    client = QdrantClient(url=os.getenv("QDRANT_URL"),
+                          api_key=os.getenv("QDRANT_API_KEY"))
+    collections = ["functions"]
+
+    for collection in collections:
+        try:
+            client.create_collection(
+                collection_name=collection,
+                vectors_config=rest.VectorParams(
+                    size=1536,
+                    distance=rest.Distance.COSINE,
+                ),
+            )
+        except Exception as e:
+            print(
+                f"Collection {collection} already exists or failed to create: {e}")
 
 
 class TestFunctionsManager:
