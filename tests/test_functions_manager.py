@@ -2,9 +2,11 @@ import pytest
 import os
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
 from dotenv import load_dotenv
-from qdrant_client.http.models import ScoredPoint
 from langchain.schema import Document
+from qdrant_client.http.models import ScoredPoint
 from rate_limiter import RateLimiter, SyncRateLimiter
+from qdrant_client.http.exceptions import UnexpectedResponse
+
 rate_limiter = RateLimiter(rate=5, period=1)
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 
@@ -72,7 +74,10 @@ class TestFunctionsManager:
                                            action="act", intent="int", category="cat")]
                                        )
 
-        response, time_taken = await self.functions_manager.pull_functions(function_input)
+        try:
+            response, time_taken = await self.functions_manager.pull_functions(function_input)
+        except UnexpectedResponse as e:
+            pytest.fail(f"UnexpectedResponse: {e}")
 
         assert isinstance(response, list)
         assert isinstance(time_taken, float)
@@ -86,6 +91,9 @@ class TestFunctionsManager:
         print(response)
 
     def test_prune_functions(self):
-        result = self.functions_manager.prune_functions()
+        try:
+            result = self.functions_manager.prune_functions()
+        except UnexpectedResponse as e:
+            pytest.fail(f"UnexpectedResponse: {e}")
 
         assert result is True
