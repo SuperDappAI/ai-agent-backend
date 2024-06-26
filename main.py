@@ -12,7 +12,6 @@ from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
-from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
 from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
@@ -33,8 +32,6 @@ origins = [
 ]
 
 app = FastAPI()
-app.include_router(interpreter_router, prefix="/interpreter")
-
 # Initialize logging
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')
@@ -123,15 +120,24 @@ async def addDoc(function_input: DocAddInput):
 async def deleteDoc(function_input: DocDeleteInput):
     """Endpoint to conduct delete HTML document from doc portal."""
     logging.info('delete from Doc Portal')
-    results, elapsed_time = doc_manager.delete_doc(function_input)
+    results, elapsed_time = await doc_manager.delete_doc(function_input)
     doccache.clear()
     return {'response': results, 'elapsed_time': elapsed_time}
 
+@app.post('/ingest_remote_doc/')
+async def ingestRemoteDoc(url_to_fetch: str = Form(...), category: str = Form(...), source_url: str = Form(...)):
+    """Endpoint to conduct add HTML document for doc portal."""
+    logging.info('add to Doc Portal')
+    results, raw_doc, elapsed_time= await doc_manager.fetch_web_content(url_to_fetch, category, source_url)
+    print(url_to_fetch,category,source_url)
+
+    return {'response': results, 'raw_doc': raw_doc, 'elapsed_time': elapsed_time}
+
 @app.post('/is_doc_cached/')
-async def isDocCached(cache_html: CacheDoc):
+async def isDocCached(function_input: CacheDoc):
     """Endpoint to check if doc content is cached."""
     logging.info('Checking if doc is cached')
-    result, elapsed_time = doc_manager.does_source_exist(cache_html.source_url)
+    result, elapsed_time = doc_manager.does_source_exist(function_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/search_doc/')

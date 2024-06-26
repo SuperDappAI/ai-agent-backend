@@ -11,14 +11,15 @@ from pydantic import BaseModel
 from rate_limiter import RateLimiter
 from asyncio import Lock
 
+
 class QueryPreferencesInput(BaseModel):
     user_id: str
-    
+
+
 class PreferencesResolver:
     def __init__(self):
         load_dotenv()  # Load environment variables
-        mongopw = os.getenv("MONGODB_PW")
-        self.uri = f"mongodb+srv://superdapp:{mongopw}@cluster0.qyi8mou.mongodb.net/?retryWrites=true&w=majority"
+        self.uri = os.getenv("MONGODB_URL")
         self.client = None
         self.pref_collection = None
         self.role_collection = None
@@ -29,14 +30,10 @@ class PreferencesResolver:
             'achievements': [],
             'mood_feelings': [],
             'goals': [],
-            'tasks': [
-                {'id': 'task_0', 'description': 'onboard user to superdapp'},
-            ],
-            'subtasks': [
-                {'id': 'subtask_0', 'task_id': 'task_0', 'description': 'ask for google calendar or calendly link'},
-            ],
-            'active_task_id': 'task_0',
-            'active_subtask_id': 'subtask_0',
+            'tasks': [],
+            'subtasks': [],
+            'active_task_id': '',
+            'active_subtask_id': '',
             'facts_opinions': [],
             'interests': [],
             'links': [],
@@ -64,10 +61,11 @@ class PreferencesResolver:
             if self.client is not None:
                 return
             try:
-                self.client = AsyncIOMotorClient(self.uri, server_api=ServerApi('1'))
+                self.client = AsyncIOMotorClient(
+                    self.uri, server_api=ServerApi('1'))
                 await self.client.admin.command('ping')
                 print("Pinged your deployment. You successfully connected to MongoDB!")
-                
+
                 # Setup references after successful connection
                 self.db = self.client['PreferencesDB']
                 self.pref_collection = self.db['Preferences']
@@ -75,8 +73,9 @@ class PreferencesResolver:
                 self.rate_limiter = RateLimiter(rate=10, period=1)
                 self.default_preferences = self.schema
             except Exception as e:
-                logging.warn(f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
-    
+                logging.warn(
+                    f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
+
     async def get_preferences(self, user_id):
         if self.client is None or self.pref_collection is None or self.rate_limiter is None:
             await self.initialize()
@@ -87,7 +86,8 @@ class PreferencesResolver:
                 return self.default_preferences
             return doc
         except Exception as e:
-            logging.warn(f"PreferencesResolver: get_preferences exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"PreferencesResolver: get_preferences exception {e}\n{traceback.format_exc()}")
             return None
 
     async def get_role(self, conversation_id):
@@ -100,7 +100,8 @@ class PreferencesResolver:
             else:
                 return None
         except Exception as e:
-            logging.warn(f"PreferencesResolver: get_role exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"PreferencesResolver: get_role exception {e}\n{traceback.format_exc()}")
             return None
 
     async def set_role(self, role, conversation_id):
@@ -112,7 +113,8 @@ class PreferencesResolver:
             if update_result.matched_count == 0 and update_result.upserted_id is None:
                 logging.warn("No documents were inserted or updated.")
         except Exception as e:
-            logging.warn(f"PreferencesResolver: set_role exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"PreferencesResolver: set_role exception {e}\n{traceback.format_exc()}")
             return "failure"
         return "success"
 
@@ -128,9 +130,8 @@ class PreferencesResolver:
                 **self.default_preferences
             })
         except Exception as e:
-            logging.warn(f"PreferencesResolver: create_default_preferences exception {e}\n{traceback.format_exc()}")
-        
-        
+            logging.warn(
+                f"PreferencesResolver: create_default_preferences exception {e}\n{traceback.format_exc()}")
 
     def check_for_nested_duplicates(self, value, target):
         if isinstance(target, list):
@@ -140,7 +141,6 @@ class PreferencesResolver:
             return any(self.check_for_nested_duplicates(value, sub_value) for sub_value in target.values())
         else:
             return False
-
 
     async def apply_patch(self, user_id, doc, patch_data):
         if self.client is None or self.pref_collection is None or self.rate_limiter is None:
@@ -163,7 +163,8 @@ class PreferencesResolver:
                             next_key = keys[i + 1]
                             if patch["op"] == "add":
                                 if next_key == "-":
-                                    temp_doc[key] = []  # Create a new list if one does not exist
+                                    # Create a new list if one does not exist
+                                    temp_doc[key] = []
                                 else:
                                     return f"Error: Cannot add a non-existing key without appending. Patch {patch}"
                             else:  # for 'replace' and other ops
@@ -173,7 +174,8 @@ class PreferencesResolver:
                     # Check for nested duplicates
                     if patch["op"] == "add":
                         if self.check_for_nested_duplicates(patch["value"], temp_doc):
-                            logging.warn(f"Duplicate patch {patch}, skipping...")
+                            logging.warn(
+                                f"Duplicate patch {patch}, skipping...")
                             continue
                     # Check type and validity
                     if isinstance(temp_doc, list) and not keys[i + 1].isdigit() and keys[i + 1] != '-':
@@ -205,5 +207,6 @@ class PreferencesResolver:
             if update_result.modified_count == 0:
                 logging.warn("No documents were updated.")
         except Exception as e:
-            logging.warn(f"PreferencesResolver: update_one exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"PreferencesResolver: update_one exception {e}\n{traceback.format_exc()}")
         return "success"

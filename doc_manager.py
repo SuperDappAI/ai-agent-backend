@@ -2,10 +2,11 @@ import time
 import datetime
 import schedule
 import os
+import asyncio
 import random
+import requests
 import logging
 import traceback
-import cachetools.func
 
 from dotenv import load_dotenv
 from llama_index.langchain_helpers.text_splitter import SentenceSplitter
@@ -15,7 +16,7 @@ from langchain.vectorstores import Qdrant
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
-from cohere_rerank import CohereRerank
+from langchain.retrievers.document_compressors import CohereRerank
 from langchain.schema import Document
 from datetime import datetime
 from qdrant_client.http import models as rest
@@ -26,7 +27,6 @@ class CacheDoc(BaseModel):
     category: str
 
 class DocAddInput(BaseModel):
-    api_key: str
     source_url: str
     html_doc: str
     category: str
@@ -36,52 +36,46 @@ class DocDeleteInput(BaseModel):
     category: str
 
 class DocSearchInput(BaseModel):
-    api_key: str
     query: str
     category: str
-    def __str__(self):
-        return self.query + self.category
-
-    def __eq__(self,other):
-        return self.query == other.query and self.category == other.category
-
-    def __hash__(self):
-        return hash(str(self))    
     
 class DocManager:
     scheduler = schedule.Scheduler()
 
-    def __init__(self, rate_limiter, rate_limiter_sync):
+    def __init__(self):
         load_dotenv()  # Load environment variables
+        os.getenv("OPENAI_API_KEY")
         os.getenv("COHERE_API_KEY")
-        self.rate_limiter = rate_limiter
-        self.rate_limiter_sync = rate_limiter_sync
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
-        self.collection_name = "doc"
+        self.embeddings = OpenAIEmbeddings()
+        self.retriever = None
+        self.load()
 
-    def create_new_web_retriever(self, api_key: str):
+    def create_new_web_retriever(self):
         """Create a new vector store retriever unique to the agent."""
+        client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         # create collection if it doesn't exist (if it exists it will fall into finally)
+        collection_name = "doc"
         try:
-            self.client.create_collection(
-                collection_name=self.collection_name,
+            client.create_collection(
+                on_disk_payload=True,
+                collection_name=collection_name,
                 vectors_config=rest.VectorParams(
                     size = 1536,
                     distance = rest.Distance.COSINE,
                 ),
             )
-            self.client.create_payload_index(self.collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
+            client.create_payload_index(collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
         except:
-            logging.info("DocManager: loaded from cloud...")
+            logging.info("DocManager: loaded from disk...")
         finally:
-            logging.info(f"DocManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(openai_api_key=api_key))
+            logging.info(f"DocManager: Creating memory store with collection {collection_name}")
+            vectorstore = Qdrant(client, collection_name, self.embeddings)
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+                    collection_name=collection_name, client=client, vectorstore=vectorstore,
                 )
             )
             return compression_retriever
@@ -99,7 +93,7 @@ class DocManager:
                 seen.add(key)
         return result
 
-    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: DocSearchInput):
+    def get_retrieved_nodes(self, function_input: DocSearchInput):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -108,17 +102,15 @@ class DocManager:
                 )
             ]
         )
-        result = await memory.aget_relevant_documents(function_input.query, filter=filter)
+        result = self.retriever.get_relevant_documents(function_input.query, filter=filter)
         return result
 
-    @cachetools.func.lru_cache(maxsize=16384)
-    def load(self, api_key: str):
+    def load(self):
         """Load existing index data from the filesystem ."""
         start = time.time()
-        memory = self.create_new_web_retriever(api_key)
+        self.retriever = self.create_new_web_retriever()
         end = time.time()
         logging.info(f"DocManager: Load operation took {end - start} seconds")
-        return memory
 
     async def add_doc(self, function_input: DocAddInput):
         start = time.time()
@@ -126,7 +118,6 @@ class DocManager:
             logging.warn("DocManager: Cannot add information because data missing")
             end = time.time()
             return "fail", end - start
-        memory = self.load(function_input.api_key)
         srcExist, _ = self.does_source_exist(CacheDoc(source_url=function_input.source_url, category=function_input.category))
         if srcExist:
             logging.warn("DocManager: source_url already exists")
@@ -140,12 +131,12 @@ class DocManager:
             documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
         if len(documents) > 0:
             ids = [doc.metadata["id"] for doc in documents]
-            await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
+            asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
             end = time.time()
             logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
         return "success", end - start
 
-    def delete_doc(self, function_input: DocDeleteInput):
+    async def delete_doc(self, function_input: DocDeleteInput):
         """Delete docs by source_url."""
         start = time.time()
         if 0 >= len(function_input.source_url):
@@ -177,17 +168,15 @@ class DocManager:
     async def search_doc(self, function_input: DocSearchInput):
         """Fetch Doc data based on a query."""
         start = time.time()
-        response = []
+        response = None
         try:
-            memory = self.load(function_input.api_key)
-            nodes = await self.get_retrieved_nodes(memory, function_input)
+            nodes = self.get_retrieved_nodes(function_input)
             response = self.extract_text_and_source_url(nodes)
-            # update last_accessed_at
             if len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
                     doc.metadata.pop('relevance_score', None)
-                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
+                asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(nodes, ids=ids, wait = False))
         except Exception as e:
             logging.warn(f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
@@ -196,8 +185,24 @@ class DocManager:
                 f"DocManager: search_html operation took {end - start} seconds")
             return response, end - start
 
+    # async def fetch_web_content(self, url_to_fetch: str, category: str, source_url: str, input_format: str):
+    async def fetch_web_content(self, url_to_fetch: str, category: str, source_url: str):
+        # fetch md or html from source_url from the web using requests library
+        start = time.time()
+        response = None
+        try:
+            response = requests.get(url_to_fetch)
+            if response.status_code == 200:
+                response = response.content.decode('utf-8')
+                doc_add_input = DocAddInput(source_url=source_url, html_doc=response, category=category)
+            else:
+                logging.warn(f"DocManager: fetch_web_content status code {response.status_code}")
+        except:
+            logging.warn(f"DocManager: fetch_web_content exception")
+
+        return await self.add_doc(doc_add_input), response, time.time() - start
+
     def does_source_exist(self, function_input: CacheDoc):
-        logging.error(function_input)
         result = None
         start = time.time()
         try:
@@ -215,9 +220,9 @@ class DocManager:
             )
             result, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
         except Exception as e:
-            logging.warn(f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}")
+            logging.warn(f"DocManager: does_hash_exist exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
         logging.info(
-            f"DocManager: does_source_exist operation took {end - start} seconds")
-        return result is not None and len(result) > 0, end - start
+            f"DocManager: does_hash_exist operation took {end - start} seconds")
+        return result, end - start

@@ -1,245 +1,196 @@
 {
-	"information_retrieval": [
-	],
-	"communication": [
-		{
-			"name": "makeAudioOrVideoCallToYourContact",
-			"description": "Initiates a call (audio or video) to another user by their User ID. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeAudioOrVideoCallToYourContact', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"toUserID": {
-						"type": "string"
-					},
-					"isVideo": {
-						"type": "boolean"
-					}
-				},
-				"required": ["toUserID", "isVideo"]
-			}
-		},
-		{
-			"name": "sendCryptoToYourContact",
-			"description": "Sends a specified amount of cryptocurrency to another user by their User ID or address'. Example: {'name': 'sendCryptoToYourContact', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'symbol': 'ETH'}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"toUserID": {
-						"type": "string"
-					},
-					"amount": {
-						"type": "number"
-					},
-					"symbol": {
-						"type": "string"
-					}
-				},
-				"required": ["toUserID", "amount", "symbol"]
-			}
-		},
-		{
-			"name": "requestCryptoToYourContact",
-			"description": "Requests a specified amount of cryptocurrency from another user by their User ID. Example: {'name': 'requestCryptoToYourContact', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"fromUserID": {
-						"type": "string"
-					},
-					"amount": {
-						"type": "number"
-					},
-					"symbol": {
-						"type": "string"
-					}
-				},
-				"required": ["fromUserID", "amount", "symbol"]
-			}
-		},
-		{
-			"name": "buyCrypto",
-			"description": "Buys a specified amount of cryptocurrency using a specific symbol. Example: {'name': 'buyCrypto', 'parameters': {'amount': 100, 'fromSymbol': 'USD', 'toSymbol': 'BTC'}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"amount": {
-						"type": "number"
-					},
-					"fromSymbol": {
-						"type": "string"
-					},
-					"toSymbol": {
-						"type": "string"
-					}
-				},
-				"required": ["amount", "fromSymbol", "toSymbol"]
-			}
-		},
-		{
-			"name": "sellCrypto",
-			"description": "Sells a specified amount of cryptocurrency for a specific symbol. Example: {'name': 'sellCrypto', 'parameters': {'amount': 50, 'fromSymbol': 'BTC', 'toSymbol': 'USD'}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"amount": {
-						"type": "number"
-					},
-					"fromSymbol": {
-						"type": "string"
-					},
-					"toSymbol": {
-						"type": "string"
-					}
-				},
-				"required": ["amount", "fromSymbol", "toSymbol"]
-			}
-		},
-		{
-			"name": "sendMessageBetweenYourContacts",
-			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"userIDs": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						}
-					},
-					"message": {
-						"type": "string"
-					},
-					"isGroupMessage": {
-						"type": "boolean"
-					}
-				},
-				"required": ["userIDs", "message", "isGroupMessage"]
-			}
-		},
-		{
-			"name": "sendContactRequestToUsers",
-			"description": "Sends a contact request to specified User IDs.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"userIDs": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						},
-						"description": "The unique identifiers of the users to whom the contact requests will be sent."
-					}
-				},
-				"required": ["userIDs"]
-			}
-		},
-		{
-			"name": "inviteFriendsByEmail",
-			"description": "Invite friends to join the application by sending them an invitation email.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"emails": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						},
-						"description": "List of email addresses to invite."
-					},
-					"personalMessage": {
-						"type": "string",
-						"description": "Optional. A personal message to include in the invitation email."
-					}
-				}
-			}
-		},
-		{
-			"name": "sendSuperDappMailToYourContacts",
-			"description": "Send a persistent message to the inbox of selected contacts. Different than regular messages which are like chat, this is more like mail within the app.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"userIDs": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						},
-						"description": "List of recipient User IDs."
-					},
-					"subject": {
-						"type": "string",
-						"description": "Subject of the mail."
-					},
-					"message": {
-						"type": "string",
-						"description": "Content of the mail."
-					}
-				},
-				"required": ["userIDs", "subject", "message"]
-			}
-		},
-		{
-			"name": "shareFolderWithYourContacts",
-			"description": "Share a folder with selected contacts.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"userIDs": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						},
-						"description": "List of recipient User IDs."
-					},
-					"permission": {
-						"type": "string",
-						"enum": ["write", "read"],
-						"description": "The permission level (write or read) to grant to the recipients."
-					}
-				},
-				"required": ["userIDs", "permission"]
-			}
-		}
-	],
-	"data_processing": [{
-			"name": "createFolder",
-			"description": "Create a new folder in the user's file storage.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"folderName": {
-						"type": "string",
-						"description": "The name of the new folder."
-					}
-				},
-				"required": ["folderName"]
-			}
-		},
-		{
-			"name": "summarizeURLs",
-			"description": "Creates a summary of the content at the provided URLs. The summary will be concise, highlight the key points, and accept a maximum token size for the summary. URLs must point to text-based content (e.g., TXT, CSV, HTML, JSON, XML, etc.) or PDF files.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"urls": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						}
-					},
-					"context": {
-						"type": "string",
-						"description": "Optional. Additional context to guide the summarization."
-					},
-					"maxTokens": {
-						"type": "integer",
-						"description": "The maximum token size for the summary. Should be at least 1000 usually for usefulness."
-					}
-				},
-				"required": ["urls"]
-			}
-		}
-	],
-	"sensory_perception": [
-	]
+    "information_retrieval": [],
+    "communication": [
+        {
+            "name": "makeAudioOrVideoCallToYourContact",
+            "description": "Initiates a call (audio or video) to another user by their User ID. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeAudioOrVideoCallToYourContact', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "toUserID": {
+                        "type": "string"
+                    },
+                    "isVideo": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "toUserID",
+                    "isVideo"
+                ]
+            }
+        },
+        {
+            "name": "sendCryptoToYourContact",
+            "description": "Sends a specified amount of cryptocurrency to another user by their User ID or address'. Example: {'name': 'sendCryptoToYourContact', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'asset': 'ETH asset object containing id, type, symbol fields'}}. Always verify asset with getAssetIDs first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "toUserID": {
+                        "type": "string"
+                    },
+                    "amount": {
+                        "type": "number"
+                    },
+                    "asset": {
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string"
+                            },
+                            "id": {
+                                "type": "string"
+                            },
+                            "type": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "symbol",
+                            "type",
+                            "id"
+                        ]
+                    }
+                },
+                "required": [
+                    "toUserID",
+                    "amount",
+                    "asset"
+                ]
+            }
+        },
+        {
+            "name": "requestCryptoFromYourContact",
+            "description": "Requests a specified amount of cryptocurrency to receive from another user by their User ID. Example: {'name': 'requestCryptoFromYourContact', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'asset': 'BTC asset object containing id, type, symbol fields'}}. Always verify asset with getAssetIDs first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fromUserID": {
+                        "type": "string"
+                    },
+                    "amount": {
+                        "type": "number"
+                    },
+                    "asset": {
+                        "type": "object",
+                        "properties": {
+                            "symbol": {
+                                "type": "string"
+                            },
+                            "id": {
+                                "type": "string"
+                            },
+                            "type": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "symbol",
+                            "type",
+                            "id"
+                        ]
+                    }
+                },
+                "required": [
+                    "fromUserID",
+                    "amount",
+                    "asset"
+                ]
+            }
+        },
+        {
+            "name": "sendChatMessageToYourContacts",
+            "description": "Sends a chat message to users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendChatMessageToYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "userIDs": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "isGroupMessage": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "userIDs",
+                    "message",
+                    "isGroupMessage"
+                ]
+            }
+        },
+        {
+            "name": "sendContactRequestToUsers",
+            "description": "Sends a contact request to specified User IDs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "userIDs": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "The unique identifiers of the users to whom the contact requests will be sent."
+                    }
+                },
+                "required": [
+                    "userIDs"
+                ]
+            }
+        },
+        {
+            "name": "inviteFriendsByEmail",
+            "description": "Invite friends to join the application by sending them an invitation email.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "emails": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "List of email addresses to invite."
+                    },
+                    "personalMessage": {
+                        "type": "string",
+                        "description": "Optional. A personal message to include in the invitation email."
+                    }
+                }
+            }
+        }
+    ],
+    "data_processing": [
+        {
+            "name": "summarizeURLs",
+            "description": "Creates a summary of the content at the provided URLs. The summary will be concise, highlight the key points, and accept a maximum token size for the summary. URLs must point to text-based content (e.g., TXT, CSV, HTML, JSON, XML, etc.) or PDF files.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "urls": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional. Additional context to guide the summarization."
+                    },
+                    "maxTokens": {
+                        "type": "integer",
+                        "description": "The maximum token size for the summary. Should be atleast 1000 usually for usefulness."
+                    }
+                },
+                "required": [
+                    "urls"
+                ]
+            }
+        }
+    ],
+    "sensory_perception": []
 }

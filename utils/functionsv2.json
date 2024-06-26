@@ -51,8 +51,8 @@
 			}
 		},
 		{
-			"name": "requestCryptoToYourContact",
-			"description": "Requests a specified amount of cryptocurrency from another user by their User ID. Example: {'name': 'requestCryptoToYourContact', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
+			"name": "requestCryptoFromYourContact",
+			"description": "Requests a specified amount of cryptocurrency from another user by their User ID. Example: {'name': 'requestCryptoFromYourContact', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -108,8 +108,8 @@
 			}
 		},
 		{
-			"name": "sendMessageBetweenYourContacts",
-			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendMessageBetweenYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
+			"name": "sendChatMessageToYourContacts",
+			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendChatMessageToYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
 			"parameters": {
 				"type": "object",
 				"properties": {
