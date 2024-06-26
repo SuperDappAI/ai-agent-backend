@@ -132,7 +132,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     def _get_relevant_documents(self, *args, **kwargs):
         pass
 
-    async def _ainvoke(
+    async def _aget_relevant_documents(
         self, query: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
