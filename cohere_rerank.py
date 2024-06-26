@@ -115,7 +115,7 @@ class CohereRerank(BaseDocumentCompressor):
         """
         raise NotImplementedError()
     
-    def acompress_documents(
+    async def acompress_documents(
         self,
         documents: Sequence[Document],
         query: str,
@@ -135,7 +135,7 @@ class CohereRerank(BaseDocumentCompressor):
         compressed = []
         logging.info(
             f"acompress_documents: docs {documents} query {query}")
-        for res in self.rerank(documents, query):
+        for res in await self.rerank(documents, query):
             doc = documents[res["index"]]
             doc_copy = Document(doc.page_content, metadata=deepcopy(doc.metadata))
             doc_copy.metadata["relevance_score"] = res["relevance_score"]
