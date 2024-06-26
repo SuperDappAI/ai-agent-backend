@@ -24,6 +24,7 @@ from qdrant_client.http.models import PayloadSchemaType
 
 class CacheDoc(BaseModel):
     source_url: str
+    category: str
 
 
 class DocAddInput(BaseModel):
@@ -212,7 +213,7 @@ class DocManager:
                 f"DocManager: search_html operation took {end - start} seconds")
             return response, end - start
 
-    def does_source_exist(self, source_url: str):
+    def does_source_exist(self, function_input: CacheDoc):
         result = None
         start = time.time()
         try:
@@ -220,7 +221,11 @@ class DocManager:
                 must=[
                     rest.FieldCondition(
                         key="metadata.source_url",
-                        match=rest.MatchValue(value=source_url),
+                        match=rest.MatchValue(value=function_input.source_url),
+                    ),
+                    rest.FieldCondition(
+                        key="metadata.extra_index",
+                        match=rest.MatchValue(value=function_input.category),
                     )
                 ]
             )
