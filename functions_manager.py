@@ -14,8 +14,8 @@ from typing import List
 from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
-from langchain_community.vectorstores import Qdrant
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from langchain_openai import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.retrievers import ContextualCompressionRetriever
 from cohere_rerank import CohereRerank
@@ -164,10 +164,10 @@ class FunctionsManager:
         result = []
         seen = set()  # Track seen combinations of name and category
         for doc in documents:
-            # Parse the page_content string into a Python dict
-            text = json.loads(doc.page_content)
-            name = text.get('name')
-            category = text.get('category')
+            # Parse the payload string into a Python dict
+            payload = doc.payload
+            name = payload.get('name')
+            category = payload.get('category')
 
             # Check if this combination has been seen before
             if (name, category) not in seen:
@@ -190,7 +190,6 @@ class FunctionsManager:
             self.inited = True
         memory = self.load(function_input.api_key)
         response = []
-        # loop = asyncio.get_event_loop()
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
@@ -200,11 +199,12 @@ class FunctionsManager:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
                     # update last_accessed_at
-                    ids = [doc.metadata["id"] for doc in documents]
+                    ids = [doc.payload["id"]
+                           for doc in documents if "id" in doc.payload]
                     for doc in documents:
-                        doc.metadata.pop('relevance_score', None)
-                    await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
-                    # loop.run_in_executor(None, self.prune_functions)
+                        doc.payload.pop('relevance_score', None)
+                    if ids:
+                        await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
         except Exception as e:
             logging.warn(
                 f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
@@ -215,33 +215,58 @@ class FunctionsManager:
             return response, end-start
 
     async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
-        kwargs = {}
-        if len(category) > 0:
-            kwargs["extra_index"] = category
-        # if user provided then look for null or direct matches, otherwise look for null so it matches public functions
+        # Construct the base filter
+        conditions = []
+        if category:
+            conditions.append(
+                rest.FieldCondition(
+                    key="metadata.extra_index",
+                    match=rest.MatchValue(value=category),
+                )
+            )
+
+        # Add user filter conditions
         if user_id:
-            filter = rest.Filter(
-                should=[
-                    rest.FieldCondition(
-                        key="metadata.user_id",
-                        match=rest.MatchValue(value=user_id),
-                    ),
-                    rest.IsNullCondition(
-                        is_null=rest.PayloadField(key="metadata.user_id")
-                    )
-                ]
+            conditions.append(
+                rest.FieldCondition(
+                    key="metadata.user_id",
+                    match=rest.MatchValue(value=user_id),
+                )
             )
-            kwargs["user_filter"] = filter
+            conditions.append(
+                rest.IsNullCondition(
+                    is_null=rest.PayloadField(key="metadata.user_id")
+                )
+            )
         else:
-            filter = rest.Filter(
-                should=[
-                    rest.IsNullCondition(
-                        is_null=rest.PayloadField(key="metadata.user_id")
-                    )
-                ]
+            conditions.append(
+                rest.IsNullCondition(
+                    is_null=rest.PayloadField(key="metadata.user_id")
+                )
             )
-            kwargs["user_filter"] = filter
-        return await memory.aget_relevant_documents(query_str, **kwargs)
+
+        combined_filter = rest.Filter(
+            should=conditions
+        )
+
+        # Initialize OpenAI embeddings
+        embeddings = OpenAIEmbeddings(
+            model="text-embedding-3-small", openai_api_key="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")
+
+        # Vectorize the query string
+        query_vector = embeddings.embed_query(query_str)
+
+        # Perform the search asynchronously
+        search_results = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: memory.base_retriever.vectorstore.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                query_filter=combined_filter
+            )
+        )
+
+        return search_results
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
     def load(self, api_key: str):

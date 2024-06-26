@@ -194,7 +194,7 @@ class GenerativeAgentMemory(BaseMemory):
         conversation_id = kwargs.pop("conversation_id")
         if current_time is not None:
             with mock_now(current_time):
-                return await self.memory_retriever.aget_relevant_documents(topic)
+                return await self.memory_retriever.ainvoke(topic)
         else:
             if conversation_id != "":
                 kwargs.update({"filter": rest.Filter(
@@ -205,7 +205,7 @@ class GenerativeAgentMemory(BaseMemory):
                         )
                     ]
                 )})
-            return await self.memory_retriever.aget_relevant_documents(topic, **kwargs)
+            return await self.memory_retriever.ainvoke(topic, **kwargs)
 
     def _time_ago(self, timestamp: float) -> str:
         """Return a rough string representation of the time passed since a timestamp."""

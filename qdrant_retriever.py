@@ -5,7 +5,7 @@ from langchain.schema import BaseRetriever, Document
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from datetime import timedelta
-from langchain_community.vectorstores import Qdrant
+from langchain_qdrant import Qdrant
 from rate_limiter import RateLimiter, SyncRateLimiter
 from typing import (
     List,
@@ -116,7 +116,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
         docs = []
         for record in results:
             document = self.vectorstore._document_from_scored_point(
-                record, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
+                record, self.collection_name, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
             )
 
             # Increment the summarizations count
@@ -132,7 +132,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
     def _get_relevant_documents(self, *args, **kwargs):
         pass
 
-    async def _aget_relevant_documents(
+    async def _ainvoke(
         self, query: str, **kwargs
     ) -> List[Document]:
         """Return documents that are relevant to the query."""
@@ -173,7 +173,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
             self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit=1)
         if record is not None and len(record) > 0:
             return self.vectorstore._document_from_scored_point(
-                record[0], self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
+                record[0], self.collection_name, self.vectorstore.content_payload_key, self.vectorstore.metadata_payload_key
             )
         else:
             return None

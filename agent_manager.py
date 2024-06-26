@@ -6,12 +6,12 @@ import traceback
 import cachetools.func
 
 from dotenv import load_dotenv
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from cohere_rerank import CohereRerank
 from generative_memory import GenerativeAgentMemory
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain_community.vectorstores import Qdrant
+from langchain_qdrant import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType

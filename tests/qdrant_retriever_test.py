@@ -5,8 +5,8 @@ from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.schema import Document
 from qdrant_client import QdrantClient
-from langchain_community.vectorstores import Qdrant
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from langchain_openai import OpenAIEmbeddings
 from datetime import datetime
 from dotenv import load_dotenv
 from rate_limiter import RateLimiter, SyncRateLimiter
