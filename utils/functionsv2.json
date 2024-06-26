@@ -1,0 +1,454 @@
+{
+	"information_retrieval": [
+	],
+	"communication": [{
+			"name": "translateText",
+			"description": "Performs a Google translation. Example: {'name': 'translateText', 'parameters': {'q': 'translate from english to german: good morning'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the translation query. Should follow the format 'translate from [source language] to [target language]: [text to translate]'."
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "makeAudioOrVideoCallToYourContact",
+			"description": "Initiates a call (audio or video) to another user by their User ID. The type of call is determined by 'isVideo'. If 'isVideo' is true, it initiates a video call; if false, an audio call. Example: {'name': 'makeAudioOrVideoCallToYourContact', 'parameters': {'toUserID': '1234', 'isVideo': true}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"toUserID": {
+						"type": "string"
+					},
+					"isVideo": {
+						"type": "boolean"
+					}
+				},
+				"required": ["toUserID", "isVideo"]
+			}
+		},
+		{
+			"name": "sendCryptoToYourContact",
+			"description": "Sends a specified amount of cryptocurrency to another user by their User ID or address'. Example: {'name': 'sendCryptoToYourContact', 'parameters': {'toUserID': '1234', 'amount': 10.5, 'symbol': 'ETH'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"toUserID": {
+						"type": "string"
+					},
+					"amount": {
+						"type": "number"
+					},
+					"symbol": {
+						"type": "string"
+					}
+				},
+				"required": ["toUserID", "amount", "symbol"]
+			}
+		},
+		{
+			"name": "requestCryptoFromYourContact",
+			"description": "Requests a specified amount of cryptocurrency from another user by their User ID. Example: {'name': 'requestCryptoFromYourContact', 'parameters': {'fromUserID': '1234', 'amount': 5.2, 'symbol': 'BTC'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"fromUserID": {
+						"type": "string"
+					},
+					"amount": {
+						"type": "number"
+					},
+					"symbol": {
+						"type": "string"
+					}
+				},
+				"required": ["fromUserID", "amount", "symbol"]
+			}
+		},
+		{
+			"name": "buyCrypto",
+			"description": "Buys a specified amount of cryptocurrency using a specific symbol. Example: {'name': 'buyCrypto', 'parameters': {'amount': 100, 'fromSymbol': 'USD', 'toSymbol': 'BTC'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"amount": {
+						"type": "number"
+					},
+					"fromSymbol": {
+						"type": "string"
+					},
+					"toSymbol": {
+						"type": "string"
+					}
+				},
+				"required": ["amount", "fromSymbol", "toSymbol"]
+			}
+		},
+		{
+			"name": "sellCrypto",
+			"description": "Sells a specified amount of cryptocurrency for a specific symbol. Example: {'name': 'sellCrypto', 'parameters': {'amount': 50, 'fromSymbol': 'BTC', 'toSymbol': 'USD'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"amount": {
+						"type": "number"
+					},
+					"fromSymbol": {
+						"type": "string"
+					},
+					"toSymbol": {
+						"type": "string"
+					}
+				},
+				"required": ["amount", "fromSymbol", "toSymbol"]
+			}
+		},
+		{
+			"name": "sendChatMessageToYourContacts",
+			"description": "Sends a message between users by their User ID. Either as a direct message or in a group. Example: {'name': 'sendChatMessageToYourContacts', 'parameters': {'userIDs': ['1234', '5678'], 'message': 'Hello', 'isGroupMessage': false}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"message": {
+						"type": "string"
+					},
+					"isGroupMessage": {
+						"type": "boolean"
+					}
+				},
+				"required": ["userIDs", "message", "isGroupMessage"]
+			}
+		},
+		{
+			"name": "sendContactRequestToUsers",
+			"description": "Sends a contact request to specified User IDs.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the users to whom the contact requests will be sent."
+					}
+				},
+				"required": ["userIDs"]
+			}
+		},
+
+
+		{
+			"name": "deleteYourContacts",
+			"description": "Deletes specified users from the contact list.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the users to be deleted from the contact list."
+					}
+				},
+				"required": ["userIDs"]
+			}
+		},
+		{
+			"name": "deleteYourConversations",
+			"description": "Deletes specified conversations from the user's conversation list.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"conversationIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the conversations to be deleted."
+					}
+				},
+				"required": ["conversationIDs"]
+			}
+		},
+		{
+			"name": "findMutualFreeTimeWithYourContacts",
+			"description": "Finds a mutual free time slot with the specified users.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The users with whom to find a mutual free time slot."
+					},
+					"start": {
+						"type": "string",
+						"description": "The start of the time range within which to find a mutual free time slot."
+					},
+					"end": {
+						"type": "string",
+						"description": "The end of the time range within which to find a mutual free time slot."
+					}
+				},
+				"required": ["userIDs", "start", "end"]
+			}
+		},
+		{
+			"name": "scheduleCallWithYourContacts",
+			"description": "Schedules a call with specified users at a specified time.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The IDs of the users with whom to schedule the call."
+					},
+					"time": {
+						"type": "string",
+						"format": "date-time",
+						"description": "The time at which to schedule the call."
+					}
+				},
+				"required": ["userIDs", "time"]
+			}
+		},
+		{
+			"name": "getYourCryptoTransactions",
+			"description": "Retrieves the transaction history of the user for a specific cryptocurrency.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"symbol": {
+						"type": "string",
+						"description": "The symbol of the cryptocurrency to fetch the transaction history for."
+					}
+				},
+				"required": ["symbol"]
+			}
+		},
+		{
+			"name": "fetchConversationsWithYourContacts",
+			"description": "Fetches conversations based on provided filters.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"filters": {
+						"type": "object",
+						"description": "The filters to apply when fetching conversations. Possible filters can be by participants, keywords, dates, etc."
+					}
+				},
+				"required": []
+			}
+		},
+		{
+			"name": "fetchYourContactsFromConversations",
+			"description": "Fetches contacts based on provided conversation IDs and filters.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"conversationIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "The unique identifiers of the conversations to fetch contacts from."
+					},
+					"filters": {
+						"type": "object",
+						"description": "Optional. The filters to apply when fetching contacts. Possible filters can be by name, email, user IDs, etc."
+					},
+					"onlineStatus": {
+						"type": "string",
+						"description": "The online status of the contacts to fetch. Can be 'online', 'offline', 'away', etc."
+					}
+				},
+				"required": ["conversationIDs"]
+			}
+		},
+		{
+			"name": "inviteFriendsByEmail",
+			"description": "Invite friends to join the application by sending them an invitation email.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"emails": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of email addresses to invite."
+					},
+					"personalMessage": {
+						"type": "string",
+						"description": "Optional. A personal message to include in the invitation email."
+					}
+				}
+			}
+		},
+		{
+			"name": "sendSuperDappMailToYourContacts",
+			"description": "Send a persistent message to the inbox of selected contacts. Different than regular messages which are like chat, this is more like mail within the app.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of recipient User IDs."
+					},
+					"subject": {
+						"type": "string",
+						"description": "Subject of the mail."
+					},
+					"message": {
+						"type": "string",
+						"description": "Content of the mail."
+					}
+				},
+				"required": ["userIDs", "subject", "message"]
+			}
+		},
+		{
+			"name": "shareFolderWithYourContacts",
+			"description": "Share a folder with selected contacts.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"userIDs": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of recipient User IDs."
+					},
+					"permission": {
+						"type": "string",
+						"enum": ["write", "read"],
+						"description": "The permission level (write or read) to grant to the recipients."
+					}
+				},
+				"required": ["userIDs", "permission"]
+			}
+		},
+		{
+			"name": "sendEmail",
+			"description": "Send an email to specified recipients with a given subject and message.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of email addresses to send the email to."
+					},
+					"subject": {
+						"type": "string",
+						"description": "The subject of the email."
+					},
+					"message": {
+						"type": "string",
+						"description": "The content of the email message."
+					}
+				},
+				"required": ["to", "subject", "message"]
+			}
+		}
+
+	],
+	"data_processing": [{
+			"name": "createFolder",
+			"description": "Create a new folder in the user's file storage.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"folderName": {
+						"type": "string",
+						"description": "The name of the new folder."
+					}
+				},
+				"required": ["folderName"]
+			}
+		},
+		{
+			"name": "createOrMoveTextFile",
+			"description": "Create a new text file in the user's file storage or move a downloaded file handle to the user's local storage for persistence.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"fileName": {
+						"type": "string",
+						"description": "The name of the new file or the downloaded file to be moved."
+					},
+					"fileContent": {
+						"type": "string",
+						"description": "The content to write in the new file. Not required when moving a downloaded file."
+					},
+					"downloadedFilePath": {
+						"type": "string",
+						"description": "The path of the downloaded file to be moved. Required when moving a downloaded file."
+					}
+				},
+				"required": ["fileName"]
+			}
+		},
+		{
+			"name": "summarizeURLs",
+			"description": "Creates a summary of the content at the provided URLs. The summary will be concise, highlight the key points, and accept a maximum token size for the summary. URLs must point to text-based content (e.g., TXT, CSV, HTML, JSON, XML, etc.) or PDF files.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"urls": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"context": {
+						"type": "string",
+						"description": "Optional. Additional context to guide the summarization."
+					},
+					"maxTokens": {
+						"type": "integer",
+						"description": "The maximum token size for the summary. Should be at least 1000 usually for usefulness."
+					}
+				},
+				"required": ["urls"]
+			}
+		}
+	],
+	"sensory_perception": [{
+		"name": "doImageAnalysis",
+		"description": "Performs a Google Lens call based on an image URL or file handle. Can do image recognition and transcribe it or extract text. Example: {'name': 'doImageAnalysis', 'parameters': {'url': 'https://example.com/image.jpg'}}",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"url": {
+					"type": "string",
+					"description": "Defines the URL or file handle of an image to perform the Google Lens call."
+				}
+			},
+			"required": ["url"]
+		}
+	}]
+}

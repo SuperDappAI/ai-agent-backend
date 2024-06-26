@@ -1,41 +1,58 @@
 import time
 import logging
-import os
-from dotenv import load_dotenv
-from langchain.schema import SystemMessage, ChatMessage
-from langchain.chat_models import ChatOpenAI
-import re
+import asyncio
+import traceback
+
+from langchain_community.chat_models import ChatOpenAI
+from pydantic import BaseModel
+from langchain.schema import SystemMessage, HumanMessage
+from preferences_resolver import PreferencesResolver
+from classify_prompts import ClassifyPrompts
+
+
+class QueryPlanInput(BaseModel):
+    api_key: str
+    query: str
+    conversation_id: str
 
 
 class QueryPlanManager:
+    classifyPrompts: ClassifyPrompts
+
     def __init__(self):
-        load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")
+        self.classify_prompts = ClassifyPrompts()
 
-        # gpt-4
-        self.llm = ChatOpenAI(model='gpt-4', temperature=0)
-
-        self.system_message = SystemMessage(content="Let's first understand the problem and devise a plan to solve the problem."
-                                            " Please output the plan starting with the header 'Plan:' "
-                                            "and then followed by a numbered list of steps. "
-                                            "Please make the plan the minimum number of steps required "
-                                            "to accurately complete the task. If the task is a question, "
-                                            "the final step should almost always be 'Given the above steps taken, "
-                                            "please respond to the users original question'. "
-                                            "At the end of your plan, say '<END_OF_PLAN>'")
-
-    def parse(self, text: str):
-        steps = [v for v in re.split("\n\s*\d+\. ", text)[1:]]
-        return steps
-
-    def query_plan(self, query):
+    async def query_plan(self, preferences_resolver: PreferencesResolver, query_input: QueryPlanInput):
         start = time.time()
-
-        messages = [self.system_message, ChatMessage(
-            content=str(query), role="user")]
-        response = self.llm(messages)
-        logging.info(response.content)
+        roleDB = await preferences_resolver.get_role(query_input.conversation_id)
+        if roleDB is None:
+            try:
+                messages = [[SystemMessage(content=self.classify_prompts.to_prompt_string()),
+                             HumanMessage(content=query_input.query)]]
+                llm = ChatOpenAI(model='gpt-3.5-turbo-0125', temperature=0,
+                                 max_tokens=8, openai_api_key=query_input.api_key)
+                response = await llm.agenerate(messages)
+                if not response.generations or not response.generations[0]:
+                    raise Exception(
+                        "LLM did not provide a valid summary response.")
+                result = response.generations[0][0].text
+                role = self.classify_prompts.parseClassification(result)
+                if role is None:
+                    end = time.time()
+                    return "No plan needed", {end - start}
+                asyncio.create_task(preferences_resolver.set_role(
+                    result, query_input.conversation_id))
+            except Exception as e:
+                logging.warn(
+                    f"QueryPlanManager: query_plan exception, e: {e}\n{traceback.format_exc()}")
+                end = time.time()
+                return "No plan needed", {end - start}
+        else:
+            role = self.classify_prompts.parseClassification(roleDB)
+            if role is None:
+                end = time.time()
+                return "No plan needed", {end - start}
         end = time.time()
         logging.info(
             f"QueryPlanManager: query_plan operation took {end - start} seconds")
-        return self.parse(response.content), {end - start}
+        return role, {end - start}

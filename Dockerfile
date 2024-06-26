@@ -8,6 +8,7 @@ WORKDIR /var/www
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=UTCv
+ENV PYTHONUNBUFFERED=1
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
@@ -15,7 +16,7 @@ RUN apt-get update && apt-get install -y software-properties-common
 
 RUN apt-get update \
     && apt -y upgrade \
-    && apt-get install -y curl nginx ca-certificates zip unzip git supervisor python3-pip ssl-cert\
+    && apt-get install -y curl nginx ca-certificates zip unzip git supervisor python3-pip ssl-cert telnet file\
     && apt-get update \
     && apt-get -y autoremove \
     && apt-get clean \
@@ -30,7 +31,8 @@ COPY . /var/www
 
 # Install any needed packages specified in requirements.txt
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
 # Make port 80 available to the world outside this container
 #EXPOSE 80

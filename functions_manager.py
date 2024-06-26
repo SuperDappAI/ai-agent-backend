@@ -1,13 +1,12 @@
 import time
 import tiktoken
-import schedule
 import json
-import asyncio
-import threading
 import os
 import random
+import asyncio
 import logging
 import traceback
+import cachetools.func
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
@@ -15,13 +14,14 @@ from typing import List
 from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
-from langchain.vectorstores import Qdrant
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from langchain_openai import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import CohereRerank
+from cohere_rerank import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
+from qdrant_client.http.models import PayloadSchemaType
 
 
 class ActionItem(BaseModel):
@@ -29,74 +29,96 @@ class ActionItem(BaseModel):
     intent: str
     category: str
 
+    def __str__(self):
+        return self.action + self.intent + self.category
+
+    def __eq__(self, other):
+        return self.action == other.action and self.intent == other.intent and self.category == other.category
+
+    def __hash__(self):
+        return hash(str(self))
+
 
 class FunctionInput(BaseModel):
+    api_key: str
+    user_id: str = None
     action_items: List[ActionItem] = Field(..., example=[
                                            {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
 
+    def __str__(self):
+        if self.user_id:
+            return str(self.action_items) + self.user_id
+        else:
+            return str(self.action_items)
 
-class FunctionsManager1:
-    scheduler = schedule.Scheduler()
+    def __eq__(self, other):
+        if self.user_id:
+            return self.action_items == other.action_items and self.user_id == other.user_id
+        else:
+            return self.action_items == other.action_items
 
-    def __init__(self):
+    def __hash__(self):
+        return hash(str(self))
+
+
+class FunctionItem(BaseModel):
+    name: str
+    description: str
+    category: str
+
+
+class FunctionOutput(BaseModel):
+    api_key: str
+    user_id: str = None
+    functions: List[FunctionItem] = Field(..., example=[
+        {"name": "name_example", "description": "description_example", "category": "category_example"}])
+
+
+class FunctionsManager:
+
+    def __init__(self, rate_limiter, rate_limiter_sync):
         load_dotenv()  # Load environment variables
-        os.getenv("OPENAI_API_KEY")
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         os.getenv("COHERE_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.embeddings = OpenAIEmbeddings()
         self.index = None
+        self.rate_limiter = rate_limiter
+        self.rate_limiter_sync = rate_limiter_sync
         self.max_length_allowed = 512
-        self.retriever = None
-        self.scheduler.every(2).weeks.do(self.prune_functions)
+        self.collection_name = "functions"
+        self.client = QdrantClient(
+            url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        self.inited = False
 
-        # Create new thread for schedule
-        self.stop_event = threading.Event()
-        self.scheduler_thread = threading.Thread(target=self.run_continuously)
-        self.scheduler_thread.start()
-
-    def run_continuously(self):
-        """Keep checking and running pending tasks every second."""
-        while not self.stop_event.is_set():
-            self.scheduler.run_pending()
-            time.sleep(1)
-
-    def stop(self):
-        """Stops the scheduler thread."""
-        self.stop_event.set()
-        self.scheduler_thread.join()
-
-    def create_new_functions_retriever(self):
+    def create_new_functions_retriever(self, api_key: str):
         """Create a new vector store retriever unique to the agent."""
-        collection_name = "functions"
-        client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
-        was_created = False
         # create collection if it doesn't exist (if it exists it will fall into finally)
         try:
-            client.create_collection(
-                on_disk_payload=True,
-                collection_name=collection_name,
+            self.client.create_collection(
+                collection_name=self.collection_name,
                 vectors_config=rest.VectorParams(
                     size=1536,
                     distance=rest.Distance.COSINE,
                 ),
             )
-            was_created = True
-        except Exception as e:
-            logging.warn(f"FunctionsManager: create_new_functions_retriever exception {e}\n{traceback.format_exc()}")
+            self.client.create_payload_index(
+                self.collection_name, "metadata.user_id", field_schema=PayloadSchemaType.KEYWORD)
+        except:
+            logging.info(f"FunctionsManager: loaded from cloud...")
         finally:
             logging.info(
-                f"FunctionsManager: Creating memory store with collection {collection_name}")
-            vectorstore = Qdrant(client, collection_name, self.embeddings)
+                f"FunctionsManager: Creating memory store with collection {self.collection_name}")
+            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
+                model="text-embedding-3-small", openai_api_key=api_key))
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    collection_name=collection_name, client=client, vectorstore=vectorstore,
+                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
                 )
             )
-            return was_created, compression_retriever
+            return compression_retriever
 
-    def transform(self, data, category):
+    def transform(self, user_id, data, category):
         """Transforms function data for a specific category."""
         now = datetime.now().timestamp()
         result = []
@@ -110,6 +132,7 @@ class FunctionsManager1:
                 continue
             metadata = {
                 "id":  random.randint(0, 2**32 - 1),
+                "user_id": user_id,
                 "extra_index": category,
                 "last_accessed_at": now,
             }
@@ -127,7 +150,7 @@ class FunctionsManager1:
                           'data_processing',
                           'sensory_perception']
 
-        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-0125")
         tokens = []
         for func_type in function_types:
             if func_type in functions:
@@ -156,53 +179,85 @@ class FunctionsManager1:
     async def pull_functions(self, function_input: FunctionInput):
         """Fetch functions based on a query."""
         start = time.time()
+        if self.inited is False:
+            try:
+                self.client.get_collection(self.collection_name)
+            except:
+                with open('./utils/functions.json', 'r') as f:
+                    print("FunctionsManager: Loading from functions.json")
+                    functions_json = json.load(f)
+                    await self.push_functions(function_input.user_id, function_input.api_key, functions_json)
+            self.inited = True
+        memory = self.load(function_input.api_key)
         response = []
+        # loop = asyncio.get_event_loop()
         try:
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                documents = self.get_retrieved_nodes(
-                    query, action_item.category)
+                documents = await self.get_retrieved_nodes(memory,
+                                                           query, action_item.category, function_input.user_id)
                 if len(documents) > 0:
                     parsed_response = self.extract_name_and_category(documents)
                     response.append(parsed_response)
+                    # update last_accessed_at
                     ids = [doc.metadata["id"] for doc in documents]
                     for doc in documents:
                         doc.metadata.pop('relevance_score', None)
-                    asyncio.create_task(self.retriever.base_retriever.vectorstore.aadd_documents(documents, ids=ids, wait = False))
+                    await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
+                    # loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
-            logging.warn(f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(
                 f"FunctionsManager: pull_functions operation took {end - start} seconds")
             return response, end-start
 
-    def get_retrieved_nodes(self, query_str: str, category: str):
-        kwargs = {"extra_index": category}
-        return self.retriever.get_relevant_documents(query_str, **kwargs)
+    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
+        kwargs = {}
+        if len(category) > 0:
+            kwargs["extra_index"] = category
+        # if user provided then look for null or direct matches, otherwise look for null so it matches public functions
+        if user_id:
+            filter = rest.Filter(
+                should=[
+                    rest.FieldCondition(
+                        key="metadata.user_id",
+                        match=rest.MatchValue(value=user_id),
+                    ),
+                    rest.IsNullCondition(
+                        is_null=rest.PayloadField(key="metadata.user_id")
+                    )
+                ]
+            )
+            kwargs["user_filter"] = filter
+        else:
+            filter = rest.Filter(
+                should=[
+                    rest.IsNullCondition(
+                        is_null=rest.PayloadField(key="metadata.user_id")
+                    )
+                ]
+            )
+            kwargs["user_filter"] = filter
+        return await memory.ainvoke(query_str, **kwargs)
 
-    async def load(self):
+    @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
+    def load(self, api_key: str):
         """Load existing index data from the filesystem for a specific user."""
         start = time.time()
-        was_created, self.retriever = self.create_new_functions_retriever()
-        logging.info(
-            f"FunctionsManager: load create_new_functions_retriever was_created? {was_created}")
-        if was_created:
-            logging.info(
-                f"FunctionsManager: unittest not in sys.modules.keys()")
-            # If loading was unsuccessful (e.g., no data on the filesystem), load functions from JSON file
-            with open('./utils/functions.json', 'r') as f:
-                print("FunctionsManager: Loading from functions.json")
-                functions_json = json.load(f)
-                await self.push_functions(functions_json)
+        memory = self.create_new_functions_retriever(api_key)
         end = time.time()
         logging.info(
             f"FunctionsManager: Load operation took {end - start} seconds")
+        return memory
 
-    async def push_functions(self, functions):
+    async def push_functions(self, user_id: str, api_key: str, functions):
         """Update the current index with new functions."""
         start = time.time()
         tokens = None
+        memory = self.load(api_key)
         try:
             logging.info("FunctionsManager: adding functions to index...")
 
@@ -217,13 +272,14 @@ class FunctionsManager1:
             for func_type in function_types:
                 if func_type in functions:
                     transformed_functions = self.transform(
-                        functions[func_type], func_type.replace('_', ' ').title())
+                        user_id, functions[func_type], func_type.replace('_', ' ').title())
                     all_docs.extend(transformed_functions)
             ids = [doc.metadata["id"] for doc in all_docs]
-            await self.retriever.base_retriever.vectorstore.aadd_documents(all_docs, ids=ids)
+            await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
-            logging.warn(f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(
@@ -235,22 +291,27 @@ class FunctionsManager1:
         def attempt_prune():
             current_time = datetime.now()
             six_weeks_ago = current_time - timedelta(weeks=6)
-            if self.retriever is None:
-                loop = asyncio.new_event_loop()  
-                asyncio.set_event_loop(loop)  
-                loop.run_until_complete(self.load())  
-                loop.close()
-            self.retriever.base_retriever.prune_from(six_weeks_ago.timestamp())
-
+            filter = rest.Filter(
+                must=[
+                    rest.FieldCondition(
+                        key="metadata.last_accessed_at",
+                        range=rest.Range(lte=six_weeks_ago.timestamp()),
+                    )
+                ]
+            )
+            self.client.delete(
+                collection_name=self.collection_name, points_selector=filter)
         try:
             attempt_prune()
         except Exception as e:
-            logging.warn(f"FunctionsManager: prune_functions exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"FunctionsManager: prune_functions exception {e}\n{traceback.format_exc()}")
             # Attempt a second prune after reload
             try:
                 attempt_prune()
             except Exception as e:
                 # If prune after reload fails, propagate the error upwards
-                logging.error(f"FunctionsManager: prune_functions failed after reload, exception {e}\n{traceback.format_exc()}")
+                logging.error(
+                    f"FunctionsManager: prune_functions failed after reload, exception {e}\n{traceback.format_exc()}")
                 raise
         return True

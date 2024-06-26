@@ -1,0 +1,75 @@
+import pytest
+import requests
+import os
+
+@pytest.fixture
+def url():
+    return "http://localhost:8000" # Modify as needed
+
+def test_query_plan(url):
+    test_api_key = os.getenv("OPENAI_API_KEY")
+    mock_data = {"api_key": f"{test_api_key}", "query": "Compare the temperature in Sydney to that of London today"}
+    response = requests.post(f"{url}/query_plan/", json=mock_data)
+    assert response.status_code == 200
+    assert "response" in response.json()
+    assert "elapsed_time" in response.json()
+
+def test_memory_output(url):
+    test_api_key = os.getenv("OPENAI_API_KEY")
+    mock_data = {
+        "api_key": f"{test_api_key}",
+        "user_id": "1",
+        "query": "test",
+        "llm_response": "response",
+        "conversation_id": "1"
+    }
+    response = requests.post(f"{url}/push_memory/", json=mock_data)
+    assert response.status_code == 200
+    assert "elapsed_time" in response.json()
+
+def test_memory_input(url):
+    test_api_key = os.getenv("OPENAI_API_KEY")
+    mock_data = {
+        "api_key": f"{test_api_key}",
+        "user_id": "1",
+        "query": "test",
+        "conversation_id": "1",
+        "summary": True
+    }
+    response = requests.post(f"{url}/pull_memory/", json=mock_data)
+    assert response.status_code == 200
+    assert "response" in response.json()
+    assert "elapsed_time" in response.json()
+
+def test_semantic_search_html(url):
+    test_api_key = os.getenv("OPENAI_API_KEY")
+    mock_data = {
+        "api_key": f"{test_api_key}",
+        "action_items": [{"source_url": "http://example.com", "html_doc": "text1"}],
+        "hash": "ffff",
+        "query": "test"
+    }
+    response = requests.post(f"{url}/semantic_search_html/", json=mock_data)
+    assert response.status_code == 200
+    assert "response" in response.json()
+    assert "elapsed_time" in response.json()
+
+def test_get_functions(url):
+    test_api_key = os.getenv("OPENAI_API_KEY")
+    mock_data = {"api_key": f"{test_api_key}", "action_items": [{"action": "search stocks", "intent": "get price of aapl", "category": "information retrieval"}]}
+    response = requests.post(f"{url}/get_functions/", json=mock_data)
+    assert response.status_code == 200
+    assert "response" in response.json()
+    assert "elapsed_time" in response.json()
+
+def test_clear_user_memory(url):
+    mock_data = {"user_id": "1test", "conversation_id": "1test"}
+    response = requests.post(f"{url}/clear_conversation/", json=mock_data)
+    assert response.status_code == 200
+    assert "response" in response.json()
+    assert "elapsed_time" in response.json()
+
+def test_test_callback(url):
+    response = requests.get(f"{url}/test_callback/")
+    assert response.status_code == 200
+    assert "test" in response.json()
