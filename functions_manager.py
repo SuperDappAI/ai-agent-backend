@@ -251,7 +251,7 @@ class FunctionsManager:
 
         # Initialize OpenAI embeddings
         embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", openai_api_key="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")
+            model="text-embedding-3-small", openai_api_key=os.getenv("OPENAI_API_KEY"))
 
         # Vectorize the query string
         query_vector = embeddings.embed_query(query_str)
