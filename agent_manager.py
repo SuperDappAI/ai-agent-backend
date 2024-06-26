@@ -79,8 +79,8 @@ class AgentManager:
             # update preferences on every exchange but only save summarized memory of a "finished" exchange, reflect on an important summarized memory and then decay memories
             asyncio.create_task(memory.pause_to_reflect(
                 memory_output.dict(), self.preferences_resolver))
-            asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key,
-                                model="gpt-3.5-turbo-0125", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
+            # asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key,
+                               #  model="gpt-3.5-turbo-0125", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
             # decay memory by summarizing it continiously until max_summarizations then prune
             asyncio.create_task(memory.decay())
         except Exception as e:

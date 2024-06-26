@@ -12,6 +12,7 @@ from langchain.retrievers.document_compressors.base import BaseDocumentCompresso
 from langchain.utils import get_from_dict_or_env
 import logging
 
+
 @deprecated(
     since="0.0.30", removal="0.2.0", alternative_import="langchain_cohere.CohereRerank"
 )
@@ -51,7 +52,8 @@ class CohereRerank(BaseDocumentCompressor):
                 values, "cohere_api_key", "COHERE_API_KEY"
             )
             client_name = values.get("user_agent", "langchain")
-            values["client"] = cohere.AsyncClient(cohere_api_key, client_name=client_name)
+            values["client"] = cohere.AsyncClient(
+                cohere_api_key, client_name=client_name)
         return values
 
     async def rerank(
@@ -114,7 +116,7 @@ class CohereRerank(BaseDocumentCompressor):
             A sequence of compressed documents.
         """
         raise NotImplementedError()
-    
+
     async def acompress_documents(
         self,
         documents: Sequence[Document],
@@ -133,13 +135,12 @@ class CohereRerank(BaseDocumentCompressor):
             A sequence of compressed documents.
         """
         compressed = []
-        logging.info(
-            f"acompress_documents: docs {documents} query {query}")
+        # logging.info(f"acompress_documents: docs {documents} query {query}")
         for res in await self.rerank(documents, query):
             doc = documents[res["index"]]
-            doc_copy = Document(doc.page_content, metadata=deepcopy(doc.metadata))
+            doc_copy = Document(
+                doc.page_content, metadata=deepcopy(doc.metadata))
             doc_copy.metadata["relevance_score"] = res["relevance_score"]
             compressed.append(doc_copy)
-        logging.info(
-            f"acompress_documents: compressed {compressed} query {query}")
+        # logging.info(f"acompress_documents: compressed {compressed} query {query}")
         return compressed
