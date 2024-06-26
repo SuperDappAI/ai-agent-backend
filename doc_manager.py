@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
 from qdrant_client import QdrantClient
 from pydantic import BaseModel
-from langchain_community.vectorstores import Qdrant
+from langchain_qdrant import Qdrant
 from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
 from cohere_rerank import CohereRerank
 from langchain.schema import Document
@@ -117,7 +117,7 @@ class DocManager:
                 )
             ]
         )
-        result = await memory.aget_relevant_documents(function_input.query, filter=filter)
+        result = await memory.ainvoke(function_input.query, filter=filter)
         return result
 
     @cachetools.func.lru_cache(maxsize=16384)

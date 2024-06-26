@@ -7,13 +7,13 @@ from dotenv import load_dotenv
 from typing import Any, Dict, List
 from document_summarizer import FlexibleDocumentSummarizer
 from langchain_community.chat_models import ChatOpenAI
-from langchain_community.vectorstores import Qdrant
+from langchain_qdrant import Qdrant
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.retrievers import ContextualCompressionRetriever
 from qdrant_retriever import QDrantVectorStoreRetriever
 from cohere_rerank import CohereRerank
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 
 

@@ -14,8 +14,8 @@ from typing import List
 from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
-from langchain_community.vectorstores import Qdrant
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from langchain_openai import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.retrievers import ContextualCompressionRetriever
 from cohere_rerank import CohereRerank
@@ -241,7 +241,7 @@ class FunctionsManager:
                 ]
             )
             kwargs["user_filter"] = filter
-        return await memory.aget_relevant_documents(query_str, **kwargs)
+        return await memory.ainvoke(query_str, **kwargs)
 
     @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
     def load(self, api_key: str):
