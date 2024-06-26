@@ -125,10 +125,10 @@ async def deleteDoc(function_input: DocDeleteInput):
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/is_doc_cached/')
-async def isDocCached(cache_html: CacheDoc):
+async def isDocCached(function_input: CacheDoc):
     """Endpoint to check if doc content is cached."""
     logging.info('Checking if doc is cached')
-    result, elapsed_time = doc_manager.does_source_exist(cache_html.source_url)
+    result, elapsed_time = doc_manager.does_source_exist(function_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/search_doc/')
