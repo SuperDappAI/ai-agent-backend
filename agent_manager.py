@@ -80,7 +80,7 @@ class AgentManager:
             asyncio.create_task(memory.pause_to_reflect(
                 memory_output.dict(), self.preferences_resolver))
             # asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key,
-                               #  model="gpt-3.5-turbo-0125", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
+            #  model="gpt-4o-mini", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
             # decay memory by summarizing it continiously until max_summarizations then prune
             asyncio.create_task(memory.decay())
         except Exception as e:
@@ -125,11 +125,11 @@ class AgentManager:
         return GenerativeAgentMemory(
             rate_limiter=self.rate_limiter,
             llm=ChatOpenAI(openai_api_key=api_key,
-                           model="gpt-3.5-turbo-0125", max_tokens=1024),
+                           model="gpt-4o-mini", max_tokens=1024),
             memory_retriever=self.create_new_memory_retriever(
                 api_key, user_id),
             memory_summarizer=MemorySummarizer(rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, flexible_document_summarizer=FlexibleDocumentSummarizer(
-                ChatOpenAI(openai_api_key=api_key, model="gpt-3.5-turbo-0125", temperature=0), verbose=self.verbose), agent_manager=self),
+                ChatOpenAI(openai_api_key=api_key, model="gpt-4o-mini", temperature=0), verbose=self.verbose), agent_manager=self),
             verbose=self.verbose
         )
 

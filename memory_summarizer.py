@@ -63,7 +63,7 @@ class MemorySummarizer:
         return GenerativeAgentConversationSummarizedMemory(
             rate_limiter=self.rate_limiter,
             llm=ChatOpenAI(openai_api_key=api_key, temperature=0,
-                           max_tokens=2048, model="gpt-3.5-turbo-0125"),
+                           max_tokens=2048, model="gpt-4o-mini"),
             memory_retriever=self.create_new_conversation_summarizer(
                 api_key, user_id),
             verbose=self.agent_manager.verbose
