@@ -12,7 +12,6 @@ from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
-from interpreter import router as interpreter_router
 from cachetools import TTLCache, LRUCache
 from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
@@ -33,8 +32,6 @@ origins = [
 ]
 
 app = FastAPI()
-app.include_router(interpreter_router, prefix="/interpreter")
-
 # Initialize logging
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')

@@ -8,12 +8,12 @@ import traceback
 import cachetools.func
 
 from dotenv import load_dotenv
-from llama_index.langchain_helpers.text_splitter import SentenceSplitter
+from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
 from qdrant_client import QdrantClient
 from pydantic import BaseModel
-from langchain.vectorstores import Qdrant
+from langchain_qdrant import Qdrant
 from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
 from cohere_rerank import CohereRerank
 from langchain.schema import Document
@@ -21,8 +21,10 @@ from datetime import datetime
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 
+
 class CacheDoc(BaseModel):
     source_url: str
+
 
 class DocAddInput(BaseModel):
     api_key: str
@@ -30,23 +32,27 @@ class DocAddInput(BaseModel):
     html_doc: str
     category: str
 
+
 class DocDeleteInput(BaseModel):
     source_url: str
     category: str
+
 
 class DocSearchInput(BaseModel):
     api_key: str
     query: str
     category: str
+
     def __str__(self):
         return self.query + self.category
 
-    def __eq__(self,other):
+    def __eq__(self, other):
         return self.query == other.query and self.category == other.category
 
     def __hash__(self):
-        return hash(str(self))    
-    
+        return hash(str(self))
+
+
 class DocManager:
     scheduler = schedule.Scheduler()
 
@@ -57,7 +63,8 @@ class DocManager:
         self.rate_limiter_sync = rate_limiter_sync
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        self.client = QdrantClient(
+            url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.collection_name = "doc"
 
     def create_new_web_retriever(self, api_key: str):
@@ -67,16 +74,19 @@ class DocManager:
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=rest.VectorParams(
-                    size = 1536,
-                    distance = rest.Distance.COSINE,
+                    size=1536,
+                    distance=rest.Distance.COSINE,
                 ),
             )
-            self.client.create_payload_index(self.collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
+            self.client.create_payload_index(
+                self.collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
         except:
             logging.info("DocManager: loaded from cloud...")
         finally:
-            logging.info(f"DocManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(model="text-embedding-3-small", openai_api_key=api_key))
+            logging.info(
+                f"DocManager: Creating memory store with collection {self.collection_name}")
+            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
+                model="text-embedding-3-small", openai_api_key=api_key))
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
@@ -102,12 +112,12 @@ class DocManager:
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
-                    key="metadata.extra_index", 
-                    match=rest.MatchValue(value=function_input.category), 
+                    key="metadata.extra_index",
+                    match=rest.MatchValue(value=function_input.category),
                 )
             ]
         )
-        result = await memory.aget_relevant_documents(function_input.query, filter=filter)
+        result = await memory.ainvoke(function_input.query, filter=filter)
         return result
 
     @cachetools.func.lru_cache(maxsize=16384)
@@ -122,7 +132,8 @@ class DocManager:
     async def add_doc(self, function_input: DocAddInput):
         start = time.time()
         if len(function_input.source_url) <= 0 or len(function_input.html_doc) <= 0:
-            logging.warn("DocManager: Cannot add information because data missing")
+            logging.warn(
+                "DocManager: Cannot add information because data missing")
             end = time.time()
             return "fail", end - start
         memory = self.load(function_input.api_key)
@@ -136,19 +147,22 @@ class DocManager:
         if len(function_input.html_doc) > 0:
             text_splitter = SentenceSplitter()
             chunks = text_splitter.split_text(text=function_input.html_doc)
-            documents.extend([Document(page_content=chunk, metadata={"id": random.randint(0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
+            documents.extend([Document(page_content=chunk, metadata={"id": random.randint(
+                0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
         if len(documents) > 0:
             ids = [doc.metadata["id"] for doc in documents]
             await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
             end = time.time()
-            logging.info(f"DocManager: Loaded from documents operation took {end - start} seconds")
+            logging.info(
+                f"DocManager: Loaded from documents operation took {end - start} seconds")
         return "success", end - start
 
     def delete_doc(self, function_input: DocDeleteInput):
         """Delete docs by source_url."""
         start = time.time()
         if 0 >= len(function_input.source_url):
-            logging.warn("DocManager: Cannot delete document because data missing")
+            logging.warn(
+                "DocManager: Cannot delete document because data missing")
             end = time.time()
             return "fail", end - start
         try:
@@ -164,9 +178,11 @@ class DocManager:
                     )
                 ]
             )
-            self.client.delete(collection_name=self.collection_name, points_selector=filter)
+            self.client.delete(
+                collection_name=self.collection_name, points_selector=filter)
             end = time.time()
-            logging.info(f"DocManager: Delete documents operation took {end - start} seconds")
+            logging.info(
+                f"DocManager: Delete documents operation took {end - start} seconds")
         except Exception as e:
             logging.warn(f"DocManager: delete_doc exception {e}")
             end = time.time()
@@ -188,7 +204,8 @@ class DocManager:
                     doc.metadata.pop('relevance_score', None)
                 await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
         except Exception as e:
-            logging.warn(f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
             logging.info(
@@ -202,14 +219,16 @@ class DocManager:
             filter = rest.Filter(
                 must=[
                     rest.FieldCondition(
-                        key="metadata.source_url", 
-                        match=rest.MatchValue(value=source_url), 
+                        key="metadata.source_url",
+                        match=rest.MatchValue(value=source_url),
                     )
                 ]
             )
-            result, _ = self.client.scroll(collection_name=self.collection_name, scroll_filter=filter, limit = 1)
+            result, _ = self.client.scroll(
+                collection_name=self.collection_name, scroll_filter=filter, limit=1)
         except Exception as e:
-            logging.warn(f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}")
+            logging.warn(
+                f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
         logging.info(

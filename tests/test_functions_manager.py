@@ -1,18 +1,45 @@
-
 import pytest
 import os
 from functions_manager import FunctionsManager, ActionItem, FunctionInput
 from dotenv import load_dotenv
 from langchain.schema import Document
+from qdrant_client.http.models import ScoredPoint
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from rate_limiter import RateLimiter, SyncRateLimiter
+from qdrant_client.http import models as rest
+
 rate_limiter = RateLimiter(rate=5, period=1)
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
+
+
+@pytest.fixture(scope='session', autouse=True)
+def create_collections():
+    load_dotenv()
+    client = QdrantClient(url=os.getenv("QDRANT_URL"),
+                          api_key=os.getenv("QDRANT_API_KEY"))
+    collections = ["functions"]
+
+    for collection in collections:
+        try:
+            client.create_collection(
+                collection_name=collection,
+                vectors_config=rest.VectorParams(
+                    size=1536,
+                    distance=rest.Distance.COSINE,
+                ),
+            )
+        except Exception as e:
+            print(
+                f"Collection {collection} already exists or failed to create: {e}")
+
 
 class TestFunctionsManager:
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
         load_dotenv()
-        self.functions_manager = FunctionsManager(rate_limiter, rate_limiter_sync)
+        self.functions_manager = FunctionsManager(
+            rate_limiter, rate_limiter_sync)
         yield
 
     def test_transform(self):
@@ -21,7 +48,7 @@ class TestFunctionsManager:
         user_id = "2"
 
         transformed = self.functions_manager.transform(user_id, data, category)
-        
+
         assert isinstance(transformed, list)
         assert all(isinstance(doc, Document) for doc in transformed)
 
@@ -40,10 +67,20 @@ class TestFunctionsManager:
 
     def test_extract_name_and_category(self):
         documents = [
-            Document(
-                page_content='{"name": "test1", "category": "cat1"}', metadata={}),
-            Document(
-                page_content='{"name": "test2", "category": "cat2"}', metadata={})
+            ScoredPoint(
+                id=1,
+                payload={"name": "test1", "category": "cat1"},
+                vector=[0.1, 0.2, 0.3],
+                score=0.9,
+                version=1
+            ),
+            ScoredPoint(
+                id=2,
+                payload={"name": "test2", "category": "cat2"},
+                vector=[0.4, 0.5, 0.6],
+                score=0.8,
+                version=1
+            )
         ]
 
         extracted = self.functions_manager.extract_name_and_category(documents)
@@ -60,7 +97,10 @@ class TestFunctionsManager:
                                            action="act", intent="int", category="cat")]
                                        )
 
-        response, time_taken = await self.functions_manager.pull_functions(function_input)
+        try:
+            response, time_taken = await self.functions_manager.pull_functions(function_input)
+        except UnexpectedResponse as e:
+            pytest.fail(f"UnexpectedResponse: {e}")
 
         assert isinstance(response, list)
         assert isinstance(time_taken, float)
@@ -74,6 +114,9 @@ class TestFunctionsManager:
         print(response)
 
     def test_prune_functions(self):
-        result = self.functions_manager.prune_functions()
+        try:
+            result = self.functions_manager.prune_functions()
+        except UnexpectedResponse as e:
+            pytest.fail(f"UnexpectedResponse: {e}")
 
         assert result is True
