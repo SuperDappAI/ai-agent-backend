@@ -9,6 +9,7 @@ from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
+from agents_manager import AgentsManager, AgentInput, AgentOutput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
@@ -40,6 +41,7 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
 
 
 functions_manager = FunctionsManager(rate_limiter, rate_limiter_sync)
+agents_manager = AgentsManager(rate_limiter, rate_limiter_sync)
 agent_manager = AgentManager(rate_limiter, rate_limiter_sync)
 web_manager = WebManager(rate_limiter, rate_limiter_sync)
 queryplan_manager = QueryPlanManager()
@@ -48,6 +50,7 @@ doc_manager = DocManager(rate_limiter, rate_limiter_sync)
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
+agentcache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
 
 @app.post('/get_preferences/')
@@ -156,6 +159,19 @@ async def getFunctions(function_input: FunctionInput):
         functioncache[function_input] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
+@app.post('/get_agents/')
+async def getAgents(agent_input: AgentInput):
+    """Endpoint to get agents based on provided input."""
+    result = agentcache.get(agent_input)
+    if result is not None:
+        logging.info(f'Found agents in cache, result {result}')
+        return {'response': result, 'elapsed_time': 0}
+    logging.info(f'Processing Action Item: {agent_input.action_items}')
+    result, elapsed_time = await agents_manager.pull_agents(agent_input)
+    if len(result) > 0:
+        agentcache[agent_input] = result
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 @app.post('/push_functions/')
 async def pushFunctions(function_output: FunctionOutput):
     """Endpoint to push functions based on provided functions."""
@@ -184,6 +200,35 @@ async def pushFunctions(function_output: FunctionOutput):
     result, elapsed_time = await functions_manager.push_functions(function_output.user_id, function_output.api_key, functions)
     return {'response': result, 'elapsed_time': elapsed_time}
 
+
+@app.post('/push_agents/')
+async def pushAgents(agent_output: AgentOutput):
+    """Endpoint to push agents based on provided agents."""
+    logging.info(f'Adding agents: {agent_output.agents}')
+    agents = {}
+    agent_types = ['information_retrieval', 'communication', 'data_processing', 'sensory_perception']
+
+    for agent_item in agent_output.agents:
+        agent_item.category = agent_item.category.lower().replace(' ', '_')
+        if agent_item.category not in agent_types:
+            return {'response': f'Invalid category for agent {agent_item.name}, must be one of {agent_types}'}
+
+        # Initialize category list if not already done
+        if agent_item.category not in agents:
+            agents[agent_item.category] = []
+
+        # Append the new agent to the category
+        new_agent = {
+            'name': agent_item.name,
+            'description': agent_item.description
+        }
+
+        agents[agent_item.category].append(new_agent)
+
+    # Push the agents
+    result, elapsed_time = await agents_manager.push_agents(agent_output.user_id, agent_output.api_key, agents)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
     """Endpoint to clear memory for a specific user/conversation."""
@@ -205,10 +250,12 @@ async def clearCache(cache_clear_input: CacheClearInput):
     if {"doc", "all"} & set(cache_clear_input.cache_types):
         doccache.clear()
     if {"queryplan", "all"} & set(cache_clear_input.cache_types):
-        functioncache.clear()
-    if {"searchhtml", "all"} & set(cache_clear_input.cache_types):
         queryplancache.clear()
-    if {"function", "all"} & set(cache_clear_input.cache_types):
+    if {"searchhtml", "all"} & set(cache_clear_input.cache_types):
         searchhtmlcache.clear()
+    if {"agent", "all"} & set(cache_clear_input.cache_types):
+        agentcache.clear()
+    if {"function", "all"} & set(cache_clear_input.cache_types):
+        functioncache.clear()
     end = time.time()
     return {'response': "success", 'elapsed_time': end - start}

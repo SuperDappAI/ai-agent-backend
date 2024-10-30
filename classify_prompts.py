@@ -13,7 +13,7 @@ class ClassifyPrompts:
         QAClassifyPrompt = {"Rationale": "This type is for straightforward questions that require a simple answer without the need for extensive reasoning or elaboration.",
                              "Classification Guidelines": "If the query asks for a fact, a definition, or a simple explanation, it falls under this category."}
         self.QAClassifyPrompt = "\n".join(f"{key}: {value}" for key, value in QAClassifyPrompt.items())
-        QA = "Role: Question/Answer (QA). Steps: 1. Query Interpretation: Understand the user's question and its context. 2. Information Retrieval: Use web searches, memory, and external functions to gather pertinent data. 3. Draft & Refine Answers: Formulate initial answers and refine them based on the gathered info. 4. Answer Presentation: Respond with the most accurate answer, incorporating onboarding details if relevant."
+        QA = "Role: Question/Answer (QA). Steps: 1. Query Interpretation: Understand the user's question and its context. 2. Information Retrieval: Use web searches, memory, and external agents as needed to gather pertinent data. 3. Draft & Refine Answers: Formulate initial answers and refine them based on the gathered info. 4. Answer Presentation: Respond with the most accurate answer, incorporating onboarding details if relevant."
         
         ConversationClassifyPrompt = {"Rationale": "This is the default type that is for queries that are more conversational in nature and do not require a specific format or structure.",
                              "Classification Guidelines": "If the query is open-ended, opinion-based, or conversational, it falls under this category."}
