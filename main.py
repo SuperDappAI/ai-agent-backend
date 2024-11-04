@@ -238,8 +238,8 @@ async def publishAgent(agent_handle: str):
 @app.post('/message_agent/')
 async def messageAgent(agent_input: AgentMessageInput):
     """Endpoint to message agents."""
-    logging.info(f'Unpublishing agent: {agent_handle}')
-    result, elapsed_time = await agents_manager.message_agent(agent_handle)
+    logging.info(f'Unpublishing agent: {agent_input}')
+    result, elapsed_time = await agents_manager.message_agent(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 
