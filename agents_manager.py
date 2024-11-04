@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from asyncio import Lock
 from rate_limiter import RateLimiter
+import json
+import websockets
 
 
 class AgentListInput(BaseModel):
@@ -52,6 +54,11 @@ class AgentListInput(BaseModel):
     def __hash__(self):
         return hash(str(self))
 
+class AgentMessageInput(BaseModel):
+    agent_handle: str
+    message: str
+    user_id: str = None
+    conversation_id: str = None
 
 class AgentRegisterInput(BaseModel):
     agent_handle: str
@@ -388,4 +395,75 @@ class AgentsManager:
             
         except Exception as e:
             logging.warn(f"AgentsManager: register_agent exception {e}\n{traceback.format_exc()}")
+            return f"Error: {str(e)}", time.time() - start
+
+    async def message_agent(self, agent_input: AgentMessageInput):
+        """Send message to an agent if authorized."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        start = time.time()
+        try:
+            if not agent_input.user_id and not agent_input.conversation_id:
+                return "Error: user_id or conversation_id not provided", time.time() - start
+            if not agent_input.message:
+                return "Error: message not provided", time.time() - start
+            if not agent_input.agent_handle:
+                return "Error: agent_handle not provided", time.time() - start
+
+            # Check if agent exists and get its details
+            agent = await self.get_agent(agent_input.agent_handle)
+            if not agent:
+                return "Error: agent not found", time.time() - start
+            
+            # Check authorization
+            is_authorized = False
+            
+            # Check if user is the agent's owner
+            if agent.get("added_by") == agent_input.user_id:
+                is_authorized = True
+            
+            # If not owner and conversation_id provided, check if agent is in conversation
+            elif agent_input.conversation_id:
+                convo_agent = await self.rate_limiter.execute(
+                    self.conversation_agents_collection.find_one,
+                    {
+                        "conversation_id": agent_input.conversation_id,
+                        "handle": agent_input.agent_handle
+                    }
+                )
+                if convo_agent:
+                    is_authorized = True
+            
+            if not is_authorized:
+                return "Error: not authorized to message this agent", time.time() - start
+
+            # Check if agent is registered (has API key)
+            if not agent.get("api_key"):
+                return "Error: agent is not registered", time.time() - start
+
+            try:
+                # Setup websocket connection to agent's URL
+                async with websockets.connect(agent["URL"]) as websocket:
+                    # Prepare message payload
+                    payload = {
+                        "agent": agent_input.agent_handle,
+                        "message": agent_input.message,
+                        "user_id": agent["added_by"],
+                        "conversation_id": agent_input.conversation_id,
+                        "api_key": agent["api_key"]
+                    }
+                    
+                    # Send message
+                    await websocket.send(json.dumps(payload))
+                    
+                    # Wait for response
+                    response = await websocket.recv()
+                    return json.loads(response), time.time() - start
+                    
+            except websockets.exceptions.WebSocketException as e:
+                return f"Error connecting to agent: {str(e)}", time.time() - start
+            
+        except Exception as e:
+            logging.warn(f"AgentsManager: message_agent exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start

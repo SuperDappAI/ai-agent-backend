@@ -9,7 +9,7 @@ from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
-from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentRegisterInput
+from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentMessageInput, AgentRegisterInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
@@ -234,6 +234,14 @@ async def publishAgent(agent_handle: str):
     logging.info(f'Unpublishing agent: {agent_handle}')
     result, elapsed_time = await agents_manager.unpublish_agent(agent_handle)
     return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/message_agent/')
+async def messageAgent(agent_input: AgentMessageInput):
+    """Endpoint to message agents."""
+    logging.info(f'Unpublishing agent: {agent_handle}')
+    result, elapsed_time = await agents_manager.message_agent(agent_handle)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
