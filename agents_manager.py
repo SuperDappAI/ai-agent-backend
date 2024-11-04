@@ -10,6 +10,7 @@ from asyncio import Lock
 from rate_limiter import RateLimiter
 import json
 import websockets
+import aiohttp
 
 
 class AgentListInput(BaseModel):
@@ -54,6 +55,11 @@ class AgentListInput(BaseModel):
     def __hash__(self):
         return hash(str(self))
 
+class ClearAgentMemory(BaseModel):
+    agent_handle: str
+    user_id: str
+    conversation_id: str
+
 class AgentMessageInput(BaseModel):
     agent_handle: str
     message: str
@@ -70,6 +76,7 @@ class AgentItem(BaseModel):
     agent_handle: str
     description: str
     URL: str
+    workflow_id: str
 
 class AgentPublishInput(BaseModel):
     agent: AgentItem = Field(..., example=[
@@ -104,6 +111,7 @@ class AgentsManager:
         self.db = None
         self.agents_collection = None
         self.conversation_agents_collection = None
+        self.sessions_collection = None
 
     async def initialize(self):
         async with self.init_lock:
@@ -114,6 +122,7 @@ class AgentsManager:
                 self.db = self.mongo_client.agents_db
                 self.agents_collection = self.db.agents
                 self.conversation_agents_collection = self.db.conversation_agents
+                self.sessions_collection = self.db.sessions
 
                 # Create indexes for agents collection
                 await self.rate_limiter.execute(
@@ -139,6 +148,17 @@ class AgentsManager:
                 await self.rate_limiter.execute(
                     self.conversation_agents_collection.create_index,
                     [("description", "text")]
+                )
+
+                # Create indexes for sessions collection
+                await self.rate_limiter.execute(
+                    self.sessions_collection.create_index,
+                    [("conversation_id", 1), ("agent_handle", 1)],
+                    unique=True
+                )
+                await self.rate_limiter.execute(
+                    self.sessions_collection.create_index,
+                    [("user_id", 1)]
                 )
 
             except Exception as e:
@@ -180,7 +200,8 @@ class AgentsManager:
                 {"$set": {
                     "description": agent_input.agent.description,
                     "URL": agent_input.agent.URL,
-                    "added_at": datetime.utcnow()
+                    "added_at": datetime.utcnow(),
+                    "workflow_id": agent_input.workflow_id
                 }},
                 upsert=True
             )
@@ -209,13 +230,39 @@ class AgentsManager:
             await self.initialize()
         start = time.time()
         try:
-            # Delete the agent from agents collection with rate limiter
+            # Get agent details first (we need the URL for session cleanup)
+            agent = await self.get_agent(agent_handle)
+            if agent:
+                # Find all sessions for this agent
+                sessions = await self.rate_limiter.execute(
+                    self.sessions_collection.find,
+                    {"agent_handle": agent_handle}
+                )
+                
+                # Delete remote sessions
+                async with aiohttp.ClientSession() as http_session:
+                    async for session in sessions:
+                        try:
+                            delete_url = f"{agent['URL']}/api/sessions/delete?session_id={session['session_id']}&user_id={session['user_id']}"
+                            async with http_session.delete(delete_url) as response:
+                                if response.status != 200:
+                                    logging.warning(f"Failed to delete remote session {session['session_id']} for agent {agent_handle}")
+                        except Exception as e:
+                            logging.warning(f"Error deleting remote session: {str(e)}")
+
+                # Delete all local sessions for this agent
+                await self.rate_limiter.execute(
+                    self.sessions_collection.delete_many,
+                    {"agent_handle": agent_handle}
+                )
+
+            # Delete the agent from agents collection
             result = await self.rate_limiter.execute(
                 self.agents_collection.delete_one,
                 {"handle": agent_handle}
             )
             
-            # Remove agent from all conversations with rate limiter
+            # Remove agent from all conversations
             await self.rate_limiter.execute(
                 self.conversation_agents_collection.delete_many,
                 {"handle": agent_handle}
@@ -442,16 +489,55 @@ class AgentsManager:
             if not agent.get("api_key"):
                 return "Error: agent is not registered", time.time() - start
 
+            # Check if session exists for this conversation
+            session = None
+            if agent_input.conversation_id:
+                session = await self.rate_limiter.execute(
+                    self.sessions_collection.find_one,
+                    {
+                        "conversation_id": agent_input.conversation_id,
+                        "agent_handle": agent_input.agent_handle
+                    }
+                )
+
+            if not session:
+                # Create new session via REST POST
+                async with aiohttp.ClientSession() as http_session:
+                    session_data = {
+                        "user_id": agent.get("added_by"),
+                        "workflow_id": agent.get("workflow_id")
+                    }
+                    async with http_session.post(f"{agent['URL']}/api/sessions", json=session_data) as response:
+                        if response.status != 200:
+                            return "Error: Failed to create agent session", time.time() - start
+                        session_response = await response.json()
+                        session_id = session_response["data"]["id"]
+                        
+                        # Store session info
+                        await self.rate_limiter.execute(
+                            self.sessions_collection.insert_one,
+                            {
+                                "conversation_id": agent_input.conversation_id,
+                                "agent_handle": agent_input.agent_handle,
+                                "session_id": session_id,
+                                "user_id": agent.get("added_by"),
+                                "created_at": datetime.utcnow()
+                            }
+                        )
+            else:
+                session_id = session["session_id"]
+
             try:
                 # Setup websocket connection to agent's URL
-                async with websockets.connect(agent["URL"]) as websocket:
+                async with websockets.connect(agent["URL"] + "/api/ws/" + str(session_id)) as websocket:
                     # Prepare message payload
                     payload = {
-                        "agent": agent_input.agent_handle,
-                        "message": agent_input.message,
-                        "user_id": agent["added_by"],
-                        "conversation_id": agent_input.conversation_id,
-                        "api_key": agent["api_key"]
+                        "type": "user_message",
+                        "data": agent_input.message,
+                        "workflow_id": agent.workflow_id,
+                        "user_id": agent.get("added_by"),
+                        "session_id": session_id,
+                        "api_key": agent.get("api_key"),
                     }
                     
                     # Send message
@@ -466,4 +552,54 @@ class AgentsManager:
             
         except Exception as e:
             logging.warn(f"AgentsManager: message_agent exception {e}\n{traceback.format_exc()}")
+            return f"Error: {str(e)}", time.time() - start
+
+    async def clear_conversation(self, clear_memory: ClearAgentMemory):
+        """Send clear agent conversation."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        start = time.time()
+        try:
+            # Lookup agent
+            agent = await self.get_agent(clear_memory.agent_handle)
+            if not agent:
+                return "Error: agent not found", time.time() - start
+
+            # Check authorization
+            if agent.get("added_by") != clear_memory.user_id:
+                return "Error: not authorized to clear this agent's conversation", time.time() - start
+
+            # Lookup session
+            session = await self.rate_limiter.execute(
+                self.sessions_collection.find_one,
+                {
+                    "conversation_id": clear_memory.conversation_id,
+                    "agent_handle": clear_memory.agent_handle
+                }
+            )
+            
+            if not session:
+                return "Error: no session found for this conversation", time.time() - start
+
+            # Delete session via REST call
+            async with aiohttp.ClientSession() as http_session:
+                delete_url = f"{agent['URL']}/api/sessions/delete?session_id={session['session_id']}&user_id={clear_memory.user_id}"
+                async with http_session.delete(delete_url) as response:
+                    if response.status != 200:
+                        return "Error: Failed to clear agent session", time.time() - start
+
+            # Delete local session record
+            await self.rate_limiter.execute(
+                self.sessions_collection.delete_one,
+                {
+                    "conversation_id": clear_memory.conversation_id,
+                    "agent_handle": clear_memory.agent_handle
+                }
+            )
+
+            return "Conversation cleared successfully", time.time() - start
+
+        except Exception as e:
+            logging.warn(f"AgentsManager: clear_conversation exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start

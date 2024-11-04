@@ -242,13 +242,20 @@ async def messageAgent(agent_input: AgentMessageInput):
     result, elapsed_time = await agents_manager.message_agent(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
-
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
     """Endpoint to clear memory for a specific user/conversation."""
     logging.info(
         f'Clearing user memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
     response, elapsed_time = agent_manager.clear_conversation(clear_memory)
+    return {'response': response, 'elapsed_time': elapsed_time}
+
+@app.post('/clear_agent_conversation/')
+async def clearAgentMemory(clear_memory: ClearAgentMemory):
+    """Endpoint to clear memory for a specific agent conversation."""
+    logging.info(
+        f'Clearing agent memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
+    response, elapsed_time = agents_manager.clear_conversation(clear_memory)
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/cache_clear/')
