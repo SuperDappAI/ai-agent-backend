@@ -60,13 +60,13 @@ class AgentRegisterInput(BaseModel):
     conversation_id: str = None
     
 class AgentItem(BaseModel):
-    name: str
+    agent_handle: str
     description: str
     URL: str
 
 class AgentPublishInput(BaseModel):
     agent: AgentItem = Field(..., example=[
-        {"name": "@SuperDappAPI", "description": "SuperDapp API agent for send/recv crypto, messages and mails/files", "URL": "https://studio.superdapp.io/27728292"}])
+        {"agent_handle": "@SuperDappAPI", "description": "SuperDapp API agent for send/recv crypto, messages and mails/files", "URL": "https://studio.superdapp.io/27728292"}])
 
 class AgentOutput(BaseModel):
     """Model for agent output that excludes sensitive information."""
@@ -120,7 +120,7 @@ class AgentsManager:
                 )
                 await self.rate_limiter.execute(
                     self.agents_collection.create_index,
-                    [("name", "text"), ("description", "text")]
+                    [("description", "text")]
                 )
 
                 # Create indexes for conversation_agents collection
@@ -169,7 +169,7 @@ class AgentsManager:
             # Use rate limiter for MongoDB update
             await self.rate_limiter.execute(
                 self.agents_collection.update_one,
-                {"handle": agent_input.agent.name},
+                {"handle": agent_input.agent.agent_handle},
                 {"$set": {
                     "description": agent_input.agent.description,
                     "URL": agent_input.agent.URL,
