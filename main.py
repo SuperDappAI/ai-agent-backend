@@ -229,10 +229,10 @@ async def publishAgent(agent_output: AgentPublishInput):
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/unpublish_agent/')
-async def publishAgent(agent_handle: str):
+async def unpublishAgent(agent_input: AgentUnpublishInput):
     """Endpoint to push agents based on provided agents."""
-    logging.info(f'Unpublishing agent: {agent_handle}')
-    result, elapsed_time = await agents_manager.unpublish_agent(agent_handle)
+    logging.info(f'Unpublishing agent: {agent_input}')
+    result, elapsed_time = await agents_manager.unpublish_agent(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/message_agent/')

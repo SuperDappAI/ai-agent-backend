@@ -76,11 +76,16 @@ class AgentItem(BaseModel):
     agent_handle: str
     description: str
     URL: str
-    workflow_id: str
 
 class AgentPublishInput(BaseModel):
+    user_id: str
+    workflow_id: str
     agent: AgentItem = Field(..., example=[
         {"agent_handle": "@SuperDappAPI", "description": "SuperDapp API agent for send/recv crypto, messages and mails/files", "URL": "https://studio.superdapp.io/27728292"}])
+
+class AgentUnpublishInput(BaseModel):
+    agent_handle: str
+    user_id: str
 
 class AgentOutput(BaseModel):
     """Model for agent output that excludes sensitive information."""
@@ -201,6 +206,7 @@ class AgentsManager:
                     "description": agent_input.agent.description,
                     "URL": agent_input.agent.URL,
                     "added_at": datetime.utcnow(),
+                    "added_by": agent_input.user_id,
                     "workflow_id": agent_input.workflow_id
                 }},
                 upsert=True
@@ -213,48 +219,42 @@ class AgentsManager:
             logging.info(f"AgentsManager: publish_agent took {end - start} seconds")
             return agent_input.agent.name, end-start
 
-    async def unpublish_agent(self, agent_handle: str):
-        """Unpublish agent by removing it from the registry."""
-        start = time.time()
-        try:
-            # Delete the agent and its conversation associations
-            await self.delete_agent(agent_handle)
-        except Exception as e:
-            logging.error(
-                f"AgentsManager: unpublish_agent failed, exception {e}\n{traceback.format_exc()}")
-        return "Agent unpublished", time.time() - start
-
-    async def delete_agent(self, agent_handle: str):
-        """Delete agent from MongoDB and remove from all conversations."""
+    async def unpublish_agent(self, agent_input: AgentUnpublishInput):
+        """Unpublish agent from MongoDB and remove from all conversations."""
         if self.mongo_client is None:
             await self.initialize()
         start = time.time()
         try:
             # Get agent details first (we need the URL for session cleanup)
-            agent = await self.get_agent(agent_handle)
-            if agent:
-                # Find all sessions for this agent
-                sessions = await self.rate_limiter.execute(
-                    self.sessions_collection.find,
-                    {"agent_handle": agent_handle}
-                )
-                
-                # Delete remote sessions
-                async with aiohttp.ClientSession() as http_session:
-                    async for session in sessions:
-                        try:
-                            delete_url = f"{agent['URL']}/api/sessions/delete?session_id={session['session_id']}&user_id={session['user_id']}"
-                            async with http_session.delete(delete_url) as response:
-                                if response.status != 200:
-                                    logging.warning(f"Failed to delete remote session {session['session_id']} for agent {agent_handle}")
-                        except Exception as e:
-                            logging.warning(f"Error deleting remote session: {str(e)}")
+            agent = await self.get_agent(agent_input.agent_handle)
+            if not agent:
+                return "Error: Agent does not exist", time.time() - start
+            # Check authorization
+            if agent.get("added_by") != agent_input.user_id:
+                return "Error: not authorized to unpublish this agent", time.time() - start
 
-                # Delete all local sessions for this agent
-                await self.rate_limiter.execute(
-                    self.sessions_collection.delete_many,
-                    {"agent_handle": agent_handle}
-                )
+            # Find all sessions for this agent
+            sessions = await self.rate_limiter.execute(
+                self.sessions_collection.find,
+                {"agent_handle": agent_handle}
+            )
+            
+            # Delete remote sessions
+            async with aiohttp.ClientSession() as http_session:
+                async for session in sessions:
+                    try:
+                        delete_url = f"{agent['URL']}/api/sessions/delete?session_id={session['session_id']}&user_id={session['user_id']}"
+                        async with http_session.delete(delete_url) as response:
+                            if response.status != 200:
+                                logging.warning(f"Failed to delete remote session {session['session_id']} for agent {agent_handle}")
+                    except Exception as e:
+                        logging.warning(f"Error deleting remote session: {str(e)}")
+
+            # Delete all local sessions for this agent
+            await self.rate_limiter.execute(
+                self.sessions_collection.delete_many,
+                {"agent_handle": agent_handle}
+            )
 
             # Delete the agent from agents collection
             result = await self.rate_limiter.execute(
@@ -273,8 +273,8 @@ class AgentsManager:
                 return "Warning: Call was success but nothing was deleted", time.time() - start
             
         except Exception as e:
-            logging.error(f"Failed to delete agent {agent_handle}: {str(e)}")
-        return "Agent deleted", time.time() - start
+            logging.error(f"Failed to unpublish agent {agent_handle}: {str(e)}")
+        return "Agent unpublished", time.time() - start
 
     async def get_agent(self, agent_handle: str):
         """Retrieve a single agent by handle."""
@@ -433,7 +433,6 @@ class AgentsManager:
                 {"handle": agent_input.agent_handle},
                 {"$set": {
                     "api_key": agent_input.api_key,
-                    "added_by": agent_input.user_id,
                     "registered_at": datetime.utcnow()
                 }}
             )
