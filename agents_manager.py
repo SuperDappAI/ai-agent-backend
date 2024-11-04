@@ -108,21 +108,30 @@ class AgentsManager:
                 self.agents_collection = self.db.agents
                 self.conversation_agents_collection = self.db.conversation_agents
 
-                # Create indexes
+                # Create indexes for agents collection
                 await self.rate_limiter.execute(
                     self.agents_collection.create_index,
                     [("handle", 1)],
                     unique=True
                 )
-
                 await self.rate_limiter.execute(
                     self.agents_collection.create_index,
-                    [("name", "text"), ("description", "text"), ("added_by", 1)]
+                    [("added_by", 1)]
+                )
+                await self.rate_limiter.execute(
+                    self.agents_collection.create_index,
+                    [("name", "text"), ("description", "text")]
                 )
 
+                # Create indexes for conversation_agents collection
                 await self.rate_limiter.execute(
                     self.conversation_agents_collection.create_index,
-                    [("handle", 1), ("description", "text")]
+                    [("conversation_id", 1), ("handle", 1)],
+                    unique=True
+                )
+                await self.rate_limiter.execute(
+                    self.conversation_agents_collection.create_index,
+                    [("description", "text")]
                 )
 
             except Exception as e:
@@ -156,7 +165,8 @@ class AgentsManager:
         start = time.time()
         try:
             logging.info("AgentsManager: publishing agent...")
-     
+
+            # Use rate limiter for MongoDB update
             await self.rate_limiter.execute(
                 self.agents_collection.update_one,
                 {"handle": agent_input.agent.name},
@@ -229,24 +239,27 @@ class AgentsManager:
             return None
 
     async def add_agent_to_conversation(self, agent_input: AgentRegisterInput):
-        """Add an agent to a conversation group."""
+        """Add an agent to a conversation."""
         if self.mongo_client is None:
             await self.initialize()
+            
         start = time.time()
         try:
             if not agent_input.conversation_id:
                 return "Error: conversation_id not provided", time.time() - start
+            if not agent_input.agent_handle:
+                return "Error: agent_handle not provided", time.time() - start
+
             # Check if agent exists
             agent = await self.get_agent(agent_input.agent_handle)
             if not agent:
                 return "Error: Agent not found", time.time() - start
 
-            # Add agent to conversation - store handle and description for filtering
-            result = await self.rate_limiter.execute(
+            await self.rate_limiter.execute(
                 self.conversation_agents_collection.update_one,
                 {
                     "conversation_id": agent_input.conversation_id,
-                    "agent_handle": agent_input.agent_handle
+                    "handle": agent_input.agent_handle
                 },
                 {"$set": {
                     "description": agent.get("description", "")
@@ -257,33 +270,35 @@ class AgentsManager:
             return "Agent added to conversation", time.time() - start
             
         except Exception as e:
-            logging.error(f"Failed to add agent to conversation: {str(e)}")
+            logging.warn(f"AgentsManager: add_agent_to_conversation exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
 
     async def remove_agent_from_conversation(self, agent_input: AgentRegisterInput):
-        """Remove an agent from a conversation group."""
+        """Remove an agent from a conversation."""
         if self.mongo_client is None:
             await self.initialize()
+            
         start = time.time()
         try:
             if not agent_input.conversation_id:
-                return "Error: conversation_id not provided", 0
+                return "Error: conversation_id not provided", time.time() - start
+            if not agent_input.agent_handle:
+                return "Error: agent_handle not provided", time.time() - start
+
             result = await self.rate_limiter.execute(
                 self.conversation_agents_collection.delete_one,
                 {
                     "conversation_id": agent_input.conversation_id,
-                    "agent_handle": agent_input.agent_handle
+                    "handle": agent_input.agent_handle 
                 }
             )
             
-            if result.deleted_count == 0:
-                logging.warning(f"Agent {agent_input.agent_handle} not found in conversation {agent_input.conversation_id}")
-                return "Error: Agent not found in conversation", time.time() - start
-                
-            return "Agent removed from conversation", time.time() - start
+            success = result.deleted_count > 0
+            message = "Agent removed from conversation" if success else "Agent not found in conversation"
+            return message, time.time() - start
             
         except Exception as e:
-            logging.error(f"Failed to remove agent from conversation: {str(e)}")
+            logging.warn(f"AgentsManager: remove_agent_from_conversation exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
 
     async def scan_agents(self, agent_input: AgentListInput, page_size: int = 10):
@@ -343,24 +358,22 @@ class AgentsManager:
             return []
 
     async def register_agent(self, agent_input: AgentRegisterInput):
-        """Register an agent for a user or conversation."""
+        """Register an agent for a user."""
         if self.mongo_client is None:
             await self.initialize()
             
         start = time.time()
         try:
-            if not agent_input.api_key:
-                return "Error: API Key not provided", 0
             if not agent_input.user_id:
-                return "Error: user_id must be provided", 0
-            if agent_input.conversation_id:
-                return "Error: conversation_id was provided, use addAgentToConversation instead", 0
+                return "Error: user_id not provided", time.time() - start
+            if not agent_input.api_key:
+                return "Error: api_key not provided", time.time() - start
+
             # Check if agent exists
             agent = await self.get_agent(agent_input.agent_handle)
             if not agent:
-                return "Error: agent not found", 0
+                return "Error: agent not found", time.time() - start
 
-            # Register agent for user
             await self.rate_limiter.execute(
                 self.agents_collection.update_one,
                 {"handle": agent_input.agent_handle},
@@ -370,8 +383,9 @@ class AgentsManager:
                     "registered_at": datetime.utcnow()
                 }}
             )
-            return "Agent registered to user successfully", time.time() - start
-
+            
+            return "Agent registered successfully", time.time() - start
+            
         except Exception as e:
             logging.warn(f"AgentsManager: register_agent exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
