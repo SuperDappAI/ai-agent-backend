@@ -1,317 +1,377 @@
 import time
-import tiktoken
-import json
-import os
-import random
-import asyncio
 import logging
 import traceback
-import cachetools.func
-
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
-from typing import List
+import os
 from datetime import datetime
 from pydantic import BaseModel, Field
-from qdrant_client.http import models as rest
-from langchain_qdrant import Qdrant
-from langchain_openai import OpenAIEmbeddings
-from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain.retrievers import ContextualCompressionRetriever
-from cohere_rerank import CohereRerank
-from langchain.schema import Document
-from datetime import datetime, timedelta
-from qdrant_client.http.models import PayloadSchemaType
+from motor.motor_asyncio import AsyncIOMotorClient
+from asyncio import Lock
+from rate_limiter import RateLimiter
 
 
-class ActionItem(BaseModel):
-    action: str
-    intent: str
-    category: str
-
-    def __str__(self):
-        return self.action + self.intent + self.category
-
-    def __eq__(self, other):
-        return self.action == other.action and self.intent == other.intent and self.category == other.category
-
-    def __hash__(self):
-        return hash(str(self))
-
-
-class AgentInput(BaseModel):
-    api_key: str
+class AgentListInput(BaseModel):
     user_id: str = None
-    action_items: List[ActionItem] = Field(..., example=[
-                                           {"action": "action_example", "intent": "intent_example", "category": "category_example"}])
-
+    conversation_id: str = None
+    results_page: int = 0
+    agent_handle: str = None
+    filter: str = None
+    
     def __str__(self):
-        if self.user_id:
-            return str(self.action_items) + self.user_id
-        else:
-            return str(self.action_items)
+        if self.conversation_id:
+            if self.filter:
+                return self.conversation_id + self.filter + str(self.results_page)
+            elif self.agent_handle:
+                return self.conversation_id + self.agent_handle + str(self.results_page)
+            else:
+                return self.conversation_id + str(self.results_page)
+        elif self.user_id:
+            if self.filter:
+                return self.user_id + self.filter + str(self.results_page)
+            elif self.agent_handle:
+                return self.user_id + self.agent_handle + str(self.results_page)
+            else:
+                return self.user_id + str(self.results_page)
 
     def __eq__(self, other):
-        if self.user_id:
-            return self.action_items == other.action_items and self.user_id == other.user_id
-        else:
-            return self.action_items == other.action_items
+        if self.conversation_id:
+            if self.filter:
+                return self.conversation_id  == other.conversation_id and self.filter == other.filter and self.results_page == other.results_page
+            elif self.agent_handle:
+                return self.conversation_id  == other.conversation_id and self.agent_handle == other.agent_handle and self.results_page == other.results_page
+            else:
+                return self.conversation_id  == other.conversation_id and self.results_page == other.results_page
+        elif self.user_id:
+            if self.filter:
+                return self.user_id  == other.user_id and self.filter == other.filter and self.results_page == other.results_page
+            elif self.agent_handle:
+                return self.user_id  == other.user_id and self.agent_handle == other.agent_handle and self.results_page == other.results_page
+            else:
+                return self.user_id  == other.user_id and self.results_page == other.results_page
 
     def __hash__(self):
         return hash(str(self))
 
 
+class AgentRegisterInput(BaseModel):
+    agent_handle: str
+    api_key: str = None
+    user_id: str = None
+    conversation_id: str = None
+    
 class AgentItem(BaseModel):
     name: str
     description: str
-    category: str
+    URL: str
 
+class AgentPublishInput(BaseModel):
+    agent: AgentItem = Field(..., example=[
+        {"name": "@SuperDappAPI", "description": "SuperDapp API agent for send/recv crypto, messages and mails/files", "URL": "https://studio.superdapp.io/27728292"}])
 
 class AgentOutput(BaseModel):
-    api_key: str
-    user_id: str = None
-    agents: List[AgentItem] = Field(..., example=[
-        {"name": "name_example", "description": "description_example", "category": "category_example"}])
+    """Model for agent output that excludes sensitive information."""
+    handle: str
+    description: str
+    added_by: str | None = None
+    added_at: datetime | None = None
+    registered_at: datetime | None = None
 
+    @classmethod
+    def from_mongo(cls, mongo_doc: dict):
+        """Create AgentOutput from MongoDB document, excluding sensitive fields."""
+        return cls(
+            handle=mongo_doc["handle"],
+            description=mongo_doc["description"],
+            added_by=mongo_doc.get("added_by"),
+            added_at=mongo_doc.get("added_at"),
+            registered_at=mongo_doc.get("registered_at")
+        )
 
 class AgentsManager:
 
-    def __init__(self, rate_limiter, rate_limiter_sync):
-        load_dotenv()  # Load environment variables
-        self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-        os.getenv("COHERE_API_KEY")
-        self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.index = None
-        self.rate_limiter = rate_limiter
-        self.rate_limiter_sync = rate_limiter_sync
-        self.max_length_allowed = 512
-        self.collection_name = "agents"
-        self.client = QdrantClient(
-            url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
-        self.inited = False
+    def __init__(self):
+        load_dotenv()
+        self.rate_limiter = RateLimiter(rate=10, period=1)
+        self.init_lock = Lock()
+        self.mongo_client = None
+        self.db = None
+        self.agents_collection = None
+        self.conversation_agents_collection = None
 
-    def create_new_agents_retriever(self, api_key: str):
-        """Create a new vector store retriever unique to the agent."""
-        # create collection if it doesn't exist (if it exists it will fall into finally)
-        try:
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=rest.VectorParams(
-                    size=1536,
-                    distance=rest.Distance.COSINE,
-                ),
-            )
-            self.client.create_payload_index(
-                self.collection_name, "metadata.user_id", field_schema=PayloadSchemaType.KEYWORD)
-        except:
-            logging.info(f"AgentsManager: loaded from cloud...")
-        finally:
-            logging.info(
-                f"AgentsManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
-                model="text-embedding-3-small", openai_api_key=api_key))
-            compressor = CohereRerank()
-            compression_retriever = ContextualCompressionRetriever(
-                base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
+    async def initialize(self):
+        async with self.init_lock:
+            if self.mongo_client is not None:
+                return
+            try:
+                self.mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+                self.db = self.mongo_client.agents_db
+                self.agents_collection = self.db.agents
+                self.conversation_agents_collection = self.db.conversation_agents
+
+                # Create indexes
+                await self.rate_limiter.execute(
+                    self.agents_collection.create_index,
+                    [("handle", 1)],
+                    unique=True
                 )
-            )
-            return compression_retriever
 
-    def transform(self, user_id, data, category):
-        """Transforms agent data for a specific category."""
-        now = datetime.now().timestamp()
-        result = []
-        for item in data:
-            page_content = {'name': item['name'], 'category': category, 'description': str(
-                item['description'])}
-            lenData = len(str(page_content))
-            if lenData > self.max_length_allowed:
-                logging.info(
-                    f"AgentsManager: transform tried to create a agent that surpasses the maximum length allowed max_length_allowed: {self.max_length_allowed} vs length of data: {lenData}")
-                continue
-            metadata = {
-                "id":  random.randint(0, 2**32 - 1),
-                "user_id": user_id,
-                "extra_index": category,
-                "last_accessed_at": now,
-            }
-            doc = Document(
-                page_content=json.dumps(page_content),
-                metadata=metadata
-            )
-            result.append(doc)
-        return result
+                await self.rate_limiter.execute(
+                    self.agents_collection.create_index,
+                    [("name", "text"), ("description", "text"), ("added_by", 1)]
+                )
 
-    def count_tokens(self, agents):
-        """Count the tokens for all the agents."""
-        agent_types = ['information_retrieval',
-                          'communication',
-                          'data_processing',
-                          'sensory_perception']
+                await self.rate_limiter.execute(
+                    self.conversation_agents_collection.create_index,
+                    [("handle", 1), ("description", "text")]
+                )
 
-        encoding = tiktoken.encoding_for_model("gpt-4o-mini")
-        tokens = []
-        for func_type in agent_types:
-            if func_type in agents:
-                for func in agents[func_type]:
-                    agent_string = json.dumps(func)
-                    tokens.append(
-                        {func['name']: len(encoding.encode(agent_string))})
-        return tokens
-
-    def extract_name_and_category(self, documents):
-        result = []
-        seen = set()  # Track seen combinations of name and category
-        for doc in documents:
-            # Parse the page_content string into a Python dict
-            text = json.loads(doc.page_content)
-            name = text.get('name')
-            category = text.get('category')
-
-            # Check if this combination has been seen before
-            if (name, category) not in seen:
-                result.append({'name': name, 'category': category})
-                seen.add((name, category))  # Mark this combination as seen
-
-        return result
-
-    async def pull_agents(self, agent_input: AgentInput):
-        """Fetch agents based on a query."""
-        start = time.time()
-        if self.inited is False:
-            try:
-                self.client.get_collection(self.collection_name)
-            except:
-                with open('./utils/agents.json', 'r') as f:
-                    print("AgentsManager: Loading from agents.json")
-                    agents_json = json.load(f)
-                    await self.push_agents(agent_input.user_id, agent_input.api_key, agents_json)
-            self.inited = True
-        memory = self.load(agent_input.api_key)
-        response = []
-        # loop = asyncio.get_event_loop()
-        try:
-            for action_item in agent_input.action_items:
-                query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
-                documents = await self.get_retrieved_nodes(memory,
-                                                           query, action_item.category, agent_input.user_id)
-                if len(documents) > 0:
-                    parsed_response = self.extract_name_and_category(documents)
-                    response.append(parsed_response)
-                    # update last_accessed_at
-                    ids = [doc.metadata["id"] for doc in documents]
-                    for doc in documents:
-                        doc.metadata.pop('relevance_score', None)
-                    await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
-                    # loop.run_in_executor(None, self.prune_agents)
-        except Exception as e:
-            logging.warn(
-                f"AgentsManager: pull_agents exception {e}\n{traceback.format_exc()}")
-        finally:
-            end = time.time()
-            logging.info(
-                f"AgentsManager: pull_agents operation took {end - start} seconds")
-            return response, end-start
-
-    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, query_str: str, category: str, user_id: str):
-        kwargs = {}
-        if len(category) > 0:
-            kwargs["extra_index"] = category
-        # if user provided then look for null or direct matches, otherwise look for null so it matches public agents
-        if user_id:
-            filter = rest.Filter(
-                should=[
-                    rest.FieldCondition(
-                        key="metadata.user_id",
-                        match=rest.MatchValue(value=user_id),
-                    ),
-                    rest.IsNullCondition(
-                        is_null=rest.PayloadField(key="metadata.user_id")
-                    )
-                ]
-            )
-            kwargs["user_filter"] = filter
-        else:
-            filter = rest.Filter(
-                should=[
-                    rest.IsNullCondition(
-                        is_null=rest.PayloadField(key="metadata.user_id")
-                    )
-                ]
-            )
-            kwargs["user_filter"] = filter
-        return await memory.ainvoke(query_str, **kwargs)
-
-    @cachetools.func.ttl_cache(maxsize=16384, ttl=36000)
-    def load(self, api_key: str):
-        """Load existing index data from the filesystem for a specific user."""
-        start = time.time()
-        memory = self.create_new_agents_retriever(api_key)
-        end = time.time()
-        logging.info(
-            f"AgentsManager: Load operation took {end - start} seconds")
-        return memory
-
-    async def push_agents(self, user_id: str, api_key: str, agents):
-        """Update the current index with new agents."""
-        start = time.time()
-        tokens = None
-        memory = self.load(api_key)
-        try:
-            logging.info("AgentsManager: adding agents to index...")
-
-            agent_types = ['information_retrieval',
-                              'communication',
-                              'data_processing',
-                              'sensory_perception']
-
-            all_docs = []
-
-            # Transform and concatenate agent types
-            for func_type in agent_types:
-                if func_type in agents:
-                    transformed_agents = self.transform(
-                        user_id, agents[func_type], func_type.replace('_', ' ').title())
-                    all_docs.extend(transformed_agents)
-            ids = [doc.metadata["id"] for doc in all_docs]
-            await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, all_docs, ids=ids)
-            tokens = self.count_tokens(agents)
-        except Exception as e:
-            logging.warn(
-                f"AgentsManager: push_agents exception {e}\n{traceback.format_exc()}")
-        finally:
-            end = time.time()
-            logging.info(
-                f"AgentsManager: push_agents took {end - start} seconds")
-            return tokens, end-start
-
-    def prune_agents(self):
-        """Prune agents that haven't been used for atleast six weeks."""
-        def attempt_prune():
-            current_time = datetime.now()
-            six_weeks_ago = current_time - timedelta(weeks=6)
-            filter = rest.Filter(
-                must=[
-                    rest.FieldCondition(
-                        key="metadata.last_accessed_at",
-                        range=rest.Range(lte=six_weeks_ago.timestamp()),
-                    )
-                ]
-            )
-            self.client.delete(
-                collection_name=self.collection_name, points_selector=filter)
-        try:
-            attempt_prune()
-        except Exception as e:
-            logging.warn(
-                f"AgentsManager: prune_agents exception {e}\n{traceback.format_exc()}")
-            # Attempt a second prune after reload
-            try:
-                attempt_prune()
             except Exception as e:
-                # If prune after reload fails, propagate the error upwards
-                logging.error(
-                    f"AgentsManager: prune_agents failed after reload, exception {e}\n{traceback.format_exc()}")
-                raise
-        return True
+                logging.warn(f"AgentsManager: initialize exception {e}\n{traceback.format_exc()}")
+
+    async def list_registered_agents(self, agent_input: AgentListInput):
+        """Fetch agents based on input criteria."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        start = time.time()
+        try:
+            if not agent_input.user_id and not agent_input.conversation_id:
+                return "Error: user_id or conversation_id not provided", 0
+            if agent_input.user_id and agent_input.conversation_id:
+                return "Error: user_id and conversation_id both provided, can only provide one", 0
+
+            response = await self.scan_agents(agent_input, 10)
+            return response, time.time() - start
+
+        except Exception as e:
+            logging.warn(
+                f"AgentsManager: listRegisteredAgents exception {e}\n{traceback.format_exc()}")
+            return [], time.time() - start
+
+    async def publish_agent(self, agent_input: AgentPublishInput):
+        """Publish a new agent to the registry."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        start = time.time()
+        try:
+            logging.info("AgentsManager: publishing agent...")
+     
+            await self.rate_limiter.execute(
+                self.agents_collection.update_one,
+                {"handle": agent_input.agent.name},
+                {"$set": {
+                    "description": agent_input.agent.description,
+                    "URL": agent_input.agent.URL,
+                    "added_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+            
+        except Exception as e:
+            logging.warn(f"AgentsManager: publish_agent exception {e}\n{traceback.format_exc()}")
+        finally:
+            end = time.time()
+            logging.info(f"AgentsManager: publish_agent took {end - start} seconds")
+            return agent_input.agent.name, end-start
+
+    async def unpublish_agent(self, agent_handle: str):
+        """Unpublish agent by removing it from the registry."""
+        start = time.time()
+        try:
+            # Delete the agent and its conversation associations
+            await self.delete_agent(agent_handle)
+        except Exception as e:
+            logging.error(
+                f"AgentsManager: unpublish_agent failed, exception {e}\n{traceback.format_exc()}")
+        return "Agent unpublished", time.time() - start
+
+    async def delete_agent(self, agent_handle: str):
+        """Delete agent from MongoDB and remove from all conversations."""
+        if self.mongo_client is None:
+            await self.initialize()
+        start = time.time()
+        try:
+            # Delete the agent from agents collection with rate limiter
+            result = await self.rate_limiter.execute(
+                self.agents_collection.delete_one,
+                {"handle": agent_handle}
+            )
+            
+            # Remove agent from all conversations with rate limiter
+            await self.rate_limiter.execute(
+                self.conversation_agents_collection.delete_many,
+                {"handle": agent_handle}
+            )
+            
+            if result.deleted_count == 0:
+                logging.warning(f"Agent {agent_handle} not found for deletion")
+                return "Warning: Call was success but nothing was deleted", time.time() - start
+            
+        except Exception as e:
+            logging.error(f"Failed to delete agent {agent_handle}: {str(e)}")
+        return "Agent deleted", time.time() - start
+
+    async def get_agent(self, agent_handle: str):
+        """Retrieve a single agent by handle."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        try:
+            agent = await self.rate_limiter.execute(
+                self.agents_collection.find_one,
+                {"handle": agent_handle}
+            )
+            return agent if agent else None
+            
+        except Exception as e:
+            logging.warn(f"AgentsManager: get_agent exception {e}\n{traceback.format_exc()}")
+            return None
+
+    async def add_agent_to_conversation(self, agent_input: AgentRegisterInput):
+        """Add an agent to a conversation group."""
+        if self.mongo_client is None:
+            await self.initialize()
+        start = time.time()
+        try:
+            if not agent_input.conversation_id:
+                return "Error: conversation_id not provided", time.time() - start
+            # Check if agent exists
+            agent = await self.get_agent(agent_input.agent_handle)
+            if not agent:
+                return "Error: Agent not found", time.time() - start
+
+            # Add agent to conversation - store handle and description for filtering
+            result = await self.rate_limiter.execute(
+                self.conversation_agents_collection.update_one,
+                {
+                    "conversation_id": agent_input.conversation_id,
+                    "agent_handle": agent_input.agent_handle
+                },
+                {"$set": {
+                    "description": agent.get("description", "")
+                }},
+                upsert=True
+            )
+            
+            return "Agent added to conversation", time.time() - start
+            
+        except Exception as e:
+            logging.error(f"Failed to add agent to conversation: {str(e)}")
+            return f"Error: {str(e)}", time.time() - start
+
+    async def remove_agent_from_conversation(self, agent_input: AgentRegisterInput):
+        """Remove an agent from a conversation group."""
+        if self.mongo_client is None:
+            await self.initialize()
+        start = time.time()
+        try:
+            if not agent_input.conversation_id:
+                return "Error: conversation_id not provided", 0
+            result = await self.rate_limiter.execute(
+                self.conversation_agents_collection.delete_one,
+                {
+                    "conversation_id": agent_input.conversation_id,
+                    "agent_handle": agent_input.agent_handle
+                }
+            )
+            
+            if result.deleted_count == 0:
+                logging.warning(f"Agent {agent_input.agent_handle} not found in conversation {agent_input.conversation_id}")
+                return "Error: Agent not found in conversation", time.time() - start
+                
+            return "Agent removed from conversation", time.time() - start
+            
+        except Exception as e:
+            logging.error(f"Failed to remove agent from conversation: {str(e)}")
+            return f"Error: {str(e)}", time.time() - start
+
+    async def scan_agents(self, agent_input: AgentListInput, page_size: int = 10):
+        """Scan agents with pagination based on input criteria."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        try:
+            # Calculate skip for pagination
+            skip = agent_input.results_page * page_size
+            agents = []
+
+            if agent_input.conversation_id:
+                # Build query for conversation agents
+                query = {"conversation_id": agent_input.conversation_id}
+                if agent_input.filter:
+                    query["$text"] = {"$search": agent_input.filter}
+                elif agent_input.agent_handle:
+                    query["handle"] = agent_input.agent_handle
+                
+                cursor = await self.rate_limiter.execute(
+                    self.conversation_agents_collection.find,
+                    query,
+                    skip=skip,
+                    limit=page_size
+                )
+                
+                # For each conversation agent, lookup the full agent details
+                async for convo_agent in cursor:
+                    agent = await self.get_agent(convo_agent["handle"])
+                    if agent:
+                        agents.append(AgentOutput.from_mongo(agent))
+            elif agent_input.user_id:
+                # Direct query on agents collection
+                query = {}
+                if agent_input.user_id:
+                    query["added_by"] = agent_input.user_id
+                if agent_input.filter:
+                    query["$text"] = {"$search": agent_input.filter}
+                elif agent_input.agent_handle:
+                    query["handle"] = agent_input.agent_handle
+                    
+                cursor = await self.rate_limiter.execute(
+                    self.agents_collection.find,
+                    query,
+                    skip=skip,
+                    limit=page_size
+                )
+                
+                async for agent in cursor:
+                    agents.append(AgentOutput.from_mongo(agent))
+                    
+            return agents
+            
+        except Exception as e:
+            logging.warn(f"AgentsManager: scan_agents exception {e}\n{traceback.format_exc()}")
+            return []
+
+    async def register_agent(self, agent_input: AgentRegisterInput):
+        """Register an agent for a user or conversation."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        start = time.time()
+        try:
+            if not agent_input.api_key:
+                return "Error: API Key not provided", 0
+            if not agent_input.user_id:
+                return "Error: user_id must be provided", 0
+            if agent_input.conversation_id:
+                return "Error: conversation_id was provided, use addAgentToConversation instead", 0
+            # Check if agent exists
+            agent = await self.get_agent(agent_input.agent_handle)
+            if not agent:
+                return "Error: agent not found", 0
+
+            # Register agent for user
+            await self.rate_limiter.execute(
+                self.agents_collection.update_one,
+                {"handle": agent_input.agent_handle},
+                {"$set": {
+                    "api_key": agent_input.api_key,
+                    "added_by": agent_input.user_id,
+                    "registered_at": datetime.utcnow()
+                }}
+            )
+            return "Agent registered to user successfully", time.time() - start
+
+        except Exception as e:
+            logging.warn(f"AgentsManager: register_agent exception {e}\n{traceback.format_exc()}")
+            return f"Error: {str(e)}", time.time() - start

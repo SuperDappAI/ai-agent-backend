@@ -9,7 +9,7 @@ from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
-from agents_manager import AgentsManager, AgentInput, AgentOutput
+from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentRegisterInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
@@ -159,17 +159,37 @@ async def getFunctions(function_input: FunctionInput):
         functioncache[function_input] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
-@app.post('/get_agents/')
-async def getAgents(agent_input: AgentInput):
-    """Endpoint to get agents based on provided input."""
+@app.post('/list_registered_agents/')
+async def listRegisteredAgents(agent_input: AgentListInput):
+    """Endpoint to get registered agents based on provided input."""
     result = agentcache.get(agent_input)
     if result is not None:
         logging.info(f'Found agents in cache, result {result}')
         return {'response': result, 'elapsed_time': 0}
-    logging.info(f'Processing Action Item: {agent_input.action_items}')
-    result, elapsed_time = await agents_manager.pull_agents(agent_input)
+    result, elapsed_time = await agents_manager.list_registered_agents(agent_input)
     if len(result) > 0:
         agentcache[agent_input] = result
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/register_agent/')
+async def registerAgent(agent_input: AgentRegisterInput):
+    """Endpoint to register agent based on provided input."""
+    logging.info(f'Registering agent: {agent_input}')
+    result, elapsed_time = await agents_manager.register_agent(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/add_agent_to_conversation/')
+async def addAgentToConveration(agent_input: AgentRegisterInput):
+    """Endpoint to add agent to conversation based on provided input."""
+    logging.info(f'Adding agent to conversation: {agent_input}')
+    result, elapsed_time = await agents_manager.add_agent_to_conversation(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/add_agent_to_conversation/')
+async def removeAgentFromConveration(agent_input: AgentRegisterInput):
+    """Endpoint to remove agent from conversation based on provided input."""
+    logging.info(f'Removing agent from conversation: {agent_input}')
+    result, elapsed_time = await agents_manager.remove_agent_from_conversation(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/push_functions/')
@@ -201,32 +221,18 @@ async def pushFunctions(function_output: FunctionOutput):
     return {'response': result, 'elapsed_time': elapsed_time}
 
 
-@app.post('/push_agents/')
-async def pushAgents(agent_output: AgentOutput):
+@app.post('/publish_agent/')
+async def publishAgent(agent_output: AgentPublishInput):
     """Endpoint to push agents based on provided agents."""
-    logging.info(f'Adding agents: {agent_output.agents}')
-    agents = {}
-    agent_types = ['information_retrieval', 'communication', 'data_processing', 'sensory_perception']
+    logging.info(f'Publishing agent: {agent_output}')
+    result, elapsed_time = await agents_manager.publish_agent(agent_output)
+    return {'response': result, 'elapsed_time': elapsed_time}
 
-    for agent_item in agent_output.agents:
-        agent_item.category = agent_item.category.lower().replace(' ', '_')
-        if agent_item.category not in agent_types:
-            return {'response': f'Invalid category for agent {agent_item.name}, must be one of {agent_types}'}
-
-        # Initialize category list if not already done
-        if agent_item.category not in agents:
-            agents[agent_item.category] = []
-
-        # Append the new agent to the category
-        new_agent = {
-            'name': agent_item.name,
-            'description': agent_item.description
-        }
-
-        agents[agent_item.category].append(new_agent)
-
-    # Push the agents
-    result, elapsed_time = await agents_manager.push_agents(agent_output.user_id, agent_output.api_key, agents)
+@app.post('/unpublish_agent/')
+async def publishAgent(agent_handle: str):
+    """Endpoint to push agents based on provided agents."""
+    logging.info(f'Unpublishing agent: {agent_handle}')
+    result, elapsed_time = await agents_manager.unpublish_agent(agent_handle)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/clear_conversation/')
