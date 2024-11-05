@@ -345,7 +345,7 @@ class AgentsManager:
             logging.warn(f"AgentsManager: add_agent_to_conversation exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
 
-    async def remove_agent_from_conversation(self, agent_input: AgentRegisterInput):
+    async def remove_agent_from_conversation(self, agent_input: AgentRegisterGroupInput):
         """Remove an agent from a conversation."""
         if self.mongo_client is None:
             await self.initialize()
