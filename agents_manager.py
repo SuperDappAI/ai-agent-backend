@@ -186,10 +186,7 @@ class AgentsManager:
         start = time.time()
         try:
             logging.info("AgentsManager: publishing agent...")
-            agent = await self.get_agent(agent_input.agent_handle)
-            if not agent:
-                return "Error: Agent does not exist", time.time() - start
-            workflow_url = f"{agent.get('URL')}/api/workflows/{agent_input.workflow_id}?user_id=${agent.get('published_by')}"
+            workflow_url = f"{agent.get('URL')}/api/workflows/{agent_input.workflow_id}?user_id=${agent_input.user_id}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(workflow_url) as response:
@@ -323,7 +320,7 @@ class AgentsManager:
                     "handle": agent_input.agent_handle
                 }
             )
-            if not registration:
+            if registration is None:
                 return "Error: Agent not registered to this user", time.time() - start
   
             await self.rate_limiter.execute(
@@ -360,7 +357,7 @@ class AgentsManager:
                     "handle": agent_input.agent_handle
                 }
             )
-            if not registration:
+            if registration is None:
                 return "Error: Agent not registered to this user", time.time() - start
 
             result = await self.rate_limiter.execute(
@@ -518,7 +515,7 @@ class AgentsManager:
                     "handle": agent_input.agent_handle
                 }
             )
-            if registration:
+            if registration is not None:
                 registered_to = agent_input.user_id
                 is_authorized = True
             else:
@@ -530,7 +527,7 @@ class AgentsManager:
                         "handle": agent_input.agent_handle
                     }
                 )
-                if convo_agent:
+                if convo_agent is not None:
                     registered_to = convo_agent.get('registered_to')
                     is_authorized = True
             if not is_authorized:
@@ -547,7 +544,7 @@ class AgentsManager:
                     }
                 )
 
-            if not session:
+            if session is None:
                 # Create new session via REST POST
                 async with aiohttp.ClientSession() as http_session:
                     session_data = {
@@ -624,7 +621,7 @@ class AgentsManager:
                 }
             )
             
-            if not session:
+            if session is None:
                 return "Error: no session found for this conversation", time.time() - start
 
             # Delete session via REST call
