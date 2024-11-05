@@ -567,7 +567,7 @@ class AgentsManager:
                                 "conversation_id": agent_input.conversation_id,
                                 "handle": agent_input.agent_handle,
                                 "session_id": session_id,
-                                "user_id": registered_to,
+                                "registered_to": registered_to,
                             }
                         )
             else:
@@ -581,7 +581,7 @@ class AgentsManager:
                         "type": "user_message",
                         "data": agent_input.message,
                         "workflow_id": agent.workflow_id,
-                        "user_id": registered_to,
+                        "registered_to": registered_to,
                         "session_id": session_id
                     }
                     
