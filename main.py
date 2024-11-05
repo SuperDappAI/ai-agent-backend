@@ -9,7 +9,7 @@ from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
-from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentMessageInput, AgentRegisterInput
+from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentUnpublishInput, ClearAgentMemory, AgentMessageInput, AgentRegisterInput, AgentRegisterGroupInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
@@ -178,15 +178,22 @@ async def registerAgent(agent_input: AgentRegisterInput):
     result, elapsed_time = await agents_manager.register_agent(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
+@app.post('/unregister_agent/')
+async def unregisterAgent(agent_input: AgentRegisterInput):
+    """Endpoint to unregister agent based on provided input."""
+    logging.info(f'Unregistering agent: {agent_input}')
+    result, elapsed_time = await agents_manager.unregister_agent(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 @app.post('/add_agent_to_conversation/')
-async def addAgentToConveration(agent_input: AgentRegisterInput):
+async def addAgentToConveration(agent_input: AgentRegisterGroupInput):
     """Endpoint to add agent to conversation based on provided input."""
     logging.info(f'Adding agent to conversation: {agent_input}')
     result, elapsed_time = await agents_manager.add_agent_to_conversation(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/add_agent_to_conversation/')
-async def removeAgentFromConveration(agent_input: AgentRegisterInput):
+async def removeAgentFromConveration(agent_input: AgentRegisterGroupInput):
     """Endpoint to remove agent from conversation based on provided input."""
     logging.info(f'Removing agent from conversation: {agent_input}')
     result, elapsed_time = await agents_manager.remove_agent_from_conversation(agent_input)

@@ -14,44 +14,28 @@ import aiohttp
 
 
 class AgentListInput(BaseModel):
-    user_id: str = None
-    conversation_id: str = None
+    user_id: str
+    conversation_id: str
     results_page: int = 0
     agent_handle: str = None
     filter: str = None
     
     def __str__(self):
-        if self.conversation_id:
-            if self.filter:
-                return self.conversation_id + self.filter + str(self.results_page)
-            elif self.agent_handle:
-                return self.conversation_id + self.agent_handle + str(self.results_page)
-            else:
-                return self.conversation_id + str(self.results_page)
-        elif self.user_id:
-            if self.filter:
-                return self.user_id + self.filter + str(self.results_page)
-            elif self.agent_handle:
-                return self.user_id + self.agent_handle + str(self.results_page)
-            else:
-                return self.user_id + str(self.results_page)
-
+        if self.filter:
+            return self.user_id + self.conversation_id + self.filter + str(self.results_page)
+        elif self.agent_handle:
+            return self.user_id + self.conversation_id + self.agent_handle + str(self.results_page)
+        else:
+            return self.user_id + self.conversation_id + str(self.results_page)
+    
     def __eq__(self, other):
-        if self.conversation_id:
-            if self.filter:
-                return self.conversation_id  == other.conversation_id and self.filter == other.filter and self.results_page == other.results_page
-            elif self.agent_handle:
-                return self.conversation_id  == other.conversation_id and self.agent_handle == other.agent_handle and self.results_page == other.results_page
-            else:
-                return self.conversation_id  == other.conversation_id and self.results_page == other.results_page
-        elif self.user_id:
-            if self.filter:
-                return self.user_id  == other.user_id and self.filter == other.filter and self.results_page == other.results_page
-            elif self.agent_handle:
-                return self.user_id  == other.user_id and self.agent_handle == other.agent_handle and self.results_page == other.results_page
-            else:
-                return self.user_id  == other.user_id and self.results_page == other.results_page
-
+        if self.filter:
+            return self.user_id  == other.user_id and self.conversation_id  == other.conversation_id and self.filter == other.filter and self.results_page == other.results_page
+        elif self.agent_handle:
+            return self.user_id  == other.user_id and self.conversation_id  == other.conversation_id and self.agent_handle == other.agent_handle and self.results_page == other.results_page
+        else:
+            return self.user_id  == other.user_id and self.conversation_id  == other.conversation_id and self.results_page == other.results_page
+ 
     def __hash__(self):
         return hash(str(self))
 
@@ -63,25 +47,24 @@ class ClearAgentMemory(BaseModel):
 class AgentMessageInput(BaseModel):
     agent_handle: str
     message: str
-    user_id: str = None
-    conversation_id: str = None
+    user_id: str
+    conversation_id: str
 
 class AgentRegisterInput(BaseModel):
     agent_handle: str
-    api_key: str = None
-    user_id: str = None
-    conversation_id: str = None
-    
-class AgentItem(BaseModel):
+    user_id: str
+    publisher_user_id: str
+   
+class AgentRegisterGroupInput(BaseModel):
     agent_handle: str
-    description: str
-    URL: str
+    user_id: str
+    conversation_id: str
 
 class AgentPublishInput(BaseModel):
     user_id: str
     workflow_id: str
-    agent: AgentItem = Field(..., example=[
-        {"agent_handle": "@SuperDappAPI", "description": "SuperDapp API agent for send/recv crypto, messages and mails/files", "URL": "https://studio.superdapp.io/27728292"}])
+    agent_handle: str
+    URL: str
 
 class AgentUnpublishInput(BaseModel):
     agent_handle: str
@@ -91,19 +74,19 @@ class AgentOutput(BaseModel):
     """Model for agent output that excludes sensitive information."""
     handle: str
     description: str
-    added_by: str | None = None
-    added_at: datetime | None = None
-    registered_at: datetime | None = None
+    published_by: str
+    published_at: datetime
+    registered_to: str
 
     @classmethod
-    def from_mongo(cls, mongo_doc: dict):
+    def from_mongo(cls, mongo_doc: dict, registered_to: str):
         """Create AgentOutput from MongoDB document, excluding sensitive fields."""
         return cls(
-            handle=mongo_doc["handle"],
-            description=mongo_doc["description"],
-            added_by=mongo_doc.get("added_by"),
-            added_at=mongo_doc.get("added_at"),
-            registered_at=mongo_doc.get("registered_at")
+            handle=mongo_doc.get("handle"),
+            description=mongo_doc.get("description"),
+            published_by=mongo_doc.get("published_by"),
+            published_at=mongo_doc.get("published_at"),
+            registered_to=registered_to,
         )
 
 class AgentsManager:
@@ -117,6 +100,7 @@ class AgentsManager:
         self.agents_collection = None
         self.conversation_agents_collection = None
         self.sessions_collection = None
+        self.max_description_length_allowed = 512
 
     async def initialize(self):
         async with self.init_lock:
@@ -128,6 +112,7 @@ class AgentsManager:
                 self.agents_collection = self.db.agents
                 self.conversation_agents_collection = self.db.conversation_agents
                 self.sessions_collection = self.db.sessions
+                self.registrations_collection = self.db.registrations
 
                 # Create indexes for agents collection
                 await self.rate_limiter.execute(
@@ -137,7 +122,7 @@ class AgentsManager:
                 )
                 await self.rate_limiter.execute(
                     self.agents_collection.create_index,
-                    [("added_by", 1)]
+                    [("registered_to", 1)]
                 )
                 await self.rate_limiter.execute(
                     self.agents_collection.create_index,
@@ -152,20 +137,29 @@ class AgentsManager:
                 )
                 await self.rate_limiter.execute(
                     self.conversation_agents_collection.create_index,
+                    [("handle", 1)]
+                )
+                await self.rate_limiter.execute(
+                    self.conversation_agents_collection.create_index,
                     [("description", "text")]
                 )
 
                 # Create indexes for sessions collection
                 await self.rate_limiter.execute(
                     self.sessions_collection.create_index,
-                    [("conversation_id", 1), ("agent_handle", 1)],
+                    [("conversation_id", 1), ("handle", 1)],
                     unique=True
                 )
                 await self.rate_limiter.execute(
                     self.sessions_collection.create_index,
-                    [("user_id", 1)]
+                    [ ("handle", 1)]
                 )
-
+                # Create indexes for registrations collection
+                await self.rate_limiter.execute(
+                    self.registrations_collection.create_index,
+                    [("registered_to", 1), ("handle", 1)],
+                    unique=True
+                )
             except Exception as e:
                 logging.warn(f"AgentsManager: initialize exception {e}\n{traceback.format_exc()}")
 
@@ -176,11 +170,6 @@ class AgentsManager:
             
         start = time.time()
         try:
-            if not agent_input.user_id and not agent_input.conversation_id:
-                return "Error: user_id or conversation_id not provided", 0
-            if agent_input.user_id and agent_input.conversation_id:
-                return "Error: user_id and conversation_id both provided, can only provide one", 0
-
             response = await self.scan_agents(agent_input, 10)
             return response, time.time() - start
 
@@ -197,19 +186,37 @@ class AgentsManager:
         start = time.time()
         try:
             logging.info("AgentsManager: publishing agent...")
+            agent = await self.get_agent(agent_input.agent_handle)
+            if not agent:
+                return "Error: Agent does not exist", time.time() - start
+            workflow_url = f"{agent.get('URL')}/api/workflows/{agent_input.workflow_id}?user_id=${agent.get('published_by')}"
 
-            # Use rate limiter for MongoDB update
+            async with aiohttp.ClientSession() as session:
+                async with session.get(workflow_url) as response:
+                    # Check if the request was successful
+                    if response.status != 200:
+                        raise ValueError("Workflow does not exist or could not be fetched.")
+
+                    # Parse the JSON response
+                    workflow = await response.json()
+
+            # Get the description from the workflow
+            description = workflow.get("description")
+            # Limit the description to max_description_length_allowed characters
+            if len(description) > self.max_description_length_allowed:
+                description = description[:self.max_description_length_allowed] + "..."
+
             await self.rate_limiter.execute(
                 self.agents_collection.update_one,
                 {"handle": agent_input.agent.agent_handle},
                 {"$set": {
-                    "description": agent_input.agent.description,
+                    "description": description,
                     "URL": agent_input.agent.URL,
-                    "added_at": datetime.utcnow(),
-                    "added_by": agent_input.user_id,
+                    "published_at": datetime.utcnow(),
+                    "published_by": agent_input.user_id,
                     "workflow_id": agent_input.workflow_id
                 }},
-                upsert=True
+                upsert = True
             )
             
         except Exception as e:
@@ -230,50 +237,55 @@ class AgentsManager:
             if not agent:
                 return "Error: Agent does not exist", time.time() - start
             # Check authorization
-            if agent.get("added_by") != agent_input.user_id:
+            if agent.get("published_by") != agent_input.user_id:
                 return "Error: not authorized to unpublish this agent", time.time() - start
 
             # Find all sessions for this agent
             sessions = await self.rate_limiter.execute(
                 self.sessions_collection.find,
-                {"agent_handle": agent_handle}
+                {"handle": agent_input.agent_handle}
             )
             
             # Delete remote sessions
             async with aiohttp.ClientSession() as http_session:
                 async for session in sessions:
                     try:
-                        delete_url = f"{agent['URL']}/api/sessions/delete?session_id={session['session_id']}&user_id={session['user_id']}"
+                        delete_url = f"{agent.get('URL')}/api/sessions/delete?session_id={session.get('session_id')}&user_id={session.get('user_id')}"
                         async with http_session.delete(delete_url) as response:
                             if response.status != 200:
-                                logging.warning(f"Failed to delete remote session {session['session_id']} for agent {agent_handle}")
+                                logging.warning(f"Failed to delete remote session {session.get('session_id')} for agent {agent_input.agent_handle}")
                     except Exception as e:
                         logging.warning(f"Error deleting remote session: {str(e)}")
 
             # Delete all local sessions for this agent
             await self.rate_limiter.execute(
                 self.sessions_collection.delete_many,
-                {"agent_handle": agent_handle}
+                {"handle": agent_input.agent_handle}
             )
-
+            # Delete all registrations for this agent
+            await self.rate_limiter.execute(
+                self.registrations_collection.delete_many,
+                {"handle": agent_input.agent_handle}
+            )
+           
             # Delete the agent from agents collection
             result = await self.rate_limiter.execute(
                 self.agents_collection.delete_one,
-                {"handle": agent_handle}
+                {"handle": agent_input.agent_handle}
             )
             
             # Remove agent from all conversations
             await self.rate_limiter.execute(
                 self.conversation_agents_collection.delete_many,
-                {"handle": agent_handle}
+                {"handle": agent_input.agent_handle}
             )
             
             if result.deleted_count == 0:
-                logging.warning(f"Agent {agent_handle} not found for deletion")
+                logging.warning(f"Agent {agent_input.agent_handle} not found for deletion")
                 return "Warning: Call was success but nothing was deleted", time.time() - start
             
         except Exception as e:
-            logging.error(f"Failed to unpublish agent {agent_handle}: {str(e)}")
+            logging.error(f"Failed to unpublish agent {agent_input.agent_handle}: {str(e)}")
         return "Agent unpublished", time.time() - start
 
     async def get_agent(self, agent_handle: str):
@@ -292,23 +304,28 @@ class AgentsManager:
             logging.warn(f"AgentsManager: get_agent exception {e}\n{traceback.format_exc()}")
             return None
 
-    async def add_agent_to_conversation(self, agent_input: AgentRegisterInput):
+    async def add_agent_to_conversation(self, agent_input: AgentRegisterGroupInput):
         """Add an agent to a conversation."""
         if self.mongo_client is None:
             await self.initialize()
             
         start = time.time()
         try:
-            if not agent_input.conversation_id:
-                return "Error: conversation_id not provided", time.time() - start
-            if not agent_input.agent_handle:
-                return "Error: agent_handle not provided", time.time() - start
-
             # Check if agent exists
             agent = await self.get_agent(agent_input.agent_handle)
             if not agent:
                 return "Error: Agent not found", time.time() - start
-
+            # look up registrations to make sure user_id has been registered
+            registration = await self.rate_limiter.execute(
+                self.registrations_collection.find_one,
+                {
+                    "registered_to": agent_input.user_id,
+                    "handle": agent_input.agent_handle
+                }
+            )
+            if not registration:
+                return "Error: Agent not registered to this user", time.time() - start
+  
             await self.rate_limiter.execute(
                 self.conversation_agents_collection.update_one,
                 {
@@ -316,9 +333,10 @@ class AgentsManager:
                     "handle": agent_input.agent_handle
                 },
                 {"$set": {
-                    "description": agent.get("description", "")
+                    "description": agent.get("description", ""),
+                    "registered_to": agent_input.user_id
                 }},
-                upsert=True
+                upsert = True
             )
             
             return "Agent added to conversation", time.time() - start
@@ -334,10 +352,16 @@ class AgentsManager:
             
         start = time.time()
         try:
-            if not agent_input.conversation_id:
-                return "Error: conversation_id not provided", time.time() - start
-            if not agent_input.agent_handle:
-                return "Error: agent_handle not provided", time.time() - start
+            # look up registrations to make sure user_id has been registered
+            registration = await self.rate_limiter.execute(
+                self.registrations_collection.find_one,
+                {
+                    "registered_to": agent_input.user_id,
+                    "handle": agent_input.agent_handle
+                }
+            )
+            if not registration:
+                return "Error: Agent not registered to this user", time.time() - start
 
             result = await self.rate_limiter.execute(
                 self.conversation_agents_collection.delete_one,
@@ -365,31 +389,30 @@ class AgentsManager:
             skip = agent_input.results_page * page_size
             agents = []
 
-            if agent_input.conversation_id:
-                # Build query for conversation agents
-                query = {"conversation_id": agent_input.conversation_id}
-                if agent_input.filter:
-                    query["$text"] = {"$search": agent_input.filter}
-                elif agent_input.agent_handle:
-                    query["handle"] = agent_input.agent_handle
-                
-                cursor = await self.rate_limiter.execute(
-                    self.conversation_agents_collection.find,
-                    query,
-                    skip=skip,
-                    limit=page_size
-                )
-                
-                # For each conversation agent, lookup the full agent details
-                async for convo_agent in cursor:
-                    agent = await self.get_agent(convo_agent["handle"])
-                    if agent:
-                        agents.append(AgentOutput.from_mongo(agent))
-            elif agent_input.user_id:
+           
+            # Build query for conversation agents
+            query = {"conversation_id": agent_input.conversation_id}
+            if agent_input.filter:
+                query["$text"] = {"$search": agent_input.filter}
+            elif agent_input.agent_handle:
+                query["handle"] = agent_input.agent_handle
+            
+            cursor = await self.rate_limiter.execute(
+                self.conversation_agents_collection.find,
+                query,
+                skip=skip,
+                limit=page_size
+            )
+            
+            # For each conversation agent, lookup the full agent details
+            async for convo_agent in cursor:
+                agent = await self.get_agent(convo_agent["handle"])
+                if agent:
+                    agents.append(AgentOutput.from_mongo(agent, convo_agent.get("registered_to")))
+            # if conversation is not a group, look up on the user_id assuming the registrar is calling it
+            if len(agents) == 0:
                 # Direct query on agents collection
-                query = {}
-                if agent_input.user_id:
-                    query["added_by"] = agent_input.user_id
+                query = {"registered_to": agent_input.user_id}
                 if agent_input.filter:
                     query["$text"] = {"$search": agent_input.filter}
                 elif agent_input.agent_handle:
@@ -403,7 +426,7 @@ class AgentsManager:
                 )
                 
                 async for agent in cursor:
-                    agents.append(AgentOutput.from_mongo(agent))
+                    agents.append(AgentOutput.from_mongo(agent, agent_input.user_id))
                     
             return agents
             
@@ -418,29 +441,58 @@ class AgentsManager:
             
         start = time.time()
         try:
-            if not agent_input.user_id:
-                return "Error: user_id not provided", time.time() - start
-            if not agent_input.api_key:
-                return "Error: api_key not provided", time.time() - start
-
             # Check if agent exists
             agent = await self.get_agent(agent_input.agent_handle)
             if not agent:
                 return "Error: agent not found", time.time() - start
+            # check publisher_user_id to make sure only he can register to other users
+            if agent.published_by != agent_input.publisher_user_id:
+                return "Error: not authorized to register this agent", time.time() - start
 
             await self.rate_limiter.execute(
-                self.agents_collection.update_one,
-                {"handle": agent_input.agent_handle},
+                self.registrations_collection.update_one,
+                {
+                    "registered_to": agent_input.user_id,
+                    "handle": agent_input.agent_handle
+                },
                 {"$set": {
-                    "api_key": agent_input.api_key,
-                    "registered_at": datetime.utcnow()
-                }}
+                }},
+                upsert=True
             )
-            
+                        
             return "Agent registered successfully", time.time() - start
             
         except Exception as e:
             logging.warn(f"AgentsManager: register_agent exception {e}\n{traceback.format_exc()}")
+            return f"Error: {str(e)}", time.time() - start
+
+    async def unregister_agent(self, agent_input: AgentRegisterInput):
+        """Unregister an agent for a user."""
+        if self.mongo_client is None:
+            await self.initialize()
+            
+        start = time.time()
+        try:
+            # Check if agent exists
+            agent = await self.get_agent(agent_input.agent_handle)
+            if not agent:
+                return "Error: agent not found", time.time() - start
+            # check publisher_user_id to make sure only he can unregister
+            if agent.published_by != agent_input.publisher_user_id:
+                return "Error: not authorized to unregister this agent", time.time() - start
+
+            await self.rate_limiter.execute(
+                self.registrations_collection.delete_one,
+                {
+                    "registered_to": agent_input.user_id,
+                    "handle": agent_input.agent_handle
+                }
+            )
+            
+            return "Agent unregistered successfully", time.time() - start
+            
+        except Exception as e:
+            logging.warn(f"AgentsManager: unregister_agent exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
 
     async def message_agent(self, agent_input: AgentMessageInput):
@@ -450,13 +502,6 @@ class AgentsManager:
             
         start = time.time()
         try:
-            if not agent_input.user_id and not agent_input.conversation_id:
-                return "Error: user_id or conversation_id not provided", time.time() - start
-            if not agent_input.message:
-                return "Error: message not provided", time.time() - start
-            if not agent_input.agent_handle:
-                return "Error: agent_handle not provided", time.time() - start
-
             # Check if agent exists and get its details
             agent = await self.get_agent(agent_input.agent_handle)
             if not agent:
@@ -464,13 +509,20 @@ class AgentsManager:
             
             # Check authorization
             is_authorized = False
-            
-            # Check if user is the agent's owner
-            if agent.get("added_by") == agent_input.user_id:
+            registered_to = None
+            # Check if user is in the agent's registration list
+            registration = await self.rate_limiter.execute(
+                self.registrations_collection.find_one,
+                {
+                    "registered_to": agent_input.user_id,
+                    "handle": agent_input.agent_handle
+                }
+            )
+            if registration:
+                registered_to = agent_input.user_id
                 is_authorized = True
-            
-            # If not owner and conversation_id provided, check if agent is in conversation
-            elif agent_input.conversation_id:
+            else:
+                # if user is not the registered agent owner must have registered a conversation and user is in it
                 convo_agent = await self.rate_limiter.execute(
                     self.conversation_agents_collection.find_one,
                     {
@@ -479,14 +531,10 @@ class AgentsManager:
                     }
                 )
                 if convo_agent:
+                    registered_to = convo_agent.get('registered_to')
                     is_authorized = True
-            
             if not is_authorized:
                 return "Error: not authorized to message this agent", time.time() - start
-
-            # Check if agent is registered (has API key)
-            if not agent.get("api_key"):
-                return "Error: agent is not registered", time.time() - start
 
             # Check if session exists for this conversation
             session = None
@@ -495,7 +543,7 @@ class AgentsManager:
                     self.sessions_collection.find_one,
                     {
                         "conversation_id": agent_input.conversation_id,
-                        "agent_handle": agent_input.agent_handle
+                        "handle": agent_input.agent_handle
                     }
                 )
 
@@ -503,10 +551,10 @@ class AgentsManager:
                 # Create new session via REST POST
                 async with aiohttp.ClientSession() as http_session:
                     session_data = {
-                        "user_id": agent.get("added_by"),
+                        "user_id": registered_to,
                         "workflow_id": agent.get("workflow_id")
                     }
-                    async with http_session.post(f"{agent['URL']}/api/sessions", json=session_data) as response:
+                    async with http_session.post(f"{agent.get('URL')}/api/sessions", json=session_data) as response:
                         if response.status != 200:
                             return "Error: Failed to create agent session", time.time() - start
                         session_response = await response.json()
@@ -517,26 +565,24 @@ class AgentsManager:
                             self.sessions_collection.insert_one,
                             {
                                 "conversation_id": agent_input.conversation_id,
-                                "agent_handle": agent_input.agent_handle,
+                                "handle": agent_input.agent_handle,
                                 "session_id": session_id,
-                                "user_id": agent.get("added_by"),
-                                "created_at": datetime.utcnow()
+                                "user_id": registered_to,
                             }
                         )
             else:
-                session_id = session["session_id"]
+                session_id = session.get("session_id")
 
             try:
                 # Setup websocket connection to agent's URL
-                async with websockets.connect(agent["URL"] + "/api/ws/" + str(session_id)) as websocket:
+                async with websockets.connect(agent.get("URL") + "/api/ws/" + str(session_id)) as websocket:
                     # Prepare message payload
                     payload = {
                         "type": "user_message",
                         "data": agent_input.message,
                         "workflow_id": agent.workflow_id,
-                        "user_id": agent.get("added_by"),
-                        "session_id": session_id,
-                        "api_key": agent.get("api_key"),
+                        "user_id": registered_to,
+                        "session_id": session_id
                     }
                     
                     # Send message
@@ -566,7 +612,7 @@ class AgentsManager:
                 return "Error: agent not found", time.time() - start
 
             # Check authorization
-            if agent.get("added_by") != clear_memory.user_id:
+            if agent.get("registered_to") != clear_memory.user_id:
                 return "Error: not authorized to clear this agent's conversation", time.time() - start
 
             # Lookup session
@@ -574,7 +620,7 @@ class AgentsManager:
                 self.sessions_collection.find_one,
                 {
                     "conversation_id": clear_memory.conversation_id,
-                    "agent_handle": clear_memory.agent_handle
+                    "handle": clear_memory.agent_handle
                 }
             )
             
@@ -583,7 +629,7 @@ class AgentsManager:
 
             # Delete session via REST call
             async with aiohttp.ClientSession() as http_session:
-                delete_url = f"{agent['URL']}/api/sessions/delete?session_id={session['session_id']}&user_id={clear_memory.user_id}"
+                delete_url = f"{agent.get('URL')}/api/sessions/delete?session_id={session.get('session_id')}&user_id={clear_memory.user_id}"
                 async with http_session.delete(delete_url) as response:
                     if response.status != 200:
                         return "Error: Failed to clear agent session", time.time() - start
@@ -593,7 +639,7 @@ class AgentsManager:
                 self.sessions_collection.delete_one,
                 {
                     "conversation_id": clear_memory.conversation_id,
-                    "agent_handle": clear_memory.agent_handle
+                    "handle": clear_memory.agent_handle
                 }
             )
 
