@@ -4,7 +4,7 @@ import time
 import asyncio
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
@@ -15,6 +15,8 @@ from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
 from cachetools import TTLCache, LRUCache
 from rate_limiter import RateLimiter, SyncRateLimiter
+from websocket_connection_manager import WebSocketConnectionManager
+
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 # Load environment variables
@@ -41,7 +43,6 @@ logging.basicConfig(filename=LOGFILE_PATH, filemode='w',
 
 
 functions_manager = FunctionsManager(rate_limiter, rate_limiter_sync)
-agents_manager = AgentsManager(rate_limiter, rate_limiter_sync)
 agent_manager = AgentManager(rate_limiter, rate_limiter_sync)
 web_manager = WebManager(rate_limiter, rate_limiter_sync)
 queryplan_manager = QueryPlanManager()
@@ -52,7 +53,71 @@ searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 agentcache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
+active_connections = []
+active_connections_lock = asyncio.Lock()
 
+websocket_manager = WebSocketConnectionManager(
+    active_connections=active_connections,
+    active_connections_lock=active_connections_lock,
+)
+
+class MessageManager:
+    """
+    This class handles the automated generation and management of chat interactions
+    using an automated workflow configuration and message queue.
+    """
+
+    def __init__(
+        self, websocket_manager: WebSocketConnectionManager = None, human_input_timeout: int = 180
+    ) -> None:
+        """
+        Initializes the AutoGenChatManager with a message queue.
+
+        """
+        self.websocket_manager = websocket_manager
+        self.a_human_input_timeout = human_input_timeout
+
+    async def a_send(self, message: dict) -> None:
+        """
+        Asynchronously sends a message via the WebSocketManager class
+
+        :param message: The message string to be sent.
+        """
+        for connection, socket_client_id in self.websocket_manager.active_connections:
+            if message["connection_id"] == socket_client_id:
+                logging.info(
+                    f"Sending message to client connection_id: {message['connection_id']}. Connection ID: {socket_client_id}"
+                )
+                await self.websocket_manager.send_message(message, connection)
+            else:
+                logging.info(
+                    f"Skipping message for client connection_id: {message['connection_id']}. Connection ID: {socket_client_id}"
+                )
+    
+    async def a_prompt_for_input(self, prompt: dict, timeout: int = 60) -> str:
+        """
+        Sends the user a prompt and waits for a response asynchronously via the WebSocketManager class
+
+        :param message: The message string to be sent.
+        """
+
+        for connection, socket_client_id in self.websocket_manager.active_connections:
+            if prompt["connection_id"] == socket_client_id:
+                logging.info(
+                    f"Sending message to client connection_id: {prompt['connection_id']}. Connection ID: {socket_client_id}"
+                )
+                try:
+                    result = await self.websocket_manager.get_input(prompt, connection, timeout)
+                    return result
+                except Exception as e:
+                    return f"Error: {e}\nTERMINATE"
+            else:
+                logging.info(
+                    f"Skipping message for client connection_id: {prompt['connection_id']}. Connection ID: {socket_client_id}"
+                )
+
+message_manager = MessageManager(websocket_manager)
+agents_manager = AgentsManager(rate_limiter, message_manager)
 @app.post('/get_preferences/')
 async def getPreferences(preferences_query: QueryPreferencesInput):
     logging.info(f'Get preferences for user {preferences_query.user_id}')
@@ -242,12 +307,6 @@ async def unpublishAgent(agent_input: AgentUnpublishInput):
     result, elapsed_time = await agents_manager.unpublish_agent(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
-@app.post('/message_agent/')
-async def messageAgent(agent_input: AgentMessageInput):
-    """Endpoint to message agents."""
-    logging.info(f'Unpublishing agent: {agent_input}')
-    result, elapsed_time = await agents_manager.message_agent(agent_input)
-    return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
@@ -287,3 +346,37 @@ async def clearCache(cache_clear_input: CacheClearInput):
         functioncache.clear()
     end = time.time()
     return {'response': "success", 'elapsed_time': end - start}
+
+@app.websocket("/ws/{client_id}")
+async def messageAgent(websocket: WebSocket, client_id: str):
+    """Endpoint to facilitate communication between the client and the agent."""
+    await websocket_manager.connect(websocket, client_id)
+    try:
+        # Receive the initial message from the client
+        data = await websocket.receive_json()
+        
+        # Create AgentMessageInput from the received data using **
+        agent_input = AgentMessageInput(**data)
+        
+        # Validate the client_id matches the user_id in agent_input
+        if client_id != agent_input.user_id:
+            # Send an error message over the WebSocket connection
+            await websocket.send_json({
+                'type': 'error',
+                'message': "Error: connection_id does not match client_id",
+            })
+            await websocket_manager.disconnect(client_id)
+            return
+        
+        logging.info(f'Messaging agent: {agent_input}')
+        
+        # Start the message processing
+        await agents_manager.message_agent(agent_input)
+        
+    except WebSocketDisconnect:
+        logging.info(f"Client #{client_id} disconnected")
+        await websocket_manager.disconnect(client_id)
+    except Exception as e:
+        logging.error(f"Error in messageAgent: {e}")
+        await websocket.send_json({'type': 'error', 'message': str(e)})
+        await websocket_manager.disconnect(client_id)

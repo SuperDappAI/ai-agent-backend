@@ -4,14 +4,15 @@ import traceback
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from asyncio import Lock
 from rate_limiter import RateLimiter
 import json
 import websockets
 import aiohttp
-
+from typing import Any, Dict, List, Optional, Union
+from main import MessageManager
 
 class AgentListInput(BaseModel):
     user_id: str
@@ -49,6 +50,7 @@ class AgentMessageInput(BaseModel):
     message: str
     user_id: str
     conversation_id: str
+    context: str
 
 class AgentRegisterInput(BaseModel):
     agent_handle: str
@@ -89,9 +91,26 @@ class AgentOutput(BaseModel):
             registered_to=registered_to,
         )
 
+class MessageMeta():
+    task: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+    summary_method: Optional[str] = "last"
+    files: Optional[List[dict]] = None
+    time: Optional[datetime] = None
+    log: Optional[List[dict]] = None
+    usage: Optional[List[dict]] = None
+
+class Message():
+    user_id: int
+    role: str
+    content: str
+    session_id: int
+    connection_id: str
+    meta: Optional[Union[MessageMeta, dict]] = None
+
 class AgentsManager:
 
-    def __init__(self):
+    def __init__(self, message_manager: MessageManager):
         load_dotenv()
         self.rate_limiter = RateLimiter(rate=10, period=1)
         self.init_lock = Lock()
@@ -101,6 +120,7 @@ class AgentsManager:
         self.conversation_agents_collection = None
         self.sessions_collection = None
         self.max_description_length_allowed = 512
+        self.message_manager = message_manager
 
     async def initialize(self):
         async with self.init_lock:
@@ -186,7 +206,7 @@ class AgentsManager:
         start = time.time()
         try:
             logging.info("AgentsManager: publishing agent...")
-            workflow_url = f"{agent.get('URL')}/api/workflows/{agent_input.workflow_id}?user_id=${agent_input.user_id}"
+            workflow_url = f"{agent_input.get('URL')}/api/workflows/{agent_input.workflow_id}?user_id=${agent_input.user_id}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(workflow_url) as response:
@@ -493,7 +513,7 @@ class AgentsManager:
             return f"Error: {str(e)}", time.time() - start
 
     async def message_agent(self, agent_input: AgentMessageInput):
-        """Send message to an agent if authorized."""
+        """Send message to an agent if authorized and stream responses."""
         if self.mongo_client is None:
             await self.initialize()
             
@@ -569,29 +589,70 @@ class AgentsManager:
                         )
             else:
                 session_id = session.get("session_id")
-
-            try:
-                # Setup websocket connection to agent's URL
-                async with websockets.connect(agent.get("URL") + "/api/ws/" + str(session_id)) as websocket:
-                    # Prepare message payload
-                    payload = {
-                        "type": "user_message",
-                        "data": agent_input.message,
-                        "workflow_id": agent.workflow_id,
-                        "registered_to": registered_to,
-                        "session_id": session_id
-                    }
-                    
-                    # Send message
-                    await websocket.send(json.dumps(payload))
-                    
-                    # Wait for response
-                    response = await websocket.recv()
-                    return json.loads(response), time.time() - start
-                    
-            except websockets.exceptions.WebSocketException as e:
-                return f"Error connecting to agent: {str(e)}", time.time() - start
             
+           # Connect to the agent and store the connection
+            agent_ws_url = f"{agent.get('URL')}/api/ws/{agent_input.user_id}"
+            try:
+                async with websockets.connect(agent_ws_url) as agent_websocket:
+
+                    # Prepare message content
+                    message = f'CONTEXT: {agent_input.context}\nMESSAGE: {agent_input.message}' if agent_input.context else agent_input.message
+
+                    # Create message payload
+                    msg = Message(
+                        user_id=registered_to,
+                        role="user",
+                        content=message,
+                        session_id=session_id,
+                        connection_id=agent_input.user_id
+                    )
+                    payload = json.dumps({
+                        "type": "user_message",
+                        "data": msg.dict()
+                    })
+                    
+                    # Send message to the agent
+                    await agent_websocket.send(payload)
+                    
+                    # Start the communication loop
+                    while True:
+                        # Receive message from the agent
+                        agent_message = await agent_websocket.recv()
+                        if not agent_message:
+                            break  # Agent disconnected
+
+                        # Parse agent_message from JSON
+                        agent_message = json.loads(agent_message)
+
+                        if agent_message.get('type') == 'user_input_request':
+                            # Send prompt to client and wait for response
+                            user_input = await self.message_manager.a_prompt_for_input(agent_message)
+                            
+                            # Prepare and send user's input back to the agent
+                            message_payload = {
+                                "recipient": agent_message.get("data").get("sender"),
+                                "sender": agent_message.get("data").get("recipient"),
+                                "message": user_input,
+                                "timestamp": datetime.now().isoformat(),
+                                "sender_type": agent_message.get("data").get("sender_type"),
+                                "connection_id": agent_message.get("data").get("connection_id"),
+                                "message_type": agent_message.get("data").get("message_type"),
+                            }
+                            socket_msg = json.dumps(
+                                type="user_input_response",
+                                data=message_payload,
+                            )
+                            await agent_websocket.send(socket_msg)
+                        else:
+                            # Forward message to client
+                            await self.message_manager.a_send(agent_message)
+
+                        if agent_message.get('type') == 'agent_response':
+                            # Agent has finished processing
+                            break
+            except Exception as e:
+                logging.error(f"Error during WebSocket communication: {str(e)}")
+                await self.message_manager.a_send({'type': 'error', 'message': str(e)})
         except Exception as e:
             logging.warn(f"AgentsManager: message_agent exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
