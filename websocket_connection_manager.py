@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Dict, List, Tuple, Union
 
 import websockets
@@ -133,3 +134,59 @@ class WebSocketConnectionManager:
             except (WebSocketDisconnect, websockets.exceptions.ConnectionClosedOK) as e:
                 print(f"Error: WebSocket disconnected or closed({str(e)})")
                 await self.disconnect(connection)
+                
+
+class MessageManager:
+    """
+    This class handles the automated generation and management of chat interactions
+    using an automated workflow configuration and message queue.
+    """
+
+    def __init__(
+        self, websocket_manager: WebSocketConnectionManager = None, human_input_timeout: int = 180
+    ) -> None:
+        """
+        Initializes the AutoGenChatManager with a message queue.
+
+        """
+        self.websocket_manager = websocket_manager
+        self.a_human_input_timeout = human_input_timeout
+
+    async def a_send(self, message: dict) -> None:
+        """
+        Asynchronously sends a message via the WebSocketManager class
+
+        :param message: The message string to be sent.
+        """
+        for connection, socket_client_id in self.websocket_manager.active_connections:
+            if message["connection_id"] == socket_client_id:
+                logging.info(
+                    f"Sending message to client connection_id: {message['connection_id']}. Connection ID: {socket_client_id}"
+                )
+                await self.websocket_manager.send_message(message, connection)
+            else:
+                logging.info(
+                    f"Skipping message for client connection_id: {message['connection_id']}. Connection ID: {socket_client_id}"
+                )
+    
+    async def a_prompt_for_input(self, prompt: dict, timeout: int = 60) -> str:
+        """
+        Sends the user a prompt and waits for a response asynchronously via the WebSocketManager class
+
+        :param message: The message string to be sent.
+        """
+
+        for connection, socket_client_id in self.websocket_manager.active_connections:
+            if prompt["connection_id"] == socket_client_id:
+                logging.info(
+                    f"Sending message to client connection_id: {prompt['connection_id']}. Connection ID: {socket_client_id}"
+                )
+                try:
+                    result = await self.websocket_manager.get_input(prompt, connection, timeout)
+                    return result
+                except Exception as e:
+                    return f"Error: {e}\nTERMINATE"
+            else:
+                logging.info(
+                    f"Skipping message for client connection_id: {prompt['connection_id']}. Connection ID: {socket_client_id}"
+                )

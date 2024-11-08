@@ -12,7 +12,7 @@ import json
 import websockets
 import aiohttp
 from typing import Any, Dict, List, Optional, Union
-from main import MessageManager
+from websocket_connection_manager import MessageManager
 
 class AgentListInput(BaseModel):
     user_id: str
