@@ -127,61 +127,66 @@ class AgentsManager:
             if self.mongo_client is not None:
                 return
             try:
-                self.mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+                self.mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URL"))
                 self.db = self.mongo_client.agents_db
-                
+
                 # Create collections if they do not exist
                 self.agents_collection = self.db.get_collection("agents")
                 self.conversation_agents_collection = self.db.get_collection("conversation_agents")
                 self.sessions_collection = self.db.get_collection("sessions")
                 self.registrations_collection = self.db.get_collection("registrations")
 
-                # Create indexes for agents collection
-                await self.rate_limiter.execute(
-                    self.agents_collection.create_index,
-                    [("handle", 1)],
-                    unique=True
-                )
-                await self.rate_limiter.execute(
-                    self.agents_collection.create_index,
-                    [("registered_to", 1)]
-                )
-                await self.rate_limiter.execute(
-                    self.agents_collection.create_index,
-                    [("description", "text")]
-                )
+                # Create a unique index for handle in agents collection if it does not exist
+                existing_indexes = await self.agents_collection.index_information()
+                if "handle_1" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.agents_collection.create_index,
+                        [("handle", 1)],
+                        unique=True
+                    )
 
-                # Create indexes for conversation_agents collection
-                await self.rate_limiter.execute(
-                    self.conversation_agents_collection.create_index,
-                    [("conversation_id", 1), ("handle", 1)],
-                    unique=True
-                )
-                await self.rate_limiter.execute(
-                    self.conversation_agents_collection.create_index,
-                    [("handle", 1)]
-                )
-                await self.rate_limiter.execute(
-                    self.conversation_agents_collection.create_index,
-                    [("description", "text")]
-                )
+                # Create a single text index for agents collection if it does not exist
+                if "text_index" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.agents_collection.create_index,
+                        [("registered_to", "text"), ("description", "text")],
+                        name="text_index"
+                    )
 
-                # Create indexes for sessions collection
-                await self.rate_limiter.execute(
-                    self.sessions_collection.create_index,
-                    [("conversation_id", 1), ("handle", 1)],
-                    unique=True
-                )
-                await self.rate_limiter.execute(
-                    self.sessions_collection.create_index,
-                    [ ("handle", 1)]
-                )
-                # Create indexes for registrations collection
-                await self.rate_limiter.execute(
-                    self.registrations_collection.create_index,
-                    [("registered_to", 1), ("handle", 1)],
-                    unique=True
-                )
+                # Create a unique compound index for conversation_agents collection if it does not exist
+                existing_indexes = await self.conversation_agents_collection.index_information()
+                if "conversation_id_handle" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.conversation_agents_collection.create_index,
+                        [("conversation_id", 1), ("handle", 1)],
+                        unique=True
+                    )
+
+                # Create a single text index for conversation_agents collection if it does not exist
+                if "text_index" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.conversation_agents_collection.create_index,
+                        [("description", "text")],
+                        name="text_index"
+                    )
+
+                # Create a compound index for sessions collection if it does not exist
+                existing_indexes = await self.sessions_collection.index_information()
+                if "conversation_id_handle" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.sessions_collection.create_index,
+                        [("conversation_id", 1), ("handle", 1)],
+                        unique=True
+                    )
+
+                # Create a compound index for registrations collection if it does not exist
+                existing_indexes = await self.registrations_collection.index_information()
+                if "registered_to_handle" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.registrations_collection.create_index,
+                        [("registered_to", 1), ("handle", 1)],
+                        unique=True
+                    )
             except Exception as e:
                 logging.warn(f"AgentsManager: initialize exception {e}\n{traceback.format_exc()}")
 
@@ -242,7 +247,7 @@ class AgentsManager:
         finally:
             end = time.time()
             logging.info(f"AgentsManager: publish_agent took {end - start} seconds")
-            return agent_input.name, end-start
+            return agent_input.agent_handle, end-start
 
     async def unpublish_agent(self, agent_input: AgentUnpublishInput):
         """Unpublish agent from MongoDB and remove from all conversations."""
