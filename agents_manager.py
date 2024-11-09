@@ -129,10 +129,12 @@ class AgentsManager:
             try:
                 self.mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
                 self.db = self.mongo_client.agents_db
-                self.agents_collection = self.db.agents
-                self.conversation_agents_collection = self.db.conversation_agents
-                self.sessions_collection = self.db.sessions
-                self.registrations_collection = self.db.registrations
+                
+                # Create collections if they do not exist
+                self.agents_collection = self.db.get_collection("agents")
+                self.conversation_agents_collection = self.db.get_collection("conversation_agents")
+                self.sessions_collection = self.db.get_collection("sessions")
+                self.registrations_collection = self.db.get_collection("registrations")
 
                 # Create indexes for agents collection
                 await self.rate_limiter.execute(
@@ -202,11 +204,10 @@ class AgentsManager:
         """Publish a new agent to the registry."""
         if self.mongo_client is None:
             await self.initialize()
-            
         start = time.time()
         try:
             logging.info("AgentsManager: publishing agent...")
-            workflow_url = f"{agent_input.get('URL')}/api/workflows/{agent_input.workflow_id}?user_id=${agent_input.user_id}"
+            workflow_url = f"{agent_input.URL}/api/workflows/{agent_input.workflow_id}?user_id=${agent_input.user_id}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(workflow_url) as response:
@@ -225,10 +226,10 @@ class AgentsManager:
 
             await self.rate_limiter.execute(
                 self.agents_collection.update_one,
-                {"handle": agent_input.agent.agent_handle},
+                {"handle": agent_input.agent_handle},
                 {"$set": {
                     "description": description,
-                    "URL": agent_input.agent.URL,
+                    "URL": agent_input.URL,
                     "published_at": datetime.utcnow(),
                     "published_by": agent_input.user_id,
                     "workflow_id": agent_input.workflow_id
@@ -241,7 +242,7 @@ class AgentsManager:
         finally:
             end = time.time()
             logging.info(f"AgentsManager: publish_agent took {end - start} seconds")
-            return agent_input.agent.name, end-start
+            return agent_input.name, end-start
 
     async def unpublish_agent(self, agent_input: AgentUnpublishInput):
         """Unpublish agent from MongoDB and remove from all conversations."""
