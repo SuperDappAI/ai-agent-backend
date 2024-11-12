@@ -51,7 +51,6 @@ doc_manager = DocManager(rate_limiter, rate_limiter_sync)
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
-agentcache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
 active_connections = []
 active_connections_lock = asyncio.Lock()
@@ -172,13 +171,7 @@ async def getFunctions(function_input: FunctionInput):
 @app.post('/list_registered_agents/')
 async def listRegisteredAgents(agent_input: AgentListInput):
     """Endpoint to get registered agents based on provided input."""
-    result = agentcache.get(agent_input)
-    if result is not None:
-        logging.info(f'Found agents in cache, result {result}')
-        return {'response': result, 'elapsed_time': 0}
     result, elapsed_time = await agents_manager.list_registered_agents(agent_input)
-    if len(result) > 0:
-        agentcache[agent_input] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/register_agent/')
@@ -285,8 +278,6 @@ async def clearCache(cache_clear_input: CacheClearInput):
         queryplancache.clear()
     if {"searchhtml", "all"} & set(cache_clear_input.cache_types):
         searchhtmlcache.clear()
-    if {"agent", "all"} & set(cache_clear_input.cache_types):
-        agentcache.clear()
     if {"function", "all"} & set(cache_clear_input.cache_types):
         functioncache.clear()
     end = time.time()

@@ -16,29 +16,10 @@ from websocket_connection_manager import MessageManager
 
 class AgentListInput(BaseModel):
     user_id: str
-    conversation_id: str
-    results_page: int = 0
-    agent_handle: str = None
-    filter: str = None
-    
-    def __str__(self):
-        if self.filter:
-            return self.user_id + self.conversation_id + self.filter + str(self.results_page)
-        elif self.agent_handle:
-            return self.user_id + self.conversation_id + self.agent_handle + str(self.results_page)
-        else:
-            return self.user_id + self.conversation_id + str(self.results_page)
-    
-    def __eq__(self, other):
-        if self.filter:
-            return self.user_id  == other.user_id and self.conversation_id  == other.conversation_id and self.filter == other.filter and self.results_page == other.results_page
-        elif self.agent_handle:
-            return self.user_id  == other.user_id and self.conversation_id  == other.conversation_id and self.agent_handle == other.agent_handle and self.results_page == other.results_page
-        else:
-            return self.user_id  == other.user_id and self.conversation_id  == other.conversation_id and self.results_page == other.results_page
- 
-    def __hash__(self):
-        return hash(str(self))
+    conversation_id: Optional[str] = None
+    results_page: Optional[int] = 0
+    agent_handle: Optional[str] = None
+    filter: Optional[str] = None
 
 class ClearAgentMemory(BaseModel):
     agent_handle: str
@@ -181,6 +162,11 @@ class AgentsManager:
 
                 # Create a compound index for registrations collection if it does not exist
                 existing_indexes = await self.registrations_collection.index_information()
+                if "registered_to" not in existing_indexes:
+                    await self.rate_limiter.execute(
+                        self.registrations_collection.create_index,
+                        [("registered_to", 1)]
+                    )
                 if "registered_to_handle" not in existing_indexes:
                     await self.rate_limiter.execute(
                         self.registrations_collection.create_index,
@@ -212,19 +198,23 @@ class AgentsManager:
         start = time.time()
         try:
             logging.info("AgentsManager: publishing agent...")
-            workflow_url = f"{agent_input.URL}/api/workflows/{agent_input.workflow_id}?user_id=${agent_input.user_id}"
-
+            workflow_url = f"{agent_input.URL}/api/workflows/{agent_input.workflow_id}?user_id={agent_input.user_id}"
             async with aiohttp.ClientSession() as session:
                 async with session.get(workflow_url) as response:
                     # Check if the request was successful
                     if response.status != 200:
-                        raise ValueError("Workflow does not exist or could not be fetched.")
+                        return "Workflow does not exist or could not be fetched.", 0
 
                     # Parse the JSON response
                     workflow = await response.json()
-
+            if 'message' not in workflow["message"] != 'Workflow Retrieved Successfully' or 'status' not in workflow or workflow["status"] != True:
+                return f"Could not retrieve workflow successfully via: {workflow_url}", 0
+            if 'data' not in workflow or len(workflow["data"]) == 0:
+                return f"Workflow {agent_input.workflow_id} does not exist.", 0
+            if len(workflow["data"]) > 1:
+                logging.warn(f"Workflow found multiple workflows with ID: {agent_input.workflow_id}.")
             # Get the description from the workflow
-            description = workflow.get("description")
+            description = workflow["data"][0]["description"]
             # Limit the description to max_description_length_allowed characters
             if len(description) > self.max_description_length_allowed:
                 description = description[:self.max_description_length_allowed] + "..."
@@ -243,11 +233,11 @@ class AgentsManager:
             )
             
         except Exception as e:
-            logging.warn(f"AgentsManager: publish_agent exception {e}\n{traceback.format_exc()}")
-        finally:
-            end = time.time()
-            logging.info(f"AgentsManager: publish_agent took {end - start} seconds")
-            return agent_input.agent_handle, end-start
+            return f"Workflow exception {e}", 0
+  
+        end = time.time()
+        logging.info(f"AgentsManager: publish_agent took {end - start} seconds")
+        return f"Succesffully published: {agent_input.agent_handle}", end-start
 
     async def unpublish_agent(self, agent_input: AgentUnpublishInput):
         """Unpublish agent from MongoDB and remove from all conversations."""
@@ -264,14 +254,12 @@ class AgentsManager:
                 return "Error: not authorized to unpublish this agent", time.time() - start
 
             # Find all sessions for this agent
-            sessions = await self.rate_limiter.execute(
-                self.sessions_collection.find,
-                {"handle": agent_input.agent_handle}
-            )
+            cursor = self.sessions_collection.find({"handle": agent_input.agent_handle})
+
             
             # Delete remote sessions
             async with aiohttp.ClientSession() as http_session:
-                async for session in sessions:
+                async for session in cursor:
                     try:
                         delete_url = f"{agent.get('URL')}/api/sessions/delete?session_id={session.get('session_id')}&user_id={session.get('user_id')}"
                         async with http_session.delete(delete_url) as response:
@@ -326,6 +314,20 @@ class AgentsManager:
         except Exception as e:
             logging.warn(f"AgentsManager: get_agent exception {e}\n{traceback.format_exc()}")
             return None
+
+    async def get_agents(self, agent_handles: List[str]) -> List[Dict]:
+        """Retrieve multiple agents by their handles."""
+        if self.mongo_client is None:
+            await self.initialize()
+
+        try:
+            cursor = self.agents_collection.find({"handle": {"$in": agent_handles}})
+            agents = [agent async for agent in cursor]
+            return agents
+
+        except Exception as e:
+            logging.warn(f"AgentsManager: get_agents exception {e}\n{traceback.format_exc()}")
+            return []
 
     async def add_agent_to_conversation(self, agent_input: AgentRegisterGroupInput):
         """Add an agent to a conversation."""
@@ -406,56 +408,52 @@ class AgentsManager:
         """Scan agents with pagination based on input criteria."""
         if self.mongo_client is None:
             await self.initialize()
-            
+
         try:
             # Calculate skip for pagination
             skip = agent_input.results_page * page_size
             agents = []
 
-           
             # Build query for conversation agents
-            query = {"conversation_id": agent_input.conversation_id}
-            if agent_input.filter:
-                query["$text"] = {"$search": agent_input.filter}
-            elif agent_input.agent_handle:
-                query["handle"] = agent_input.agent_handle
-            
-            cursor = await self.rate_limiter.execute(
-                self.conversation_agents_collection.find,
-                query,
-                skip=skip,
-                limit=page_size
-            )
-            
-            # For each conversation agent, lookup the full agent details
-            async for convo_agent in cursor:
-                agent = await self.get_agent(convo_agent["handle"])
-                if agent:
-                    agents.append(AgentOutput.from_mongo(agent, convo_agent.get("registered_to")))
-            # if conversation is not a group, look up on the user_id assuming the registrar is calling it
+            if agent_input.conversation_id:
+                query = {"conversation_id": agent_input.conversation_id}
+                if agent_input.filter:
+                    query["$text"] = {"$search": agent_input.filter}
+                elif agent_input.agent_handle:
+                    query["handle"] = agent_input.agent_handle
+
+                # Fetch conversation agents
+                cursor = self.conversation_agents_collection.find(query).skip(skip).limit(page_size)
+                handles = [convo_agent["handle"] async for convo_agent in cursor]
+
+                # Fetch agents in bulk using `get_agents`
+                if handles:
+                    agent_docs = await self.get_agents(handles)
+                    agents.extend(AgentOutput.from_mongo(agent, None) for agent in agent_docs)
+
+            # If no agents found in conversation, look in registrations
             if len(agents) == 0:
-                # Direct query on agents collection
                 query = {"registered_to": agent_input.user_id}
                 if agent_input.filter:
                     query["$text"] = {"$search": agent_input.filter}
                 elif agent_input.agent_handle:
                     query["handle"] = agent_input.agent_handle
-                    
-                cursor = await self.rate_limiter.execute(
-                    self.agents_collection.find,
-                    query,
-                    skip=skip,
-                    limit=page_size
-                )
-                
-                async for agent in cursor:
-                    agents.append(AgentOutput.from_mongo(agent, agent_input.user_id))
-                    
+
+                # Fetch registered agents
+                cursor = self.registrations_collection.find(query).skip(skip).limit(page_size)
+                handles = [registered_agent["handle"] async for registered_agent in cursor]
+
+                # Fetch agents in bulk using `get_agents`
+                if handles:
+                    agent_docs = await self.get_agents(handles)
+                    agents.extend(AgentOutput.from_mongo(agent, agent_input.user_id) for agent in agent_docs)
+
             return agents
-            
+
         except Exception as e:
             logging.warn(f"AgentsManager: scan_agents exception {e}\n{traceback.format_exc()}")
             return []
+
 
     async def register_agent(self, agent_input: AgentRegisterInput):
         """Register an agent for a user."""
@@ -469,7 +467,7 @@ class AgentsManager:
             if not agent:
                 return "Error: agent not found", time.time() - start
             # check publisher_user_id to make sure only he can register to other users
-            if agent.published_by != agent_input.publisher_user_id:
+            if agent.get("published_by") != agent_input.publisher_user_id:
                 return "Error: not authorized to register this agent", time.time() - start
 
             await self.rate_limiter.execute(
@@ -501,7 +499,7 @@ class AgentsManager:
             if not agent:
                 return "Error: agent not found", time.time() - start
             # check publisher_user_id to make sure only he can unregister
-            if agent.published_by != agent_input.publisher_user_id:
+            if agent.get("published_by") != agent_input.publisher_user_id:
                 return "Error: not authorized to unregister this agent", time.time() - start
 
             await self.rate_limiter.execute(
@@ -533,7 +531,7 @@ class AgentsManager:
             # Check authorization
             is_authorized = False
             registered_to = None
-            # Check if user is in the agent's registration list
+            # Check if user is in the agent's registration list (the registered user is calling the agent himself)
             registration = await self.rate_limiter.execute(
                 self.registrations_collection.find_one,
                 {
@@ -545,7 +543,7 @@ class AgentsManager:
                 registered_to = agent_input.user_id
                 is_authorized = True
             else:
-                # if user is not the registered agent owner must have registered a conversation and user is in it
+                # if user is not the registered agent owner must have registered a conversation and user is in the group conversation
                 convo_agent = await self.rate_limiter.execute(
                     self.conversation_agents_collection.find_one,
                     {
@@ -569,7 +567,7 @@ class AgentsManager:
                         "handle": agent_input.agent_handle
                     }
                 )
-
+            # if session doesn't exist locally, try to create a new one via API and store it
             if session is None:
                 # Create new session via REST POST
                 async with aiohttp.ClientSession() as http_session:
