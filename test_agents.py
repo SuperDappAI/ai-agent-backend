@@ -4,7 +4,9 @@ import aiohttp
 import json
 
 # Define the base URL for the API
-BASE_URL = "http://localhost:8111"
+HOST = 'localhost'
+PORT = 8111
+BASE_URL = f"http://{HOST}:{PORT}"
 
 async def publish_agent(session, agent_handle, user_id, workflow_id, url):
     """Publish an agent."""
@@ -31,7 +33,16 @@ async def register_agent(session, agent_handle, user_id, publisher_user_id):
 
 async def send_message_via_websocket(agent_handle, user_id, conversation_id, message, context=None):
     """Send a message to an agent using WebSocket."""
-    websocket_url = f"ws://{BASE_URL}/ws/{user_id}"
+    message = f'CONTEXT: {agent_input.context}\nMESSAGE: {agent_input.message}' if agent_input.context else agent_input.message
+    msg = Message(
+        user_id=str(registered_to),
+        role="user",
+        content=str(message),
+        session_id=str(session_id),
+        workflow_id=str(agent.get("workflow_id")),
+        connection_id=str(agent_input.user_id)
+    )
+    websocket_url = f"ws://{HOST}:{PORT}/ws/{user_id}"
     async with websockets.connect(websocket_url) as websocket:
         payload = {
             "agent_handle": agent_handle,
@@ -91,7 +102,7 @@ async def list_registered_agents(session, user_id, conversation_id=None, results
 
 async def main():
     """Main function to handle command-line interactions."""
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True)) as session:
         while True:
             print("\nAvailable Actions:")
             print("1. Publish Agent")
@@ -105,14 +116,14 @@ async def main():
 
             if choice == "1":
                 agent_handle = input("Agent Handle: ")
-                user_id = input("User ID: ")
+                user_id = input("Publisher User ID: ")
                 workflow_id = input("Workflow ID: ")
                 url = input("Agent URL: ")
                 await publish_agent(session, agent_handle, user_id, workflow_id, url)
 
             elif choice == "2":
                 agent_handle = input("Agent Handle: ")
-                user_id = input("User ID: ")
+                user_id = input("Register to User ID: ")
                 publisher_user_id = input("Publisher User ID: ")
                 await register_agent(session, agent_handle, user_id, publisher_user_id)
 
@@ -126,13 +137,13 @@ async def main():
 
             elif choice == "4":
                 agent_handle = input("Agent Handle: ")
-                user_id = input("User ID: ")
+                user_id = input("Unregistering User ID: ")
                 publisher_user_id = input("Publisher User ID: ")
                 await unregister_agent(session, agent_handle, user_id, publisher_user_id)
 
             elif choice == "5":
                 agent_handle = input("Agent Handle: ")
-                user_id = input("User ID: ")
+                user_id = input("Publisher User ID: ")
                 await unpublish_agent(session, agent_handle, user_id)
 
             elif choice == "6":

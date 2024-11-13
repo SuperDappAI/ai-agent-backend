@@ -31,7 +31,13 @@ class AgentMessageInput(BaseModel):
     message: str
     user_id: str
     conversation_id: str
-    context: str
+    context: Optional[str] = None
+
+class AgentMessageOutput(BaseModel):
+    agent_url: str
+    registered_to: str
+    session_id: str
+    workflow_id: str
 
 class AgentRegisterInput(BaseModel):
     agent_handle: str
@@ -72,7 +78,7 @@ class AgentOutput(BaseModel):
             registered_to=registered_to,
         )
 
-class MessageMeta():
+class MessageMeta(BaseModel):
     task: Optional[str] = None
     messages: Optional[List[Dict[str, Any]]] = None
     summary_method: Optional[str] = "last"
@@ -81,14 +87,15 @@ class MessageMeta():
     log: Optional[List[dict]] = None
     usage: Optional[List[dict]] = None
 
-class Message():
-    user_id: int
+class Message(BaseModel):
+    user_id: str
     role: str
     content: str
-    session_id: int
+    session_id: str
+    workflow_id: Optional[str] = None # sent along to agent server but not received
     connection_id: str
-    meta: Optional[Union[MessageMeta, dict]] = None
-
+    meta: Optional[Union[dict, "MessageMeta"]] = None
+    
 class AgentsManager:
 
     def __init__(self, message_manager: MessageManager):
@@ -199,7 +206,7 @@ class AgentsManager:
         try:
             logging.info("AgentsManager: publishing agent...")
             workflow_url = f"{agent_input.URL}/api/workflows/{agent_input.workflow_id}?user_id={agent_input.user_id}"
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True)) as session:
                 async with session.get(workflow_url) as response:
                     # Check if the request was successful
                     if response.status != 200:
@@ -251,6 +258,7 @@ class AgentsManager:
                 return "Error: Agent does not exist", time.time() - start
             # Check authorization
             if agent.get("published_by") != agent_input.user_id:
+                print(f'agent.get("published_by") {agent.get("published_by")} agent_input.user_id {agent_input.user_id}')
                 return "Error: not authorized to unpublish this agent", time.time() - start
 
             # Find all sessions for this agent
@@ -258,7 +266,7 @@ class AgentsManager:
 
             
             # Delete remote sessions
-            async with aiohttp.ClientSession() as http_session:
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True)) as http_session:
                 async for session in cursor:
                     try:
                         delete_url = f"{agent.get('URL')}/api/sessions/delete?session_id={session.get('session_id')}&user_id={session.get('user_id')}"
@@ -516,17 +524,29 @@ class AgentsManager:
             logging.warn(f"AgentsManager: unregister_agent exception {e}\n{traceback.format_exc()}")
             return f"Error: {str(e)}", time.time() - start
 
-    async def message_agent(self, agent_input: AgentMessageInput):
+    def wsFromURL(self, URL: str, user_id: str) -> str:
+        agent_http_url = URL
+        if agent_http_url.startswith("http://"):
+            agent_ws_url = agent_http_url.replace("http://", "ws://", 1)
+        elif agent_http_url.startswith("https://"):
+            agent_ws_url = agent_http_url.replace("https://", "wss://", 1)
+        else:
+            raise ValueError(f"Invalid agent URL: {agent_http_url}")
+
+        return f"{agent_ws_url}/api/ws/{user_id}"
+
+    async def message_agent(self, agent_input: AgentMessageInput) -> AgentMessageOutput:
         """Send message to an agent if authorized and stream responses."""
         if self.mongo_client is None:
             await self.initialize()
             
-        start = time.time()
         try:
             # Check if agent exists and get its details
             agent = await self.get_agent(agent_input.agent_handle)
             if not agent:
-                return "Error: agent not found", time.time() - start
+                return AgentMessageOutput(
+                    status="Error: agent not found"
+                )
             
             # Check authorization
             is_authorized = False
@@ -555,7 +575,9 @@ class AgentsManager:
                     registered_to = convo_agent.get('registered_to')
                     is_authorized = True
             if not is_authorized:
-                return "Error: not authorized to message this agent", time.time() - start
+                return AgentMessageOutput(
+                    status="Error: not authorized to message this agent"
+                )
 
             # Check if session exists for this conversation
             session = None
@@ -570,17 +592,18 @@ class AgentsManager:
             # if session doesn't exist locally, try to create a new one via API and store it
             if session is None:
                 # Create new session via REST POST
-                async with aiohttp.ClientSession() as http_session:
+                async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True)) as http_session:
                     session_data = {
                         "user_id": registered_to,
                         "workflow_id": agent.get("workflow_id")
                     }
                     async with http_session.post(f"{agent.get('URL')}/api/sessions", json=session_data) as response:
                         if response.status != 200:
-                            return "Error: Failed to create agent session", time.time() - start
+                            return AgentMessageOutput(
+                                status="Error: Failed to create agent session"
+                            )
                         session_response = await response.json()
                         session_id = session_response["data"]["id"]
-                        
                         # Store session info
                         await self.rate_limiter.execute(
                             self.sessions_collection.insert_one,
@@ -594,72 +617,14 @@ class AgentsManager:
             else:
                 session_id = session.get("session_id")
             
-           # Connect to the agent and store the connection
-            agent_ws_url = f"{agent.get('URL')}/api/ws/{agent_input.user_id}"
-            try:
-                async with websockets.connect(agent_ws_url) as agent_websocket:
-
-                    # Prepare message content
-                    message = f'CONTEXT: {agent_input.context}\nMESSAGE: {agent_input.message}' if agent_input.context else agent_input.message
-
-                    # Create message payload
-                    msg = Message(
-                        user_id=registered_to,
-                        role="user",
-                        content=message,
-                        session_id=session_id,
-                        connection_id=agent_input.user_id
-                    )
-                    payload = json.dumps({
-                        "type": "user_message",
-                        "data": msg.dict()
-                    })
-                    
-                    # Send message to the agent
-                    await agent_websocket.send(payload)
-                    
-                    # Start the communication loop
-                    while True:
-                        # Receive message from the agent
-                        agent_message = await agent_websocket.recv()
-                        if not agent_message:
-                            break  # Agent disconnected
-
-                        # Parse agent_message from JSON
-                        agent_message = json.loads(agent_message)
-
-                        if agent_message.get('type') == 'user_input_request':
-                            # Send prompt to client and wait for response
-                            user_input = await self.message_manager.a_prompt_for_input(agent_message)
-                            
-                            # Prepare and send user's input back to the agent
-                            message_payload = {
-                                "recipient": agent_message.get("data").get("sender"),
-                                "sender": agent_message.get("data").get("recipient"),
-                                "message": user_input,
-                                "timestamp": datetime.now().isoformat(),
-                                "sender_type": agent_message.get("data").get("sender_type"),
-                                "connection_id": agent_message.get("data").get("connection_id"),
-                                "message_type": agent_message.get("data").get("message_type"),
-                            }
-                            socket_msg = json.dumps(
-                                type="user_input_response",
-                                data=message_payload,
-                            )
-                            await agent_websocket.send(socket_msg)
-                        else:
-                            # Forward message to client
-                            await self.message_manager.a_send(agent_message)
-
-                        if agent_message.get('type') == 'agent_response':
-                            # Agent has finished processing
-                            break
-            except Exception as e:
-                logging.error(f"Error during WebSocket communication: {str(e)}")
-                await self.message_manager.a_send({'type': 'error', 'message': str(e)})
-        except Exception as e:
-            logging.warn(f"AgentsManager: message_agent exception {e}\n{traceback.format_exc()}")
-            return f"Error: {str(e)}", time.time() - start
+            # Prepare message content
+            return AgentMessageOutput(
+                status="Success"
+                agent_url=str(agent.get("URL"))
+                registered_to=str(registered_to),
+                session_id=str(session_id),
+                workflow_id=str(agent.get("workflow_id")),
+            )
 
     async def clear_conversation(self, clear_memory: ClearAgentMemory):
         """Send clear agent conversation."""
@@ -690,7 +655,7 @@ class AgentsManager:
                 return "Error: no session found for this conversation", time.time() - start
 
             # Delete session via REST call
-            async with aiohttp.ClientSession() as http_session:
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True)) as http_session:
                 delete_url = f"{agent.get('URL')}/api/sessions/delete?session_id={session.get('session_id')}&user_id={clear_memory.user_id}"
                 async with http_session.delete(delete_url) as response:
                     if response.status != 200:

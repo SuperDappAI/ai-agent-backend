@@ -283,36 +283,10 @@ async def clearCache(cache_clear_input: CacheClearInput):
     end = time.time()
     return {'response': "success", 'elapsed_time': end - start}
 
-@app.websocket("/ws/{client_id}")
-async def messageAgent(websocket: WebSocket, client_id: str):
-    """Endpoint to facilitate communication between the client and the agent."""
-    await websocket_manager.connect(websocket, client_id)
-    try:
-        # Receive the initial message from the client
-        data = await websocket.receive_json()
-        
-        # Create AgentMessageInput from the received data using **
-        agent_input = AgentMessageInput(**data)
-        
-        # Validate the client_id matches the user_id in agent_input
-        if client_id != agent_input.user_id:
-            # Send an error message over the WebSocket connection
-            await websocket.send_json({
-                'type': 'error',
-                'message': "Error: connection_id does not match client_id",
-            })
-            await websocket_manager.disconnect(client_id)
-            return
-        
-        logging.info(f'Messaging agent: {agent_input}')
-        
-        # Start the message processing
-        await agents_manager.message_agent(agent_input)
-        
-    except WebSocketDisconnect:
-        logging.info(f"Client #{client_id} disconnected")
-        await websocket_manager.disconnect(client_id)
-    except Exception as e:
-        logging.error(f"Error in messageAgent: {e}")
-        await websocket.send_json({'type': 'error', 'message': str(e)})
-        await websocket_manager.disconnect(client_id)
+@app.post('/clear_agent_conversation/')
+async def messageAgent(agent_input: AgentMessageInput):
+    """Endpoint to clear memory for a specific agent conversation."""
+    logging.info(
+        f'Messaging agent: {agent_input}')
+    response = agents_manager.message_agent(agent_input)
+    return response
