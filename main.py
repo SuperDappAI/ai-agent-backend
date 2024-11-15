@@ -9,13 +9,12 @@ from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
-from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentUnpublishInput, ClearAgentMemory, AgentMessageInput, AgentRegisterInput, AgentRegisterGroupInput
+from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentMessageOutput, AgentUnpublishInput, ClearAgentMemory, AgentMessageInput, AgentRegisterInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
 from cachetools import TTLCache, LRUCache
 from rate_limiter import RateLimiter, SyncRateLimiter
-from websocket_connection_manager import WebSocketConnectionManager, MessageManager
 
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
@@ -47,21 +46,13 @@ agent_manager = AgentManager(rate_limiter, rate_limiter_sync)
 web_manager = WebManager(rate_limiter, rate_limiter_sync)
 queryplan_manager = QueryPlanManager()
 doc_manager = DocManager(rate_limiter, rate_limiter_sync)
+agents_manager = AgentsManager()
 
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
 functioncache = TTLCache(maxsize=16384, ttl=36000)
 doccache = LRUCache(maxsize=16384)
-active_connections = []
-active_connections_lock = asyncio.Lock()
 
-websocket_manager = WebSocketConnectionManager(
-    active_connections=active_connections,
-    active_connections_lock=active_connections_lock,
-)
-
-message_manager = MessageManager(websocket_manager)
-agents_manager = AgentsManager(message_manager)
 @app.post('/get_preferences/')
 async def getPreferences(preferences_query: QueryPreferencesInput):
     logging.info(f'Get preferences for user {preferences_query.user_id}')
@@ -174,34 +165,6 @@ async def listRegisteredAgents(agent_input: AgentListInput):
     result, elapsed_time = await agents_manager.list_registered_agents(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
-@app.post('/register_agent/')
-async def registerAgent(agent_input: AgentRegisterInput):
-    """Endpoint to register agent based on provided input."""
-    logging.info(f'Registering agent: {agent_input}')
-    result, elapsed_time = await agents_manager.register_agent(agent_input)
-    return {'response': result, 'elapsed_time': elapsed_time}
-
-@app.post('/unregister_agent/')
-async def unregisterAgent(agent_input: AgentRegisterInput):
-    """Endpoint to unregister agent based on provided input."""
-    logging.info(f'Unregistering agent: {agent_input}')
-    result, elapsed_time = await agents_manager.unregister_agent(agent_input)
-    return {'response': result, 'elapsed_time': elapsed_time}
-
-@app.post('/add_agent_to_conversation/')
-async def addAgentToConveration(agent_input: AgentRegisterGroupInput):
-    """Endpoint to add agent to conversation based on provided input."""
-    logging.info(f'Adding agent to conversation: {agent_input}')
-    result, elapsed_time = await agents_manager.add_agent_to_conversation(agent_input)
-    return {'response': result, 'elapsed_time': elapsed_time}
-
-@app.post('/add_agent_to_conversation/')
-async def removeAgentFromConveration(agent_input: AgentRegisterGroupInput):
-    """Endpoint to remove agent from conversation based on provided input."""
-    logging.info(f'Removing agent from conversation: {agent_input}')
-    result, elapsed_time = await agents_manager.remove_agent_from_conversation(agent_input)
-    return {'response': result, 'elapsed_time': elapsed_time}
-
 @app.post('/push_functions/')
 async def pushFunctions(function_output: FunctionOutput):
     """Endpoint to push functions based on provided functions."""
@@ -231,6 +194,13 @@ async def pushFunctions(function_output: FunctionOutput):
     return {'response': result, 'elapsed_time': elapsed_time}
 
 
+@app.post('/register_agent/')
+async def registerAgent(agent_input: AgentRegisterInput):
+    """Endpoint to register agent based on provided input."""
+    logging.info(f'Registering agent: {agent_input}')
+    result, elapsed_time = await agents_manager.register_agent(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 @app.post('/publish_agent/')
 async def publishAgent(agent_output: AgentPublishInput):
     """Endpoint to push agents based on provided agents."""
@@ -244,7 +214,6 @@ async def unpublishAgent(agent_input: AgentUnpublishInput):
     logging.info(f'Unpublishing agent: {agent_input}')
     result, elapsed_time = await agents_manager.unpublish_agent(agent_input)
     return {'response': result, 'elapsed_time': elapsed_time}
-
 
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
@@ -283,10 +252,10 @@ async def clearCache(cache_clear_input: CacheClearInput):
     end = time.time()
     return {'response': "success", 'elapsed_time': end - start}
 
-@app.post('/clear_agent_conversation/')
-async def messageAgent(agent_input: AgentMessageInput):
-    """Endpoint to clear memory for a specific agent conversation."""
+@app.post('/message_agent/')
+async def messageAgent(agent_input: AgentMessageInput) -> AgentMessageOutput:
+    """Endpoint to prepare for messaging agent."""
     logging.info(
-        f'Messaging agent: {agent_input}')
-    response = agents_manager.message_agent(agent_input)
+        f'Preparing to Messaging agent: {agent_input}')
+    response = await agents_manager.message_agent(agent_input)
     return response
