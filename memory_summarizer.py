@@ -7,12 +7,12 @@ from dotenv import load_dotenv
 from typing import Any, Dict, List
 from document_summarizer import FlexibleDocumentSummarizer
 from langchain_community.chat_models import ChatOpenAI
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.retrievers import ContextualCompressionRetriever
 from qdrant_retriever import QDrantVectorStoreRetriever
-from cohere_rerank import CohereRerank
+from langchain_cohere import CohereRerank
 from langchain_openai import OpenAIEmbeddings
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 
@@ -49,9 +49,9 @@ class MemorySummarizer:
         finally:
             logging.info(
                 f"MemorySummarizer: Creating memory store with collection {collection_name}")
-            vectorstore = Qdrant(self.agent_manager.client, collection_name, OpenAIEmbeddings(
+            vectorstore = QdrantVectorStore(self.agent_manager.client, collection_name, OpenAIEmbeddings(
                 model="text-embedding-3-small", openai_api_key=api_key))
-            compressor = CohereRerank()
+            compressor = CohereRerank(model="rerank-english-v3.0")
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
                     rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=collection_name, client=self.agent_manager.client, vectorstore=vectorstore,

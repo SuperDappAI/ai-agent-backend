@@ -14,11 +14,11 @@ from typing import List
 from datetime import datetime
 from pydantic import BaseModel, Field
 from qdrant_client.http import models as rest
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from langchain_openai import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain.retrievers import ContextualCompressionRetriever
-from cohere_rerank import CohereRerank
+from langchain_cohere import CohereRerank
 from langchain.schema import Document
 from datetime import datetime, timedelta
 from qdrant_client.http.models import PayloadSchemaType
@@ -94,6 +94,7 @@ class FunctionsManager:
         """Create a new vector store retriever unique to the agent."""
         # create collection if it doesn't exist (if it exists it will fall into finally)
         try:
+            
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=rest.VectorParams(
@@ -103,14 +104,15 @@ class FunctionsManager:
             )
             self.client.create_payload_index(
                 self.collection_name, "metadata.user_id", field_schema=PayloadSchemaType.KEYWORD)
+            logging.info(f"FunctionsManager: created collection {self.collection_name}")
         except:
             logging.info(f"FunctionsManager: loaded from cloud...")
         finally:
             logging.info(
                 f"FunctionsManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
+            vectorstore = QdrantVectorStore(self.client, self.collection_name, OpenAIEmbeddings(
                 model="text-embedding-3-small", openai_api_key=api_key))
-            compressor = CohereRerank()
+            compressor = CohereRerank(model="rerank-english-v3.0")
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
                     rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
@@ -188,10 +190,10 @@ class FunctionsManager:
                     functions_json = json.load(f)
                     await self.push_functions(function_input.user_id, function_input.api_key, functions_json)
             self.inited = True
-        memory = self.load(function_input.api_key)
         response = []
         # loop = asyncio.get_event_loop()
         try:
+            memory = self.load(function_input.api_key)
             for action_item in function_input.action_items:
                 query = f"action: {action_item.action} intent: {action_item.intent} category: {action_item.category}"
                 documents = await self.get_retrieved_nodes(memory,
@@ -257,8 +259,8 @@ class FunctionsManager:
         """Update the current index with new functions."""
         start = time.time()
         tokens = None
-        memory = self.load(api_key)
         try:
+            memory = self.load(api_key)
             logging.info("FunctionsManager: adding functions to index...")
 
             function_types = ['information_retrieval',

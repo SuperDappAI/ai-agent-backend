@@ -1,0 +1,85 @@
+{
+	"information_retrieval": [
+	],
+	"communication": [{
+			"name": "translator",
+			"description": "Performs a Google translation. Example: {'name': 'translator', 'parameters': {'q': 'translate from english to german: good morning'}}",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"q": {
+						"type": "string",
+						"description": "Defines the translation query. Should follow the format 'translate from [source language] to [target language]: [text to translate]'."
+					}
+				},
+				"required": ["q"]
+			}
+		},
+		{
+			"name": "emailer",
+			"description": "Send an email to specified recipients with a given subject and message.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "List of email addresses to send the email to."
+					},
+					"subject": {
+						"type": "string",
+						"description": "The subject of the email."
+					},
+					"message": {
+						"type": "string",
+						"description": "The content of the email message."
+					}
+				},
+				"required": ["to", "subject", "message"]
+			}
+		}
+
+	],
+	"data_processing": [
+		{
+			"name": "URL_summarizer",
+			"description": "Creates a summary of the content at the provided URLs. The summary will be concise, highlight the key points, and accept a maximum token size for the summary. URLs must point to text-based content (e.g., TXT, CSV, HTML, JSON, XML, etc.) or PDF files.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"urls": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"context": {
+						"type": "string",
+						"description": "Optional. Additional context to guide the summarization."
+					},
+					"maxTokens": {
+						"type": "integer",
+						"description": "The maximum token size for the summary. Should be at least 1000 usually for usefulness."
+					}
+				},
+				"required": ["urls"]
+			}
+		}
+	],
+	"sensory_perception": [{
+		"name": "image_analyzer",
+		"description": "Performs a Google Lens call based on an image URL or file handle. Can do image recognition and transcribe it or extract text. Example: {'name': 'doImageAnalysis', 'parameters': {'url': 'https://example.com/image.jpg'}}",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"url": {
+					"type": "string",
+					"description": "Defines the URL or file handle of an image to perform the Google Lens call."
+				}
+			},
+			"required": ["url"]
+		}
+	}]
+}

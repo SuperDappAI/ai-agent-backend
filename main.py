@@ -4,16 +4,18 @@ import time
 import asyncio
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from agent_manager import AgentManager, MemoryInput, MemoryOutput, ClearMemory
 from web_manager import WebManager, HTMLInput, CacheHTML
 from doc_manager import DocManager, DocAddInput, DocDeleteInput, DocSearchInput, CacheDoc
 from functions_manager import FunctionsManager, FunctionInput, FunctionOutput
+from agents_manager import AgentsManager, AgentListInput, AgentPublishInput, AgentMessageOutput, AgentUnpublishInput, ClearAgentMemory, AgentMessageInput, AgentRegisterInput
 from queryplan_manager import QueryPlanManager, QueryPlanInput
 from cache_manager import CacheClearInput
 from preferences_resolver import QueryPreferencesInput
 from cachetools import TTLCache, LRUCache
 from rate_limiter import RateLimiter, SyncRateLimiter
+
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 # Load environment variables
@@ -44,6 +46,7 @@ agent_manager = AgentManager(rate_limiter, rate_limiter_sync)
 web_manager = WebManager(rate_limiter, rate_limiter_sync)
 queryplan_manager = QueryPlanManager()
 doc_manager = DocManager(rate_limiter, rate_limiter_sync)
+agents_manager = AgentsManager()
 
 queryplancache = TTLCache(maxsize=16384, ttl=36000)
 searchhtmlcache = TTLCache(maxsize=16384, ttl=36000)
@@ -156,6 +159,12 @@ async def getFunctions(function_input: FunctionInput):
         functioncache[function_input] = result
     return {'response': result, 'elapsed_time': elapsed_time}
 
+@app.post('/list_registered_agents/')
+async def listRegisteredAgents(agent_input: AgentListInput):
+    """Endpoint to get registered agents based on provided input."""
+    result, elapsed_time = await agents_manager.list_registered_agents(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 @app.post('/push_functions/')
 async def pushFunctions(function_output: FunctionOutput):
     """Endpoint to push functions based on provided functions."""
@@ -184,12 +193,42 @@ async def pushFunctions(function_output: FunctionOutput):
     result, elapsed_time = await functions_manager.push_functions(function_output.user_id, function_output.api_key, functions)
     return {'response': result, 'elapsed_time': elapsed_time}
 
+
+@app.post('/register_agent/')
+async def registerAgent(agent_input: AgentRegisterInput):
+    """Endpoint to register agent based on provided input."""
+    logging.info(f'Registering agent: {agent_input}')
+    result, elapsed_time = await agents_manager.register_agent(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/publish_agent/')
+async def publishAgent(agent_output: AgentPublishInput):
+    """Endpoint to push agents based on provided agents."""
+    logging.info(f'Publishing agent: {agent_output}')
+    result, elapsed_time = await agents_manager.publish_agent(agent_output)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
+@app.post('/unpublish_agent/')
+async def unpublishAgent(agent_input: AgentUnpublishInput):
+    """Endpoint to push agents based on provided agents."""
+    logging.info(f'Unpublishing agent: {agent_input}')
+    result, elapsed_time = await agents_manager.unpublish_agent(agent_input)
+    return {'response': result, 'elapsed_time': elapsed_time}
+
 @app.post('/clear_conversation/')
 async def clearUserMemory(clear_memory: ClearMemory):
     """Endpoint to clear memory for a specific user/conversation."""
     logging.info(
         f'Clearing user memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
     response, elapsed_time = agent_manager.clear_conversation(clear_memory)
+    return {'response': response, 'elapsed_time': elapsed_time}
+
+@app.post('/clear_agent_conversation/')
+async def clearAgentMemory(clear_memory: ClearAgentMemory):
+    """Endpoint to clear memory for a specific agent conversation."""
+    logging.info(
+        f'Clearing agent memory for user {clear_memory.user_id} and conversation {clear_memory.conversation_id}')
+    response, elapsed_time = agents_manager.clear_conversation(clear_memory)
     return {'response': response, 'elapsed_time': elapsed_time}
 
 @app.post('/cache_clear/')
@@ -205,10 +244,18 @@ async def clearCache(cache_clear_input: CacheClearInput):
     if {"doc", "all"} & set(cache_clear_input.cache_types):
         doccache.clear()
     if {"queryplan", "all"} & set(cache_clear_input.cache_types):
-        functioncache.clear()
-    if {"searchhtml", "all"} & set(cache_clear_input.cache_types):
         queryplancache.clear()
-    if {"function", "all"} & set(cache_clear_input.cache_types):
+    if {"searchhtml", "all"} & set(cache_clear_input.cache_types):
         searchhtmlcache.clear()
+    if {"function", "all"} & set(cache_clear_input.cache_types):
+        functioncache.clear()
     end = time.time()
     return {'response': "success", 'elapsed_time': end - start}
+
+@app.post('/message_agent/')
+async def messageAgent(agent_input: AgentMessageInput) -> AgentMessageOutput:
+    """Endpoint to prepare for messaging agent."""
+    logging.info(
+        f'Preparing to Messaging agent: {agent_input}')
+    response = await agents_manager.message_agent(agent_input)
+    return response

@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
 from qdrant_client import QdrantClient
 from pydantic import BaseModel
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from qdrant_retriever import QDrantVectorStoreRetriever
 from langchain_openai import OpenAIEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
-from cohere_rerank import CohereRerank
+from langchain_cohere import CohereRerank
 from langchain.schema import Document
 from datetime import datetime
 from qdrant_client.http import models as rest
@@ -85,9 +85,9 @@ class DocManager:
         finally:
             logging.info(
                 f"DocManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
+            vectorstore = QdrantVectorStore(self.client, self.collection_name, OpenAIEmbeddings(
                 model="text-embedding-3-small", openai_api_key=api_key))
-            compressor = CohereRerank()
+            compressor = CohereRerank(model="rerank-english-v3.0")
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
                     rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,

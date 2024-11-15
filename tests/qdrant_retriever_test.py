@@ -5,7 +5,7 @@ from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
 from langchain.schema import Document
 from qdrant_client import QdrantClient
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from langchain_openai import OpenAIEmbeddings
 from datetime import datetime
 from dotenv import load_dotenv
@@ -36,7 +36,7 @@ def setup_retriever():
     except:
         print("MemorySummarizer: loaded from cloud...")
     finally:
-        vectorstore = Qdrant(client, collection_name, OpenAIEmbeddings())
+        vectorstore = QdrantVectorStore(client, collection_name, OpenAIEmbeddings())
         nowStamp = datetime.now()
         metadata = {
             "id": 99999999998,

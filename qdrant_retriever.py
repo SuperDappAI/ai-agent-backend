@@ -5,7 +5,7 @@ from langchain.schema import BaseRetriever, Document
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from datetime import timedelta
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from rate_limiter import RateLimiter, SyncRateLimiter
 from typing import (
     List,
@@ -27,7 +27,7 @@ class QDrantVectorStoreRetriever(BaseRetriever):
 
     client: QdrantClient
 
-    vectorstore: Qdrant
+    vectorstore: QdrantVectorStore
     """The vectorstore to store documents and determine salience."""
 
     extra_index_penalty: float = float(0.1)

@@ -8,10 +8,10 @@ import cachetools.func
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 from qdrant_retriever import QDrantVectorStoreRetriever
-from cohere_rerank import CohereRerank
+from langchain_cohere import CohereRerank
 from generative_memory import GenerativeAgentMemory
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
@@ -79,8 +79,8 @@ class AgentManager:
             # update preferences on every exchange but only save summarized memory of a "finished" exchange, reflect on an important summarized memory and then decay memories
             asyncio.create_task(memory.pause_to_reflect(
                 memory_output.dict(), self.preferences_resolver))
-            # asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key,
-            #  model="gpt-4o-mini", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
+            asyncio.create_task(self.preferences_updater.update_preferences(ChatOpenAI(openai_api_key=memory_output.api_key,
+              model="gpt-4o-mini", temperature=0), memory_output.query, memory_output.llm_response, memory_output.user_id))
             # decay memory by summarizing it continiously until max_summarizations then prune
             asyncio.create_task(memory.decay())
         except Exception as e:
@@ -111,9 +111,9 @@ class AgentManager:
         finally:
             logging.info(
                 f"AgentManager: Creating memory store with collection {collection_name}")
-            vectorstore = Qdrant(self.client, collection_name, OpenAIEmbeddings(
+            vectorstore = QdrantVectorStore(self.client, collection_name, OpenAIEmbeddings(
                 model="text-embedding-3-small", openai_api_key=api_key))
-            compressor = CohereRerank()
+            compressor = CohereRerank(model="rerank-english-v3.0")
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
                     rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=collection_name, client=self.client, vectorstore=vectorstore,
