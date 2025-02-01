@@ -29,7 +29,7 @@ class QueryPlanManager:
             try:
                 messages = [[SystemMessage(content=self.classify_prompts.to_prompt_string()),
                              HumanMessage(content=query_input.query)]]
-                llm = ChatOpenAI(model='gpt-4o-mini', temperature=0,
+                llm = ChatOpenAI(model='o3-mini', temperature=0,
                                  max_tokens=8, openai_api_key=query_input.api_key)
                 response = await llm.agenerate(messages)
                 if not response.generations or not response.generations[0]:
