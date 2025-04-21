@@ -150,7 +150,7 @@ class FunctionsManager:
                           'data_processing',
                           'sensory_perception']
 
-        encoding = tiktoken.encoding_for_model("gpt-4o-mini")
+        encoding = tiktoken.encoding_for_model("gpt-4.1-mini")
         tokens = []
         for func_type in function_types:
             if func_type in functions:
