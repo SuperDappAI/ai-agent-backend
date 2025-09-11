@@ -138,7 +138,7 @@ class DocManager:
             end = time.time()
             return "fail", end - start
         memory = self.load(function_input.api_key)
-        srcExist, _ = self.does_source_exist(function_input.source_url)
+        srcExist, _ = self.does_source_exist(CacheDoc(source_url=function_input.source_url, category=function_input.category))
         if srcExist:
             logging.warn("DocManager: source_url already exists")
             end = time.time()
