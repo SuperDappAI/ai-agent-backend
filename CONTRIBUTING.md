@@ -4,7 +4,7 @@ Thank you for your interest in contributing to SuperDappAI! We welcome contribut
 
 ## Code of Conduct
 
-This project and everyone participating in it is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+This project and everyone participating in it is governed by the [Contributor Covenant Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). By participating, you are expected to uphold this code.
 
 ## How Can I Contribute?
 

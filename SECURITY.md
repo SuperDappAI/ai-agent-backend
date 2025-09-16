@@ -16,7 +16,7 @@ We take security vulnerabilities seriously. If you discover a security vulnerabi
 ### How to Report
 
 1. **Do not** create a public GitHub issue for the vulnerability
-2. Send an email to the maintainers with:
+2. Send an email to **security@superdapp.ai** with:
    - A description of the vulnerability
    - Steps to reproduce the issue
    - Potential impact assessment

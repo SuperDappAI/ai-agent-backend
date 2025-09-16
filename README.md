@@ -23,7 +23,6 @@ AI agent platform with memory management, document processing, and function orch
 ## Requirements
 
 - Python 3.11+
-- OpenAI API key
 - Qdrant vector database
 - MongoDB instance
 
@@ -46,11 +45,12 @@ cp .env.example .env
 Required environment variables:
 
 ```env
-OPENAI_API_KEY=your_openai_api_key
 QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_URL=https://your_qdrant_instance.com
 MONGODB_URL=mongodb://localhost:27017/preferences
 ```
+
+Note: OpenAI API keys are passed via API requests, not environment variables.
 
 ## Usage
 
