@@ -6,7 +6,7 @@ import json
 from typing import Sequence
 from langchain.schema import Document
 from langchain.schema import SystemMessage, HumanMessage
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 
 
 class SummaryPrompt:
@@ -51,7 +51,7 @@ class FlexibleDocumentSummarizer:
                 {'user': response.generations[0][0].text, 'AiDA': response.generations[1][0].text})
         except Exception as e:
             if self.verbose:
-                logging.warn(
+                logging.warning(
                     f"FlexibleDocumentSummarizer: _get_single_summary exception e: {e}\n{traceback.format_exc()}")
 
     async def asummarize(self,  documents: Sequence[Document]) -> None:

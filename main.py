@@ -197,10 +197,10 @@ async def clearCache(cache_clear_input: CacheClearInput):
     """Endpoint to clear caches."""
     start = time.time()
     if not cache_clear_input.console_key.strip():
-        logging.warn("CacheManager: console key is empty, check settings!")
+        logging.warning("CacheManager: console key is empty, check settings!")
         return {'response': "fail", 'elapsed_time': 0}
     if CONSOLE_KEY != cache_clear_input.console_key:
-        logging.warn("CacheManager: Invalid console key")
+        logging.warning("CacheManager: Invalid console key")
         return {'response': "fail", 'elapsed_time': 0}
     if {"doc", "all"} & set(cache_clear_input.cache_types):
         doccache.clear()

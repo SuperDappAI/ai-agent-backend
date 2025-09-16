@@ -73,7 +73,7 @@ class PreferencesResolver:
                 self.rate_limiter = RateLimiter(rate=10, period=1)
                 self.default_preferences = self.schema
             except Exception as e:
-                logging.warn(
+                logging.warning(
                     f"PreferencesResolver: initialize exception {e}\n{traceback.format_exc()}")
 
     async def get_preferences(self, user_id):
@@ -86,7 +86,7 @@ class PreferencesResolver:
                 return self.default_preferences
             return doc
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"PreferencesResolver: get_preferences exception {e}\n{traceback.format_exc()}")
             return None
 
@@ -100,7 +100,7 @@ class PreferencesResolver:
             else:
                 return None
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"PreferencesResolver: get_role exception {e}\n{traceback.format_exc()}")
             return None
 
@@ -111,9 +111,9 @@ class PreferencesResolver:
             roleObj = {"_id": conversation_id, "role": role}
             update_result = await self.rate_limiter.execute(self.role_collection.update_one, {"_id": conversation_id}, {"$set": roleObj}, upsert=True)
             if update_result.matched_count == 0 and update_result.upserted_id is None:
-                logging.warn("No documents were inserted or updated.")
+                logging.warning("No documents were inserted or updated.")
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"PreferencesResolver: set_role exception {e}\n{traceback.format_exc()}")
             return "failure"
         return "success"
@@ -130,7 +130,7 @@ class PreferencesResolver:
                 **self.default_preferences
             })
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"PreferencesResolver: create_default_preferences exception {e}\n{traceback.format_exc()}")
 
     def check_for_nested_duplicates(self, value, target):
@@ -174,7 +174,7 @@ class PreferencesResolver:
                     # Check for nested duplicates
                     if patch["op"] == "add":
                         if self.check_for_nested_duplicates(patch["value"], temp_doc):
-                            logging.warn(
+                            logging.warning(
                                 f"Duplicate patch {patch}, skipping...")
                             continue
                     # Check type and validity
@@ -205,8 +205,8 @@ class PreferencesResolver:
             # Update the database
             update_result = await self.rate_limiter.execute(self.pref_collection.update_one, {"_id": user_id}, {"$set": modified_doc})
             if update_result.modified_count == 0:
-                logging.warn("No documents were updated.")
+                logging.warning("No documents were updated.")
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"PreferencesResolver: update_one exception {e}\n{traceback.format_exc()}")
         return "success"

@@ -112,7 +112,7 @@ class GenerativeAgentMemory(BaseMemory):
             return importance, insights
         except Exception as e:
             if self.verbose:
-                logging.warn(f"GenerativeAgentMemory: _get_importance_and_insight exception, e: {e}\n{traceback.format_exc()}")
+                logging.warning(f"GenerativeAgentMemory: _get_importance_and_insight exception, e: {e}\n{traceback.format_exc()}")
             return None, None
 
     async def pause_to_reflect(self, outputs: Dict[str, Any], preferences_resolver) -> List[str]:
@@ -136,7 +136,7 @@ class GenerativeAgentMemory(BaseMemory):
         except Exception as e:
             importance = 'low'
             if self.verbose:
-                logging.warn(f"GenerativeAgentMemory: pause_to_reflect exception, e: {e}\n{traceback.format_exc()}")           
+                logging.warning(f"GenerativeAgentMemory: pause_to_reflect exception, e: {e}\n{traceback.format_exc()}")           
         outputs["importance"] = importance
         await self.save_context(outputs)
         return new_insights
@@ -286,7 +286,7 @@ class GenerativeAgentMemory(BaseMemory):
                 ids = [doc.metadata["id"] for doc in documents]
                 await self.rate_limiter.execute(self.memory_retriever.base_retriever.vectorstore.aadd_documents, documents, ids=ids) 
         except Exception as e:
-            logging.warn(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")
+            logging.warning(f"GenerativeAgentMemory: decay_user exception {e}\n{traceback.format_exc()}")
             
     def clear(self) -> None:
         return

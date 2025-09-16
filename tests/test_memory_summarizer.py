@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from memory_summarizer import MemorySummarizer
 from unittest.mock import create_autospec
 from qdrant_client import QdrantClient
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory
 import os
 from rate_limiter import RateLimiter, SyncRateLimiter
