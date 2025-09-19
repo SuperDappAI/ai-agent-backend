@@ -9,6 +9,7 @@ from agent_manager import AgentManager
 from pydantic import BaseModel
 from langchain.schema.retriever import BaseRetriever
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
+from langchain.retrievers import ContextualCompressionRetriever
 from rate_limiter import RateLimiter, SyncRateLimiter
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
@@ -65,11 +66,11 @@ class MockVectorStore:
     aadd_documents = AsyncMock()
 
 class MockBaseRetriever(BaseRetriever):
-    vectorstore = MockVectorStore()
+    vectorstore: MockVectorStore = MockVectorStore()
 
     def _get_relevant_documents(self, *args, **kwargs):
         pass
-class MockMemoryRetriever(BaseModel):
+class MockMemoryRetriever(ContextualCompressionRetriever):
     base_compressor: MockBaseDocumentCompressor = Field(default_factory=MockBaseDocumentCompressor)
     base_retriever: MockBaseRetriever = Field(default_factory=MockBaseRetriever)
 

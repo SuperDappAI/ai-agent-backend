@@ -46,7 +46,7 @@ configobj>=5.0.9
 
 # Task Scheduling
 schedule==1.2.1
-apscheduler>=4.1.0
+apscheduler>=3.10.0
 
 # Development and Build Tools
 python-dotenv==1.0.1
