@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from langchain.schema import Document
 from langchain.schema import SystemMessage, HumanMessage
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from document_summarizer import FlexibleDocumentSummarizer, SummaryPrompt
 
 

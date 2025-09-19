@@ -18,7 +18,7 @@ from qdrant_client.http.models import PayloadSchemaType
 from memory_summarizer import MemorySummarizer
 from pydantic import BaseModel
 from document_summarizer import FlexibleDocumentSummarizer
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.schema import Document
 from datetime import datetime, timedelta
 from typing import Any, Dict
@@ -84,7 +84,7 @@ class AgentManager:
             # decay memory by summarizing it continiously until max_summarizations then prune
             asyncio.create_task(memory.decay())
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"AgentManager: push_memory exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
@@ -221,7 +221,7 @@ class AgentManager:
             # look up from summary or semantically
             if memory_input.summary:
                 if len(memory_input.conversation_id) <= 0:
-                    logging.warn(
+                    logging.warning(
                         f"AgentManager: pull_memory asked for summary but no conversation_id provided!")
                     end = time.time()
                     return {}, end - start
@@ -229,7 +229,7 @@ class AgentManager:
             else:
                 response = await self.load_memory(memory_input)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"AgentManager: pull_memory exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
@@ -259,7 +259,7 @@ class AgentManager:
             self.clear_collection_with_extra_index(
                 f"{clear_memory.user_id}_summaries", clear_memory.conversation_id)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"AgentManager: clear_conversation exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()

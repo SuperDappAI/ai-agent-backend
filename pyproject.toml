@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "superdapp-ai"
+version = "0.1.0"
+description = "AI agent platform with memory management, document processing, and function orchestration"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "SuperDappAI", email = "dev@superdapp.ai"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "langchain==0.2.5",
+    "langchain-community==0.2.5",
+    "langchain-openai==0.1.9",
+    "langchain-qdrant==0.1.1",
+    "langchain-cohere==0.1.8",
+    "openai==1.34.0",
+    "llama-index==0.10.50",
+    "qdrant-client==1.9.0",
+    "pymongo==4.6.3",
+    "motor==3.3.1",
+    "fastapi==0.109.1",
+    "uvicorn==0.23.2",
+    "python-dotenv==1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "black",
+    "isort",
+    "flake8",
+]
+
+[project.urls]
+Homepage = "https://github.com/SuperDappAI/AI"
+Repository = "https://github.com/SuperDappAI/AI"
+Issues = "https://github.com/SuperDappAI/AI/issues"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"

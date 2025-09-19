@@ -156,7 +156,7 @@ class WebManager:
                 await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
                 self.prune_web()
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
@@ -194,7 +194,7 @@ class WebManager:
             result, _ = self.rate_limiter_sync.execute(
                 self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit=1)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"WebManager: does_hash_exist exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
