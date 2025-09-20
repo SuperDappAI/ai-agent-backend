@@ -1,15 +1,18 @@
 import os
+from datetime import datetime
+
 import pytest
-from qdrant_retriever import QDrantVectorStoreRetriever
+from dotenv import load_dotenv
+from langchain.schema import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
-from langchain.schema import Document
-from qdrant_client import QdrantClient
-from langchain_qdrant import Qdrant
-from langchain_openai import OpenAIEmbeddings
-from datetime import datetime
-from dotenv import load_dotenv
+
+from qdrant_retriever import QDrantVectorStoreRetriever
 from rate_limiter import RateLimiter, SyncRateLimiter
+
 rate_limiter = RateLimiter(rate=5, period=1)  # Allow 5 tasks per second
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 
@@ -32,7 +35,10 @@ def setup_retriever():
             ),
         )
         client.create_payload_index(
-            collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
+            collection_name,
+            "metadata.extra_index",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
     except:
         print("MemorySummarizer: loaded from cloud...")
     finally:
@@ -54,9 +60,15 @@ def setup_retriever():
         )
 
     vectorstore.add_documents([document], ids=[metadata["id"]])
-    retriever = QDrantVectorStoreRetriever(rate_limiter=rate_limiter, rate_limiter_sync=rate_limiter_sync,
-                                           client=client, vectorstore=vectorstore, collection_name=collection_name)
+    retriever = QDrantVectorStoreRetriever(
+        rate_limiter=rate_limiter,
+        rate_limiter_sync=rate_limiter_sync,
+        client=client,
+        vectorstore=vectorstore,
+        collection_name=collection_name,
+    )
     return retriever
+
 
 # def test_get_salient_docs(setup_retriever):
 #     retriever = setup_retriever
@@ -81,8 +93,8 @@ async def test_get_salient_docs(setup_retriever):
     for doc, score in docs:
         assert isinstance(doc, Document)
 
-        assert hasattr(doc, 'page_content')
-        assert hasattr(doc, 'metadata')
+        assert hasattr(doc, "page_content")
+        assert hasattr(doc, "metadata")
 
         assert isinstance(score, float)
 

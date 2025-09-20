@@ -1,12 +1,17 @@
-import unittest
 import asyncio
-from datetime import datetime
-from generative_conversation_summarized_memory import GenerativeAgentConversationSummarizedMemory, MemoryType
-from agent_manager import AgentManager
-from rate_limiter import RateLimiter, SyncRateLimiter
-from langchain_openai import ChatOpenAI
 import os
+import unittest
+from datetime import datetime
+
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+
+from agent_manager import AgentManager
+from generative_conversation_summarized_memory import (
+    GenerativeAgentConversationSummarizedMemory,
+    MemoryType,
+)
+from rate_limiter import RateLimiter, SyncRateLimiter
 
 
 class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
@@ -18,18 +23,18 @@ class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
         load_dotenv()  # Load environment variables from .env file
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError(
-                "The OPENAI_API_KEY environment variable is missing")
+            raise ValueError("The OPENAI_API_KEY environment variable is missing")
 
         cls.mock_llm = ChatOpenAI(openai_api_key=api_key)
-        cls.mock_retriever = AgentManager(cls.rate_limiter, cls.rate_limiter_sync).create_new_memory_retriever(
-            api_key=api_key, user_id="test1")
+        cls.mock_retriever = AgentManager(
+            cls.rate_limiter, cls.rate_limiter_sync
+        ).create_new_memory_retriever(api_key=api_key, user_id="test1")
 
         cls.agent_memory = GenerativeAgentConversationSummarizedMemory(
             rate_limiter=cls.rate_limiter,
             llm=cls.mock_llm,
             memory_retriever=cls.mock_retriever,
-            verbose=True
+            verbose=True,
         )
 
     def setUp(self):
@@ -44,22 +49,39 @@ class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
 
         # Call add_memory method
         memory_content = "sample memory"
-        result = self.loop.run_until_complete(self.agent_memory.add_memory(
-            memory_content, conversation_id, importance, memory_type, now=timestamp))
+        result = self.loop.run_until_complete(
+            self.agent_memory.add_memory(
+                memory_content, conversation_id, importance, memory_type, now=timestamp
+            )
+        )
         self.assertIsNotNone(result)
 
         # Call add_memories method
         qa_list = ["question 1", "answer 1"]
         importance_list = ["high", "high"]
-        memory_types_list = [MemoryType.CONSCIOUS_MEMORY,
-                             MemoryType.CONSCIOUS_MEMORY]
-        result = self.loop.run_until_complete(self.agent_memory.add_memories(
-            qa_list, conversation_id, importance_list, memory_types_list, now=timestamp))
+        memory_types_list = [MemoryType.CONSCIOUS_MEMORY, MemoryType.CONSCIOUS_MEMORY]
+        result = self.loop.run_until_complete(
+            self.agent_memory.add_memories(
+                qa_list,
+                conversation_id,
+                importance_list,
+                memory_types_list,
+                now=timestamp,
+            )
+        )
         self.assertIsNotNone(result)
 
         # Call save_context method
-        result = self.loop.run_until_complete(self.agent_memory.save_context(
-            {"query": "sample query", "llm_response": "sample response", "importance": "high", "conversation_id": conversation_id}))
+        result = self.loop.run_until_complete(
+            self.agent_memory.save_context(
+                {
+                    "query": "sample query",
+                    "llm_response": "sample response",
+                    "importance": "high",
+                    "conversation_id": conversation_id,
+                }
+            )
+        )
         self.assertIsNotNone(result)
 
         # Call get_conversation method
@@ -69,5 +91,5 @@ class TestGenerativeAgentConversationSummarizedMemory(unittest.TestCase):
         self.agent_memory.clear()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

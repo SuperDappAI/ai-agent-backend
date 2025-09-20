@@ -1,5 +1,6 @@
 import threading
 
+
 class ReaderWriterLock:
     def __init__(self):
         self._read_lock = threading.Lock()

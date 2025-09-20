@@ -1,23 +1,26 @@
-import pytest
 import os
-from functions_manager import FunctionsManager, ActionItem, FunctionInput
+
+import pytest
 from dotenv import load_dotenv
 from langchain.schema import Document
-from qdrant_client.http.models import ScoredPoint
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
-from rate_limiter import RateLimiter, SyncRateLimiter
 from qdrant_client.http import models as rest
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.http.models import ScoredPoint
+
+from functions_manager import ActionItem, FunctionInput, FunctionsManager
+from rate_limiter import RateLimiter, SyncRateLimiter
 
 rate_limiter = RateLimiter(rate=5, period=1)
 rate_limiter_sync = SyncRateLimiter(rate=5, period=1)
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def create_collections():
     load_dotenv()
-    client = QdrantClient(url=os.getenv("QDRANT_URL"),
-                          api_key=os.getenv("QDRANT_API_KEY"))
+    client = QdrantClient(
+        url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY")
+    )
     collections = ["functions"]
 
     for collection in collections:
@@ -30,16 +33,14 @@ def create_collections():
                 ),
             )
         except Exception as e:
-            print(
-                f"Collection {collection} already exists or failed to create: {e}")
+            print(f"Collection {collection} already exists or failed to create: {e}")
 
 
 class TestFunctionsManager:
     @pytest.fixture(autouse=True)
     def setup_teardown(self):
         load_dotenv()
-        self.functions_manager = FunctionsManager(
-            rate_limiter, rate_limiter_sync)
+        self.functions_manager = FunctionsManager(rate_limiter, rate_limiter_sync)
         yield
 
     def test_transform(self):
@@ -54,10 +55,18 @@ class TestFunctionsManager:
 
     def test_count_tokens(self):
         functions = {
-            "information_retrieval": [{"name": "test function", "description": "test description"}],
-            "communication": [{"name": "test function", "description": "test description"}],
-            "data_processing": [{"name": "test function", "description": "test description"}],
-            "sensory_perception": [{"name": "test function", "description": "test description"}],
+            "information_retrieval": [
+                {"name": "test function", "description": "test description"}
+            ],
+            "communication": [
+                {"name": "test function", "description": "test description"}
+            ],
+            "data_processing": [
+                {"name": "test function", "description": "test description"}
+            ],
+            "sensory_perception": [
+                {"name": "test function", "description": "test description"}
+            ],
         }
 
         tokens = self.functions_manager.count_tokens(functions)
@@ -72,33 +81,37 @@ class TestFunctionsManager:
                 payload={"name": "test1", "category": "cat1"},
                 vector=[0.1, 0.2, 0.3],
                 score=0.9,
-                version=1
+                version=1,
             ),
             ScoredPoint(
                 id=2,
                 payload={"name": "test2", "category": "cat2"},
                 vector=[0.4, 0.5, 0.6],
                 score=0.8,
-                version=1
-            )
+                version=1,
+            ),
         ]
 
         extracted = self.functions_manager.extract_name_and_category(documents)
 
-        expected_output = [{'name': 'test1', 'category': 'cat1'}, {
-            'name': 'test2', 'category': 'cat2'}]
+        expected_output = [
+            {"name": "test1", "category": "cat1"},
+            {"name": "test2", "category": "cat2"},
+        ]
 
         assert extracted == expected_output
 
     @pytest.mark.asyncio
     async def test_pull_functions(self):
-        function_input = FunctionInput(api_key=os.getenv("OPENAI_API_KEY"),
-                                       action_items=[ActionItem(
-                                           action="act", intent="int", category="cat")]
-                                       )
+        function_input = FunctionInput(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            action_items=[ActionItem(action="act", intent="int", category="cat")],
+        )
 
         try:
-            response, time_taken = await self.functions_manager.pull_functions(function_input)
+            response, time_taken = await self.functions_manager.pull_functions(
+                function_input
+            )
         except UnexpectedResponse as e:
             pytest.fail(f"UnexpectedResponse: {e}")
 
@@ -107,8 +120,7 @@ class TestFunctionsManager:
 
     @pytest.mark.asyncio
     async def test_load(self):
-        response = self.functions_manager.load(
-            api_key=os.getenv("OPENAI_API_KEY"))
+        response = self.functions_manager.load(api_key=os.getenv("OPENAI_API_KEY"))
 
         assert response is not None
         print(response)

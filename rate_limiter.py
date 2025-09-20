@@ -1,6 +1,7 @@
 import asyncio
 import threading
 
+
 class RateLimiter:
     def __init__(self, rate: int, period: int, retries: int = 3):
         self.rate = rate
@@ -31,7 +32,8 @@ class RateLimiter:
                     await asyncio.sleep(self.period)
                 else:
                     raise e from None
-                
+
+
 class SyncRateLimiter:
     def __init__(self, rate: int, period: int, max_retries: int = 3):
         self.rate = rate
