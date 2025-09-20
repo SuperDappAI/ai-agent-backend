@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Sequence, Union
-
-from langchain_core._api.deprecation import deprecated
-from langchain_core.documents import Document
-from pydantic import Field, field_validator
 
 from langchain.callbacks.manager import Callbacks
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
 from langchain.utils import get_from_dict_or_env
-import logging
+from langchain_core._api.deprecation import deprecated
+from langchain_core.documents import Document
+from pydantic import Field, field_validator
 
 
 @deprecated(
@@ -44,9 +43,13 @@ class CohereRerank(BaseDocumentCompressor):
                     "Please install it with `pip install cohere`."
                 )
             cohere_api_key = get_from_dict_or_env(
-                {"cohere_api_key": self.cohere_api_key}, "cohere_api_key", "COHERE_API_KEY"
+                {"cohere_api_key": self.cohere_api_key},
+                "cohere_api_key",
+                "COHERE_API_KEY",
             )
-            self.client = cohere.AsyncClient(cohere_api_key, client_name=self.user_agent)
+            self.client = cohere.AsyncClient(
+                cohere_api_key, client_name=self.user_agent
+            )
 
     async def rerank(
         self,
@@ -130,8 +133,7 @@ class CohereRerank(BaseDocumentCompressor):
         # logging.info(f"acompress_documents: docs {documents} query {query}")
         for res in await self.rerank(documents, query):
             doc = documents[res["index"]]
-            doc_copy = Document(
-                doc.page_content, metadata=deepcopy(doc.metadata))
+            doc_copy = Document(doc.page_content, metadata=deepcopy(doc.metadata))
             doc_copy.metadata["relevance_score"] = res["relevance_score"]
             compressed.append(doc_copy)
         # logging.info(f"acompress_documents: compressed {compressed} query {query}")

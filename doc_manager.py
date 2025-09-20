@@ -1,25 +1,26 @@
-import time
 import datetime
-import schedule
+import logging
 import os
 import random
-import logging
+import time
 import traceback
-import cachetools.func
-
-from dotenv import load_dotenv
-from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
-from qdrant_client import QdrantClient
-from pydantic import BaseModel
-from langchain_qdrant import Qdrant
-from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain_openai import OpenAIEmbeddings
-from langchain.retrievers import ContextualCompressionRetriever
-from cohere_rerank import CohereRerank
-from langchain.schema import Document
 from datetime import datetime
+
+import cachetools.func
+import schedule
+from dotenv import load_dotenv
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.schema import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
+from pydantic import BaseModel
+from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
+
+from cohere_rerank import CohereRerank
+from qdrant_retriever import QDrantVectorStoreRetriever
 
 
 class CacheDoc(BaseModel):
@@ -64,8 +65,7 @@ class DocManager:
         self.rate_limiter_sync = rate_limiter_sync
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
-        self.client = QdrantClient(
-            url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.collection_name = "doc"
 
     def create_new_web_retriever(self, api_key: str):
@@ -80,19 +80,33 @@ class DocManager:
                 ),
             )
             self.client.create_payload_index(
-                self.collection_name, "metadata.extra_index", field_schema=PayloadSchemaType.KEYWORD)
+                self.collection_name,
+                "metadata.extra_index",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
         except:
             logging.info("DocManager: loaded from cloud...")
         finally:
             logging.info(
-                f"DocManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
-                model="text-embedding-3-small", openai_api_key=api_key))
+                f"DocManager: Creating memory store with collection {self.collection_name}"
+            )
+            vectorstore = Qdrant(
+                self.client,
+                self.collection_name,
+                OpenAIEmbeddings(
+                    model="text-embedding-3-small", openai_api_key=api_key
+                ),
+            )
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
-                base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
-                )
+                base_compressor=compressor,
+                base_retriever=QDrantVectorStoreRetriever(
+                    rate_limiter=self.rate_limiter,
+                    rate_limiter_sync=self.rate_limiter_sync,
+                    collection_name=self.collection_name,
+                    client=self.client,
+                    vectorstore=vectorstore,
+                ),
             )
             return compression_retriever
 
@@ -101,15 +115,17 @@ class DocManager:
         seen = set()
         for document in retrieved_nodes:
             text = document.page_content
-            source_url = document.metadata.get('source_url')
+            source_url = document.metadata.get("source_url")
             # Create a tuple of text and source_url to check for duplicates
             key = (text, source_url)
             if key not in seen:
-                result.append({'text': text, 'source_url': source_url})
+                result.append({"text": text, "source_url": source_url})
                 seen.add(key)
         return result
 
-    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: DocSearchInput):
+    async def get_retrieved_nodes(
+        self, memory: ContextualCompressionRetriever, function_input: DocSearchInput
+    ):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -133,12 +149,15 @@ class DocManager:
     async def add_doc(self, function_input: DocAddInput):
         start = time.time()
         if len(function_input.source_url) <= 0 or len(function_input.html_doc) <= 0:
-            logging.warning(
-                "DocManager: Cannot add information because data missing")
+            logging.warning("DocManager: Cannot add information because data missing")
             end = time.time()
             return "fail", end - start
         memory = self.load(function_input.api_key)
-        srcExist, _ = self.does_source_exist(CacheDoc(source_url=function_input.source_url, category=function_input.category))
+        srcExist, _ = self.does_source_exist(
+            CacheDoc(
+                source_url=function_input.source_url, category=function_input.category
+            )
+        )
         if srcExist:
             logging.warning("DocManager: source_url already exists")
             end = time.time()
@@ -148,22 +167,36 @@ class DocManager:
         if len(function_input.html_doc) > 0:
             text_splitter = SentenceSplitter()
             chunks = text_splitter.split_text(text=function_input.html_doc)
-            documents.extend([Document(page_content=chunk, metadata={"id": random.randint(
-                0, 2**32 - 1), "extra_index": function_input.category, "last_accessed_at": nowStamp, 'source_url': function_input.source_url}) for chunk in chunks])
+            documents.extend(
+                [
+                    Document(
+                        page_content=chunk,
+                        metadata={
+                            "id": random.randint(0, 2**32 - 1),
+                            "extra_index": function_input.category,
+                            "last_accessed_at": nowStamp,
+                            "source_url": function_input.source_url,
+                        },
+                    )
+                    for chunk in chunks
+                ]
+            )
         if len(documents) > 0:
             ids = [doc.metadata["id"] for doc in documents]
-            await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
+            await self.rate_limiter.execute(
+                memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids
+            )
             end = time.time()
             logging.info(
-                f"DocManager: Loaded from documents operation took {end - start} seconds")
+                f"DocManager: Loaded from documents operation took {end - start} seconds"
+            )
         return "success", end - start
 
     def delete_doc(self, function_input: DocDeleteInput):
         """Delete docs by source_url."""
         start = time.time()
         if 0 >= len(function_input.source_url):
-            logging.warning(
-                "DocManager: Cannot delete document because data missing")
+            logging.warning("DocManager: Cannot delete document because data missing")
             end = time.time()
             return "fail", end - start
         try:
@@ -176,14 +209,16 @@ class DocManager:
                     rest.FieldCondition(
                         key="metadata.extra_index",
                         match=rest.MatchValue(value=function_input.category),
-                    )
+                    ),
                 ]
             )
             self.client.delete(
-                collection_name=self.collection_name, points_selector=filter)
+                collection_name=self.collection_name, points_selector=filter
+            )
             end = time.time()
             logging.info(
-                f"DocManager: Delete documents operation took {end - start} seconds")
+                f"DocManager: Delete documents operation took {end - start} seconds"
+            )
         except Exception as e:
             logging.warning(f"DocManager: delete_doc exception {e}")
             end = time.time()
@@ -202,15 +237,19 @@ class DocManager:
             if len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
-                    doc.metadata.pop('relevance_score', None)
-                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
+                    doc.metadata.pop("relevance_score", None)
+                await self.rate_limiter.execute(
+                    memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids
+                )
         except Exception as e:
             logging.warning(
-                f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
+                f"DocManager: search_html exception {e}\n{traceback.format_exc()}"
+            )
         finally:
             end = time.time()
             logging.info(
-                f"DocManager: search_html operation took {end - start} seconds")
+                f"DocManager: search_html operation took {end - start} seconds"
+            )
             return response, end - start
 
     def does_source_exist(self, function_input: CacheDoc):
@@ -226,16 +265,19 @@ class DocManager:
                     rest.FieldCondition(
                         key="metadata.extra_index",
                         match=rest.MatchValue(value=function_input.category),
-                    )
+                    ),
                 ]
             )
             result, _ = self.client.scroll(
-                collection_name=self.collection_name, scroll_filter=filter, limit=1)
+                collection_name=self.collection_name, scroll_filter=filter, limit=1
+            )
         except Exception as e:
             logging.warning(
-                f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}")
+                f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}"
+            )
         finally:
             end = time.time()
         logging.info(
-            f"DocManager: does_source_exist operation took {end - start} seconds")
+            f"DocManager: does_source_exist operation took {end - start} seconds"
+        )
         return result is not None and len(result) > 0, end - start

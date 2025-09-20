@@ -1,25 +1,26 @@
-import time
 import datetime
+import logging
 import os
 import random
-import logging
+import time
 import traceback
-import cachetools.func
-
-from dotenv import load_dotenv
-from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
-from typing import List
-from qdrant_client import QdrantClient
-from pydantic import BaseModel, Field
-from langchain_qdrant import Qdrant
-from qdrant_retriever import QDrantVectorStoreRetriever
-from langchain_openai import OpenAIEmbeddings
-from langchain.retrievers import ContextualCompressionRetriever
-from cohere_rerank import CohereRerank
-from langchain.schema import Document
 from datetime import datetime, timedelta
+from typing import List
+
+import cachetools.func
+from dotenv import load_dotenv
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.schema import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import Qdrant
+from llama_index.core.langchain_helpers.text_splitter import SentenceSplitter
+from pydantic import BaseModel, Field
+from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType
+
+from cohere_rerank import CohereRerank
+from qdrant_retriever import QDrantVectorStoreRetriever
 
 
 class HTMLItem(BaseModel):
@@ -33,8 +34,9 @@ class CacheHTML(BaseModel):
 
 class HTMLInput(BaseModel):
     api_key: str
-    action_items: List[HTMLItem] = Field(..., example=[
-                                         {"source_url": "http://example.com", "html_doc": "text1"}])
+    action_items: List[HTMLItem] = Field(
+        ..., example=[{"source_url": "http://example.com", "html_doc": "text1"}]
+    )
     hash: str
     query: str
 
@@ -56,8 +58,7 @@ class WebManager:
         self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
         self.QDRANT_URL = os.getenv("QDRANT_URL")
         self.collection_name = "web"
-        self.client = QdrantClient(
-            url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
+        self.client = QdrantClient(url=self.QDRANT_URL, api_key=self.QDRANT_API_KEY)
         self.rate_limiter = rate_limiter
         self.rate_limiter_sync = rate_limiter_sync
 
@@ -73,19 +74,33 @@ class WebManager:
                 ),
             )
             self.client.create_payload_index(
-                self.collection_name, "metadata.hash_key", field_schema=PayloadSchemaType.KEYWORD)
+                self.collection_name,
+                "metadata.hash_key",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
         except:
             logging.info("WebManager: loaded from cloud...")
         finally:
             logging.info(
-                f"WebManager: Creating memory store with collection {self.collection_name}")
-            vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
-                model="text-embedding-3-small", openai_api_key=api_key))
+                f"WebManager: Creating memory store with collection {self.collection_name}"
+            )
+            vectorstore = Qdrant(
+                self.client,
+                self.collection_name,
+                OpenAIEmbeddings(
+                    model="text-embedding-3-small", openai_api_key=api_key
+                ),
+            )
             compressor = CohereRerank()
             compression_retriever = ContextualCompressionRetriever(
-                base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
-                    rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
-                )
+                base_compressor=compressor,
+                base_retriever=QDrantVectorStoreRetriever(
+                    rate_limiter=self.rate_limiter,
+                    rate_limiter_sync=self.rate_limiter_sync,
+                    collection_name=self.collection_name,
+                    client=self.client,
+                    vectorstore=vectorstore,
+                ),
             )
             return compression_retriever
 
@@ -94,15 +109,17 @@ class WebManager:
         seen = set()
         for document in retrieved_nodes:
             text = document.page_content
-            source_url = document.metadata.get('source_url')
+            source_url = document.metadata.get("source_url")
             # Create a tuple of text and source_url to check for duplicates
             key = (text, source_url)
             if key not in seen:
-                result.append({'text': text, 'source_url': source_url})
+                result.append({"text": text, "source_url": source_url})
                 seen.add(key)
         return result
 
-    async def get_retrieved_nodes(self, memory: ContextualCompressionRetriever, function_input: HTMLInput):
+    async def get_retrieved_nodes(
+        self, memory: ContextualCompressionRetriever, function_input: HTMLInput
+    ):
         filter = rest.Filter(
             must=[
                 rest.FieldCondition(
@@ -138,30 +155,49 @@ class WebManager:
             for item in function_input.action_items:
                 text_splitter = SentenceSplitter()
                 chunks = text_splitter.split_text(text=item.html_doc)
-                documents.extend([Document(page_content=chunk, metadata={"id": random.randint(
-                    0, 2**32 - 1), "hash_key": function_input.hash, "last_accessed_at": nowStamp, 'source_url': item.source_url}) for chunk in chunks])
+                documents.extend(
+                    [
+                        Document(
+                            page_content=chunk,
+                            metadata={
+                                "id": random.randint(0, 2**32 - 1),
+                                "hash_key": function_input.hash,
+                                "last_accessed_at": nowStamp,
+                                "source_url": item.source_url,
+                            },
+                        )
+                        for chunk in chunks
+                    ]
+                )
             if len(documents) > 0:
                 ids = [doc.metadata["id"] for doc in documents]
-                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
+                await self.rate_limiter.execute(
+                    memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids
+                )
                 end = time.time()
                 logging.info(
-                    f"WebManager: Loaded from documents operation took {end - start} seconds")
+                    f"WebManager: Loaded from documents operation took {end - start} seconds"
+                )
             nodes = await self.get_retrieved_nodes(memory, function_input)
             response = self.extract_text_and_source_url(nodes)
             # update last_accessed_at
             if len(function_input.action_items) == 0 and len(nodes) > 0:
                 ids = [doc.metadata["id"] for doc in nodes]
                 for doc in nodes:
-                    doc.metadata.pop('relevance_score', None)
-                await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
+                    doc.metadata.pop("relevance_score", None)
+                await self.rate_limiter.execute(
+                    memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids
+                )
                 self.prune_web()
         except Exception as e:
             logging.warning(
-                f"WebManager: search_html exception {e}\n{traceback.format_exc()}")
+                f"WebManager: search_html exception {e}\n{traceback.format_exc()}"
+            )
         finally:
             end = time.time()
             logging.info(
-                f"WebManager: search_html operation took {end - start} seconds")
+                f"WebManager: search_html operation took {end - start} seconds"
+            )
             return response, end - start
 
     def prune_web(self):
@@ -177,7 +213,10 @@ class WebManager:
             ]
         )
         self.rate_limiter_sync.execute(
-            self.client.delete, collection_name=self.collection_name, points_selector=filter)
+            self.client.delete,
+            collection_name=self.collection_name,
+            points_selector=filter,
+        )
 
     def does_hash_exist(self, hash: str):
         start = time.time()
@@ -192,12 +231,18 @@ class WebManager:
                 ]
             )
             result, _ = self.rate_limiter_sync.execute(
-                self.client.scroll, collection_name=self.collection_name, scroll_filter=filter, limit=1)
+                self.client.scroll,
+                collection_name=self.collection_name,
+                scroll_filter=filter,
+                limit=1,
+            )
         except Exception as e:
             logging.warning(
-                f"WebManager: does_hash_exist exception {e}\n{traceback.format_exc()}")
+                f"WebManager: does_hash_exist exception {e}\n{traceback.format_exc()}"
+            )
         finally:
             end = time.time()
         logging.info(
-            f"WebManager: does_hash_exist operation took {end - start} seconds")
+            f"WebManager: does_hash_exist operation took {end - start} seconds"
+        )
         return result is not None and len(result) > 0, end - start

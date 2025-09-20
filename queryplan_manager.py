@@ -1,13 +1,14 @@
-import time
-import logging
 import asyncio
+import logging
+import time
 import traceback
 
+from langchain.schema import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
-from langchain.schema import SystemMessage, HumanMessage
-from preferences_resolver import PreferencesResolver
+
 from classify_prompts import ClassifyPrompts
+from preferences_resolver import PreferencesResolver
 
 
 class QueryPlanInput(BaseModel):
@@ -22,29 +23,40 @@ class QueryPlanManager:
     def __init__(self):
         self.classify_prompts = ClassifyPrompts()
 
-    async def query_plan(self, preferences_resolver: PreferencesResolver, query_input: QueryPlanInput):
+    async def query_plan(
+        self, preferences_resolver: PreferencesResolver, query_input: QueryPlanInput
+    ):
         start = time.time()
         roleDB = await preferences_resolver.get_role(query_input.conversation_id)
         if roleDB is None:
             try:
-                messages = [[SystemMessage(content=self.classify_prompts.to_prompt_string()),
-                             HumanMessage(content=query_input.query)]]
-                llm = ChatOpenAI(model='gpt-4.1-mini', temperature=0,
-                                 max_tokens=8, openai_api_key=query_input.api_key)
+                messages = [
+                    [
+                        SystemMessage(content=self.classify_prompts.to_prompt_string()),
+                        HumanMessage(content=query_input.query),
+                    ]
+                ]
+                llm = ChatOpenAI(
+                    model="gpt-4.1-mini",
+                    temperature=0,
+                    max_tokens=8,
+                    openai_api_key=query_input.api_key,
+                )
                 response = await llm.agenerate(messages)
                 if not response.generations or not response.generations[0]:
-                    raise Exception(
-                        "LLM did not provide a valid summary response.")
+                    raise Exception("LLM did not provide a valid summary response.")
                 result = response.generations[0][0].text
                 role = self.classify_prompts.parseClassification(result)
                 if role is None:
                     end = time.time()
                     return "No plan needed", {end - start}
-                asyncio.create_task(preferences_resolver.set_role(
-                    result, query_input.conversation_id))
+                asyncio.create_task(
+                    preferences_resolver.set_role(result, query_input.conversation_id)
+                )
             except Exception as e:
                 logging.warning(
-                    f"QueryPlanManager: query_plan exception, e: {e}\n{traceback.format_exc()}")
+                    f"QueryPlanManager: query_plan exception, e: {e}\n{traceback.format_exc()}"
+                )
                 end = time.time()
                 return "No plan needed", {end - start}
         else:
@@ -54,5 +66,6 @@ class QueryPlanManager:
                 return "No plan needed", {end - start}
         end = time.time()
         logging.info(
-            f"QueryPlanManager: query_plan operation took {end - start} seconds")
+            f"QueryPlanManager: query_plan operation took {end - start} seconds"
+        )
         return role, {end - start}
