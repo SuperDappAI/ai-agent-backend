@@ -110,7 +110,11 @@ class FunctionsManager:
                 f"FunctionsManager: Creating memory store with collection {self.collection_name}")
             vectorstore = Qdrant(self.client, self.collection_name, OpenAIEmbeddings(
                 model="text-embedding-3-small", openai_api_key=api_key))
-            compressor = CohereRerank()
+            # Allow overriding the Cohere rerank model via env to avoid API
+            # 404s when models are sunset. Defaults to the class default.
+            cohere_rerank_model = os.getenv("COHERE_RERANK_MODEL")
+            compressor = CohereRerank(
+                **({"model": cohere_rerank_model} if cohere_rerank_model else {}))
             compression_retriever = ContextualCompressionRetriever(
                 base_compressor=compressor, base_retriever=QDrantVectorStoreRetriever(
                     rate_limiter=self.rate_limiter, rate_limiter_sync=self.rate_limiter_sync, collection_name=self.collection_name, client=self.client, vectorstore=vectorstore,
