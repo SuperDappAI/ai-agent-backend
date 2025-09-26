@@ -34,7 +34,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             return response.generations[0][0].text
         except Exception as e:
             if self.verbose:
-                logging.warn(f"GenerativeAgentConversationSummarizedMemory: _init_summary_of_convo exception, e: {e}\n{traceback.format_exc()}")
+                logging.warning(f"GenerativeAgentConversationSummarizedMemory: _init_summary_of_convo exception, e: {e}\n{traceback.format_exc()}")
             return ''
         
     async def _summarize_with_convo(self, new_text: str, existing_summary: str) -> str:
@@ -49,7 +49,7 @@ class GenerativeAgentConversationSummarizedMemory(BaseMemory):
             return response.generations[0][0].text
         except Exception as e:
             if self.verbose:
-                logging.warn(f"GenerativeAgentConversationSummarizedMemory: _summarize_with_convo exception, e: {e}\n{traceback.format_exc()}")
+                logging.warning(f"GenerativeAgentConversationSummarizedMemory: _summarize_with_convo exception, e: {e}\n{traceback.format_exc()}")
             return ''
              
     async def add_memories(

@@ -6,7 +6,7 @@ import cachetools.func
 from dotenv import load_dotenv
 from typing import Any, Dict, List
 from document_summarizer import FlexibleDocumentSummarizer
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_qdrant import Qdrant
 from qdrant_client.http import models as rest
 from qdrant_client.http.models import PayloadSchemaType

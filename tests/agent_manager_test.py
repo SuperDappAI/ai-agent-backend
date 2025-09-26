@@ -42,12 +42,12 @@ class MockVectorStore:
     aadd_documents = AsyncMock()
 
 class MockBaseRetriever(BaseRetriever):
-    vectorstore = MockVectorStore()
+    vectorstore: MockVectorStore = MockVectorStore()
 
     def _get_relevant_documents(self, *args, **kwargs):
         pass
 
-class MockMemoryRetriever(BaseModel):
+class MockMemoryRetriever(ContextualCompressionRetriever):
     base_compressor: MockBaseDocumentCompressor = Field(default_factory=MockBaseDocumentCompressor)
     base_retriever: MockBaseRetriever = Field(default_factory=MockBaseRetriever)
 

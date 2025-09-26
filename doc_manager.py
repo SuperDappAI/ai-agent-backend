@@ -24,6 +24,7 @@ from qdrant_client.http.models import PayloadSchemaType
 
 class CacheDoc(BaseModel):
     source_url: str
+    category: str
 
 
 class DocAddInput(BaseModel):
@@ -132,14 +133,14 @@ class DocManager:
     async def add_doc(self, function_input: DocAddInput):
         start = time.time()
         if len(function_input.source_url) <= 0 or len(function_input.html_doc) <= 0:
-            logging.warn(
+            logging.warning(
                 "DocManager: Cannot add information because data missing")
             end = time.time()
             return "fail", end - start
         memory = self.load(function_input.api_key)
-        srcExist, _ = self.does_source_exist(function_input.source_url)
+        srcExist, _ = self.does_source_exist(CacheDoc(source_url=function_input.source_url, category=function_input.category))
         if srcExist:
-            logging.warn("DocManager: source_url already exists")
+            logging.warning("DocManager: source_url already exists")
             end = time.time()
             return "fail", end - start
         nowStamp = datetime.now().timestamp()
@@ -161,7 +162,7 @@ class DocManager:
         """Delete docs by source_url."""
         start = time.time()
         if 0 >= len(function_input.source_url):
-            logging.warn(
+            logging.warning(
                 "DocManager: Cannot delete document because data missing")
             end = time.time()
             return "fail", end - start
@@ -184,7 +185,7 @@ class DocManager:
             logging.info(
                 f"DocManager: Delete documents operation took {end - start} seconds")
         except Exception as e:
-            logging.warn(f"DocManager: delete_doc exception {e}")
+            logging.warning(f"DocManager: delete_doc exception {e}")
             end = time.time()
             return "fail", end - start
         return "success", end - start
@@ -204,7 +205,7 @@ class DocManager:
                     doc.metadata.pop('relevance_score', None)
                 await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, nodes, ids=ids)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"DocManager: search_html exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
@@ -212,7 +213,7 @@ class DocManager:
                 f"DocManager: search_html operation took {end - start} seconds")
             return response, end - start
 
-    def does_source_exist(self, source_url: str):
+    def does_source_exist(self, function_input: CacheDoc):
         result = None
         start = time.time()
         try:
@@ -220,14 +221,18 @@ class DocManager:
                 must=[
                     rest.FieldCondition(
                         key="metadata.source_url",
-                        match=rest.MatchValue(value=source_url),
+                        match=rest.MatchValue(value=function_input.source_url),
+                    ),
+                    rest.FieldCondition(
+                        key="metadata.extra_index",
+                        match=rest.MatchValue(value=function_input.category),
                     )
                 ]
             )
             result, _ = self.client.scroll(
                 collection_name=self.collection_name, scroll_filter=filter, limit=1)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"DocManager: does_source_exist exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()

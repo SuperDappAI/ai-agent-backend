@@ -210,7 +210,7 @@ class FunctionsManager:
                     await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, documents, ids=ids)
                     # loop.run_in_executor(None, self.prune_functions)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"FunctionsManager: pull_functions exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
@@ -282,7 +282,7 @@ class FunctionsManager:
             await self.rate_limiter.execute(memory.base_retriever.vectorstore.aadd_documents, all_docs, ids=ids)
             tokens = self.count_tokens(functions)
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"FunctionsManager: push_functions exception {e}\n{traceback.format_exc()}")
         finally:
             end = time.time()
@@ -308,7 +308,7 @@ class FunctionsManager:
         try:
             attempt_prune()
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 f"FunctionsManager: prune_functions exception {e}\n{traceback.format_exc()}")
             # Attempt a second prune after reload
             try:

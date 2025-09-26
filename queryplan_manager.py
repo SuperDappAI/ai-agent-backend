@@ -3,7 +3,7 @@ import logging
 import asyncio
 import traceback
 
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 from langchain.schema import SystemMessage, HumanMessage
 from preferences_resolver import PreferencesResolver
@@ -43,7 +43,7 @@ class QueryPlanManager:
                 asyncio.create_task(preferences_resolver.set_role(
                     result, query_input.conversation_id))
             except Exception as e:
-                logging.warn(
+                logging.warning(
                     f"QueryPlanManager: query_plan exception, e: {e}\n{traceback.format_exc()}")
                 end = time.time()
                 return "No plan needed", {end - start}

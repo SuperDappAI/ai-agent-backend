@@ -125,10 +125,10 @@ async def deleteDoc(function_input: DocDeleteInput):
     return {'response': results, 'elapsed_time': elapsed_time}
 
 @app.post('/is_doc_cached/')
-async def isDocCached(cache_html: CacheDoc):
+async def isDocCached(function_input: CacheDoc):
     """Endpoint to check if doc content is cached."""
     logging.info('Checking if doc is cached')
-    result, elapsed_time = doc_manager.does_source_exist(cache_html.source_url)
+    result, elapsed_time = doc_manager.does_source_exist(function_input)
     return {'response': result, 'elapsed_time': elapsed_time}
 
 @app.post('/search_doc/')
@@ -197,10 +197,10 @@ async def clearCache(cache_clear_input: CacheClearInput):
     """Endpoint to clear caches."""
     start = time.time()
     if not cache_clear_input.console_key.strip():
-        logging.warn("CacheManager: console key is empty, check settings!")
+        logging.warning("CacheManager: console key is empty, check settings!")
         return {'response': "fail", 'elapsed_time': 0}
     if CONSOLE_KEY != cache_clear_input.console_key:
-        logging.warn("CacheManager: Invalid console key")
+        logging.warning("CacheManager: Invalid console key")
         return {'response': "fail", 'elapsed_time': 0}
     if {"doc", "all"} & set(cache_clear_input.cache_types):
         doccache.clear()

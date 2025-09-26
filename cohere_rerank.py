@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 from langchain_core._api.deprecation import deprecated
 from langchain_core.documents import Document
-from langchain_core.pydantic_v1 import Extra, root_validator
+from pydantic import Field, field_validator
 
 from langchain.callbacks.manager import Callbacks
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
@@ -29,11 +29,13 @@ class CohereRerank(BaseDocumentCompressor):
     """Cohere client to use for compressing documents."""
     top_n: Optional[int] = 3
     """Number of documents to return."""
+
     # Default model updated to a current Cohere Rerank model. The older
     # "rerank-english-v2.0" returns 404 from the API as it has been
     # deprecated/removed. If needed, pass a model explicitly when
     # constructing this class or set via env from the caller.
-    model: str = "rerank-english-v3.0"
+    model: str = "rerank-v3.5"
+
     """Model to use for reranking."""
     cohere_api_key: Optional[str] = None
     """Cohere API key. Must be specified directly or via environment variable 
@@ -41,16 +43,11 @@ class CohereRerank(BaseDocumentCompressor):
     user_agent: str = "langchain"
     """Identifier for the application making the request."""
 
-    class Config:
-        """Configuration for this pydantic object."""
+    model_config = {"extra": "forbid", "arbitrary_types_allowed": True}
 
-        extra = Extra.forbid
-        arbitrary_types_allowed = True
-
-    @root_validator(pre=True)
-    def validate_environment(cls, values: Dict) -> Dict:
-        """Validate that api key and python package exists in environment."""
-        if not values.get("client"):
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize the client after model creation."""
+        if not self.client:
             try:
                 import cohere
             except ImportError:
@@ -59,12 +56,9 @@ class CohereRerank(BaseDocumentCompressor):
                     "Please install it with `pip install cohere`."
                 )
             cohere_api_key = get_from_dict_or_env(
-                values, "cohere_api_key", "COHERE_API_KEY"
+                {"cohere_api_key": self.cohere_api_key}, "cohere_api_key", "COHERE_API_KEY"
             )
-            client_name = values.get("user_agent", "langchain")
-            values["client"] = cohere.AsyncClient(
-                cohere_api_key, client_name=client_name)
-        return values
+            self.client = cohere.AsyncClient(cohere_api_key, client_name=self.user_agent)
 
     async def rerank(
         self,

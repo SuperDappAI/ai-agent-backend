@@ -5,7 +5,7 @@ import json
 import re
 
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from preferences_resolver import PreferencesResolver
 from typing import List
 
@@ -83,7 +83,7 @@ class PreferencesUpdater:
                 array_json = json.loads(array_str)
         except Exception as e:
             if self.verbose:
-                logging.warn(
+                logging.warning(
                     f"PreferencesUpdater: _get_json_patch_commands exception, e: {e}\n{traceback.format_exc()}")
 
         return array_json
@@ -92,7 +92,7 @@ class PreferencesUpdater:
         """Reflect on recent observations and generate 'insights'."""
         doc = await self._preferences_resolver.get_preferences(user_id)
         if doc is None:
-            logging.warn(
+            logging.warning(
                 f"PreferencesUpdater: No preferences found for user {user_id}")
             return
         summary_prompt = SystemPrompt(doc)
@@ -114,5 +114,5 @@ class PreferencesUpdater:
                 patch_commands = await self._get_json_patch_commands(messages, llm)
                 response = await self._preferences_resolver.apply_patch(user_id, doc, patch_commands)
                 if response != "success" and self.verbose:
-                    logging.warn(
+                    logging.warning(
                         f"PreferencesUpdater: preferences_resolver patch application failed: {response}")
