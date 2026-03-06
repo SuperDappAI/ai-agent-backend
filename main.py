@@ -32,6 +32,11 @@ origins = [
 ]
 
 app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "SuperDapp Python API is running"}
+    
 # Initialize logging
 LOGFILE_PATH = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), 'app.log')

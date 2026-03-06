@@ -1,0 +1,30 @@
+services:
+  api:
+    image: superdapp-python-api-dev:latest
+    container_name: python-api-dev
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.python-api.rule=Host(`python-api.superdapp.dev`)"
+      - "traefik.http.routers.python-api.entrypoints=websecure"
+      - "traefik.http.routers.python-api.tls=true"
+      - "traefik.http.routers.python-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.python-api.loadbalancer.server.port=80"
+      - "traefik.docker.network=traefik-net"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+networks:
+  traefik-net:
+    external: true
+    name: traefik-net
