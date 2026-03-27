@@ -2,7 +2,7 @@ name: Deploy App
 
 on:
   push:
-    branches: [ dev-release ]
+    branches: [dev-release]
 
 jobs:
   build-and-deploy:
@@ -63,30 +63,30 @@ jobs:
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_DEV_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           # Send the image, the updated docker-compose.dev.yml AND the downloaded .env file
-          source: "image.tar.gz,docker-compose.dev.yml,.env"
-          target: "~/superdapp-python-api-dev"
+          source: 'image.tar.gz,docker-compose.dev.yml,.env'
+          target: '~/superdapp-python-api-dev'
 
       - name: Remote Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_DEV_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/superdapp-python-api-dev
-            
+
             # Load the new image
             gunzip -c image.tar.gz | docker load
-            
+
             # Restart the service leveraging the custom file name
             docker compose -f docker-compose.dev.yml up -d
-            
+
             # Cleanup: Remove the tar file and old/dangling images
             rm image.tar.gz
             docker image prune -f
-            
+
       # Buildx cache management (cleanup required for GitHub Actions)
       - name: Move cache
         run: |
