@@ -9,7 +9,7 @@ services:
       - traefik-net
     labels:
       - 'traefik.enable=true'
-      - 'traefik.http.routers.python-api.rule=Host(`python-api2.superdapp.ai`)'
+      - 'traefik.http.routers.python-api.rule=Host(`python-api.superdapp.ai`)'
       - 'traefik.http.routers.python-api.entrypoints=websecure'
       - 'traefik.http.routers.python-api.tls=true'
       - 'traefik.http.routers.python-api.tls.certresolver=letsencrypt'
